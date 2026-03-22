@@ -1,4 +1,5 @@
 import type { StateCreator } from 'zustand'
+import { toast } from 'sonner'
 import type { AppState } from '../types'
 import type { Repo } from '../../../../shared/types'
 
@@ -33,7 +34,16 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
       const path = await window.api.repos.pickFolder()
       if (!path) return null
       const repo = await window.api.repos.add({ path })
-      set((s) => ({ repos: [...s.repos, repo] }))
+      const alreadyAdded = get().repos.some((r) => r.id === repo.id)
+      set((s) => {
+        if (s.repos.some((r) => r.id === repo.id)) return s
+        return { repos: [...s.repos, repo] }
+      })
+      if (alreadyAdded) {
+        toast.info('Repo already added', { description: repo.displayName })
+      } else {
+        toast.success('Repo added', { description: repo.displayName })
+      }
       return repo
     } catch (err) {
       console.error('Failed to add repo:', err)

@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
-import { Toaster } from 'sonner'
 import { Minimize2, PanelLeft, PanelRight } from 'lucide-react'
 import { TOGGLE_TERMINAL_PANE_EXPAND_EVENT } from '@/constants/terminal'
 import { syncZoomCSSVar } from '@/lib/ui-zoom'
+import { Toaster } from '@/components/ui/sonner'
 import { useAppStore } from './store'
 import { useIpcEvents } from './hooks/useIpcEvents'
 import Sidebar from './components/Sidebar'
@@ -275,12 +275,7 @@ function App(): React.JSX.Element {
         </div>
         {showSidebar && rightSidebarOpen ? <RightSidebar /> : null}
       </div>
-      <Toaster
-        theme="system"
-        position="bottom-right"
-        closeButton
-        toastOptions={{ className: 'font-sans text-sm' }}
-      />
+      <Toaster closeButton toastOptions={{ className: 'font-sans text-sm' }} />
     </div>
   )
 }
