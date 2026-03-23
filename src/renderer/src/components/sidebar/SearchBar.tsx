@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react'
-import { Search, X, Activity, FolderTree } from 'lucide-react'
+import { Search, X, Activity, FolderTree, FolderPlus } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -8,7 +8,8 @@ import {
   SelectTrigger,
   SelectValue,
   SelectContent,
-  SelectItem
+  SelectItem,
+  SelectSeparator
 } from '@/components/ui/select'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
@@ -22,6 +23,7 @@ const SearchBar = React.memo(function SearchBar() {
   const filterRepoId = useAppStore((s) => s.filterRepoId)
   const setFilterRepoId = useAppStore((s) => s.setFilterRepoId)
   const repos = useAppStore((s) => s.repos)
+  const addRepo = useAppStore((s) => s.addRepo)
   const selectedRepo = repos.find((r) => r.id === filterRepoId)
 
   const handleClear = useCallback(() => setSearchQuery(''), [setSearchQuery])
@@ -70,7 +72,13 @@ const SearchBar = React.memo(function SearchBar() {
           {repos.length > 1 && (
             <Select
               value={filterRepoId ?? '__all__'}
-              onValueChange={(v) => setFilterRepoId(v === '__all__' ? null : v)}
+              onValueChange={(v) => {
+                if (v === '__add__') {
+                  addRepo()
+                } else {
+                  setFilterRepoId(v === '__all__' ? null : v)
+                }
+              }}
             >
               <SelectTrigger
                 size="sm"
@@ -98,6 +106,13 @@ const SearchBar = React.memo(function SearchBar() {
                     <RepoDotLabel name={r.displayName} color={r.badgeColor} />
                   </SelectItem>
                 ))}
+                <SelectSeparator />
+                <SelectItem value="__add__">
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <FolderPlus className="size-3.5" />
+                    Add repo
+                  </span>
+                </SelectItem>
               </SelectContent>
             </Select>
           )}
