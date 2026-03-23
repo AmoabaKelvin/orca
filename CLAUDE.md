@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+See also: [AGENTS.md](./AGENTS.md) for agent-specific rules.
+
 ## Package Manager
 
 This project uses **pnpm**. Never use `npm` or `yarn`.
