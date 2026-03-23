@@ -145,8 +145,6 @@ function createWindow(): BrowserWindow {
     }
   })
 
-
-
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -271,7 +269,7 @@ app.whenReady().then(() => {
   registerUIHandlers(store)
   registerFilesystemHandlers(store)
   warmSystemFontFamilies()
-  setupAutoUpdater(mainWindow)
+  setupAutoUpdater(mainWindow, { onBeforeQuit: () => store?.flush() })
 
   // Clipboard: read text via Electron's native clipboard module so the
   // renderer can bypass Chromium's clipboard pipeline (which holds

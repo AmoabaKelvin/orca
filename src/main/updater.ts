@@ -2,10 +2,12 @@ import { app, BrowserWindow } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { is } from '@electron-toolkit/utils'
 import type { UpdateStatus } from '../shared/types'
+import { killAllPty } from './ipc/pty'
 
 let mainWindowRef: BrowserWindow | null = null
 let currentStatus: UpdateStatus = { state: 'idle' }
 let userInitiatedCheck = false
+let onBeforeQuitCleanup: (() => void) | null = null
 
 function sendStatus(status: UpdateStatus): void {
   currentStatus = status
@@ -46,32 +48,35 @@ export function checkForUpdatesFromMenu(): void {
 }
 
 export function quitAndInstall(): void {
-  if (process.platform === 'darwin') {
-    // On macOS, autoUpdater.quitAndInstall() calls app.exit() which bypasses
-    // the normal quit lifecycle, causing the "quit unexpectedly" crash dialog.
-    // Instead, use app.relaunch() + app.quit() which goes through the proper
-    // lifecycle. autoInstallOnAppQuit (set in setupAutoUpdater) ensures the
-    // update is applied during the quit process.
-    app.relaunch()
-    app.quit()
-  } else {
-    // On Windows/Linux, quitAndInstall works correctly with the NSIS installer.
-    const windows = BrowserWindow.getAllWindows()
-    for (const win of windows) {
-      win.removeAllListeners('close')
-      win.destroy()
-    }
-    setImmediate(() => {
-      autoUpdater.quitAndInstall(false, true)
-    })
+  // autoUpdater.quitAndInstall() calls app.exit() which bypasses the normal
+  // before-quit lifecycle. Run cleanup that would normally happen there.
+  killAllPty()
+  onBeforeQuitCleanup?.()
+
+  const windows = BrowserWindow.getAllWindows()
+  for (const win of windows) {
+    win.removeAllListeners('close')
+    win.destroy()
   }
+
+  setImmediate(() => {
+    autoUpdater.quitAndInstall(false, true)
+  })
 }
 
-export function setupAutoUpdater(mainWindow: BrowserWindow): void {
+export function setupAutoUpdater(
+  mainWindow: BrowserWindow,
+  opts?: { onBeforeQuit?: () => void }
+): void {
   mainWindowRef = mainWindow
+  onBeforeQuitCleanup = opts?.onBeforeQuit ?? null
 
-  if (!app.isPackaged && !is.dev) return
-  if (is.dev) return
+  if (!app.isPackaged && !is.dev) {
+    return
+  }
+  if (is.dev) {
+    return
+  }
 
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
