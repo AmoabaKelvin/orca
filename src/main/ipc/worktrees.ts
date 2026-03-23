@@ -43,27 +43,31 @@ export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store
 
       const settings = store.getSettings()
 
+      const requestedName = args.name
+      // Sanitize name for use in branch names and directory paths
+      // (git branch names cannot contain spaces; collapse runs of spaces to a single hyphen)
+      const sanitizedName = args.name.replace(/\s+/g, '-')
+
       // Compute branch name with prefix
-      let branchName = args.name
+      let branchName = sanitizedName
       if (settings.branchPrefix === 'git-username') {
         const username = getGitUsername(repo.path)
         if (username) {
-          branchName = `${username}/${args.name}`
+          branchName = `${username}/${sanitizedName}`
         }
       } else if (settings.branchPrefix === 'custom' && settings.branchPrefixCustom) {
-        branchName = `${settings.branchPrefixCustom}/${args.name}`
+        branchName = `${settings.branchPrefixCustom}/${sanitizedName}`
       }
 
-      const requestedName = args.name
       branchName = await getAvailableBranchName(repo.path, branchName)
 
       // Compute worktree path
       let worktreePath: string
       if (settings.nestWorkspaces) {
         const repoName = basename(repo.path).replace(/\.git$/, '')
-        worktreePath = join(settings.workspaceDir, repoName, requestedName)
+        worktreePath = join(settings.workspaceDir, repoName, sanitizedName)
       } else {
-        worktreePath = join(settings.workspaceDir, requestedName)
+        worktreePath = join(settings.workspaceDir, sanitizedName)
       }
 
       // Determine base branch
@@ -78,7 +82,9 @@ export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store
 
       const worktreeId = `${repo.id}::${worktreePath}`
       const metaUpdates: Partial<WorktreeMeta> =
-        branchName === requestedName ? {} : { displayName: requestedName }
+        branchName === requestedName && sanitizedName === requestedName
+          ? {}
+          : { displayName: requestedName }
       const meta = store.setWorktreeMeta(worktreeId, metaUpdates)
       const worktree = mergeWorktree(repo.id, created, meta)
 
