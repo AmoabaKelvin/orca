@@ -181,6 +181,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
 
   setActiveWorktree: (worktreeId) => {
     let shouldClearUnread = false
+    const prevActiveId = get().activeWorktreeId
     set((s) => {
       if (!worktreeId) {
         return { activeWorktreeId: null }
@@ -196,8 +197,8 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
       }
     })
 
-    // Refresh GitHub data (PR + issue status) for the activated worktree
-    if (worktreeId) {
+    // Refresh GitHub data (PR + issue status) when switching to a different worktree
+    if (worktreeId && worktreeId !== prevActiveId) {
       get().refreshGitHubForWorktree(worktreeId)
     }
 
