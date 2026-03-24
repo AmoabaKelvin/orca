@@ -1,13 +1,36 @@
-import { BrowserWindow, ipcMain } from 'electron'
+import { type BrowserWindow, ipcMain } from 'electron'
 import * as pty from 'node-pty'
 
 let ptyCounter = 0
 const ptyProcesses = new Map<string, pty.IPty>()
 
+// Track which "page load generation" each PTY belongs to.
+// When the renderer reloads, we only kill PTYs from previous generations,
+// not ones spawned during the current page load. This prevents a race
+// condition where did-finish-load fires after PTYs have already been
+// created by the new page, killing them and leaving blank terminals.
+let loadGeneration = 0
+const ptyLoadGeneration = new Map<string, number>()
+
 export function registerPtyHandlers(mainWindow: BrowserWindow): void {
-  // Kill orphaned PTY processes when the renderer reloads
+  // Kill orphaned PTY processes from previous page loads when the renderer reloads.
+  // PTYs tagged with the current loadGeneration were spawned during THIS page load
+  // and must be preserved — only kill PTYs from earlier generations.
   mainWindow.webContents.on('did-finish-load', () => {
-    killAllPty()
+    for (const [id, proc] of ptyProcesses) {
+      const gen = ptyLoadGeneration.get(id) ?? -1
+      if (gen < loadGeneration) {
+        try {
+          proc.kill()
+        } catch {
+          // Process may already be dead
+        }
+        ptyProcesses.delete(id)
+        ptyLoadGeneration.delete(id)
+      }
+    }
+    // Advance generation for the next page load
+    loadGeneration++
   })
 
   ipcMain.handle('pty:spawn', (_event, args: { cols: number; rows: number; cwd?: string }) => {
@@ -28,6 +51,7 @@ export function registerPtyHandlers(mainWindow: BrowserWindow): void {
     })
 
     ptyProcesses.set(id, ptyProcess)
+    ptyLoadGeneration.set(id, loadGeneration)
 
     ptyProcess.onData((data) => {
       if (!mainWindow.isDestroyed()) {
@@ -37,6 +61,7 @@ export function registerPtyHandlers(mainWindow: BrowserWindow): void {
 
     ptyProcess.onExit(({ exitCode }) => {
       ptyProcesses.delete(id)
+      ptyLoadGeneration.delete(id)
       if (!mainWindow.isDestroyed()) {
         mainWindow.webContents.send('pty:exit', { id, code: exitCode })
       }
@@ -68,6 +93,7 @@ export function registerPtyHandlers(mainWindow: BrowserWindow): void {
         // Process may already be dead
       }
       ptyProcesses.delete(args.id)
+      ptyLoadGeneration.delete(args.id)
     }
   })
 }
@@ -77,7 +103,12 @@ export function registerPtyHandlers(mainWindow: BrowserWindow): void {
  */
 export function killAllPty(): void {
   for (const [id, proc] of ptyProcesses) {
-    proc.kill()
+    try {
+      proc.kill()
+    } catch {
+      // Process may already be dead
+    }
     ptyProcesses.delete(id)
+    ptyLoadGeneration.delete(id)
   }
 }
