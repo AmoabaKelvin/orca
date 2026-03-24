@@ -197,6 +197,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
   setActiveWorktree: (worktreeId) => {
     let shouldClearUnread = false
     const prevActiveId = get().activeWorktreeId
+    const now = Date.now()
     set((s) => {
       if (!worktreeId) {
         return { activeWorktreeId: null }
@@ -229,9 +230,10 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
         activeWorktreeId: worktreeId,
         activeFileId,
         activeTabType,
-        worktreesByRepo: shouldClearUnread
-          ? applyWorktreeUpdates(s.worktreesByRepo, worktreeId, { isUnread: false })
-          : s.worktreesByRepo
+        worktreesByRepo: applyWorktreeUpdates(s.worktreesByRepo, worktreeId, {
+          ...(shouldClearUnread ? { isUnread: false } : {}),
+          sortOrder: now
+        })
       }
     })
 
@@ -258,16 +260,21 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
       get().refreshGitHubForWorktree(worktreeId)
     }
 
-    if (!worktreeId || !shouldClearUnread) {
+    if (!worktreeId || !findWorktreeById(get().worktreesByRepo, worktreeId)) {
       return
     }
 
-    void window.api.worktrees
-      .updateMeta({ worktreeId, updates: { isUnread: false } })
-      .catch((err) => {
-        console.error('Failed to clear unread state for active worktree:', err)
-        void get().fetchWorktrees(getRepoIdFromWorktreeId(worktreeId))
-      })
+    const updates: Parameters<typeof window.api.worktrees.updateMeta>[0]['updates'] = {
+      sortOrder: now
+    }
+    if (shouldClearUnread) {
+      updates.isUnread = false
+    }
+
+    void window.api.worktrees.updateMeta({ worktreeId, updates }).catch((err) => {
+      console.error('Failed to persist worktree activation state:', err)
+      void get().fetchWorktrees(getRepoIdFromWorktreeId(worktreeId))
+    })
   },
 
   allWorktrees: () => Object.values(get().worktreesByRepo).flat()
