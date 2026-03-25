@@ -46,7 +46,7 @@ export default function Terminal(): React.JSX.Element | null {
       onCloseTab={terminalTabs.handleCloseTab}
       onCloseOthers={terminalTabs.handleCloseOthers}
       onCloseTabsToRight={terminalTabs.handleCloseTabsToRight}
-      onReorderTabs={terminalTabs.reorderTabs}
+      onReorderTabs={terminalTabs.setTabBarOrder}
       onNewTab={terminalTabs.handleNewTab}
       onSetCustomTitle={terminalTabs.setTabCustomTitle}
       onSetTabColor={terminalTabs.setTabColor}
@@ -55,6 +55,7 @@ export default function Terminal(): React.JSX.Element | null {
       onCloseFile={saveDialog.requestCloseFile}
       onCloseAllFiles={terminalTabs.closeAllFiles}
       onPtyExit={terminalTabs.handlePtyExit}
+      tabBarOrder={terminalTabs.tabBarOrder}
       editorPanel={
         <Suspense
           fallback={

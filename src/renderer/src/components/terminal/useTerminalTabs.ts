@@ -24,7 +24,8 @@ function useTerminalTabsInner() {
     createTab,
     closeTab,
     setActiveTab,
-    reorderTabs,
+    tabBarOrderByWorktree,
+    setTabBarOrder,
     setActiveWorktree,
     setTabCustomTitle,
     setTabColor,
@@ -47,7 +48,8 @@ function useTerminalTabsInner() {
       createTab: s.createTab,
       closeTab: s.closeTab,
       setActiveTab: s.setActiveTab,
-      reorderTabs: s.reorderTabs,
+      tabBarOrderByWorktree: s.tabBarOrderByWorktree,
+      setTabBarOrder: s.setTabBarOrder,
       setActiveWorktree: s.setActiveWorktree,
       setTabCustomTitle: s.setTabCustomTitle,
       setTabColor: s.setTabColor,
@@ -69,10 +71,30 @@ function useTerminalTabsInner() {
     ? openFiles.filter((file) => file.worktreeId === activeWorktreeId)
     : []
   const totalTabs = tabs.length + worktreeFiles.length
-  const unifiedTabs: UnifiedTerminalItem[] = [
-    ...tabs.map((tab) => ({ type: 'terminal' as const, id: tab.id })),
-    ...worktreeFiles.map((file) => ({ type: 'editor' as const, id: file.id }))
-  ]
+  const tabBarOrder = activeWorktreeId ? tabBarOrderByWorktree[activeWorktreeId] : undefined
+
+  // Build unified tab list respecting stored tab bar order
+  const unifiedTabs: UnifiedTerminalItem[] = (() => {
+    const terminalIdSet = new Set(tabs.map((t) => t.id))
+    const editorIdSet = new Set(worktreeFiles.map((f) => f.id))
+    const validIds = new Set([...terminalIdSet, ...editorIdSet])
+    const orderedIds: string[] = (tabBarOrder ?? []).filter((id) => validIds.has(id))
+    const inOrder = new Set(orderedIds)
+    for (const t of tabs) {
+      if (!inOrder.has(t.id)) {
+        orderedIds.push(t.id)
+      }
+    }
+    for (const f of worktreeFiles) {
+      if (!inOrder.has(f.id)) {
+        orderedIds.push(f.id)
+      }
+    }
+    return orderedIds.map((id) => ({
+      type: (terminalIdSet.has(id) ? 'terminal' : 'editor') as 'terminal' | 'editor',
+      id
+    }))
+  })()
 
   const [mountedWorktreeIds, setMountedWorktreeIds] = useState<string[]>([])
   const [initialTabCreationGuard, setInitialTabCreationGuard] = useState<string | null>(null)
@@ -136,7 +158,8 @@ function useTerminalTabsInner() {
 
   const handleCloseTab = useCallback(
     (tabId: string) => {
-      const owningWorktreeEntry = Object.entries(tabsByWorktree).find(([, worktreeTabs]) =>
+      const state = useAppStore.getState()
+      const owningWorktreeEntry = Object.entries(state.tabsByWorktree).find(([, worktreeTabs]) =>
         worktreeTabs.some((tab) => tab.id === tabId)
       )
       const owningWorktreeId = owningWorktreeEntry?.[0] ?? null
@@ -145,16 +168,16 @@ function useTerminalTabsInner() {
         return
       }
 
-      const currentTabs = tabsByWorktree[owningWorktreeId] ?? []
+      const currentTabs = state.tabsByWorktree[owningWorktreeId] ?? []
       if (currentTabs.length <= 1) {
         closeTab(tabId)
-        if (activeWorktreeId === owningWorktreeId) {
+        if (state.activeWorktreeId === owningWorktreeId) {
           setActiveWorktree(null)
         }
         return
       }
 
-      if (activeWorktreeId === owningWorktreeId && tabId === activeTabId) {
+      if (state.activeWorktreeId === owningWorktreeId && tabId === state.activeTabId) {
         const currentIndex = currentTabs.findIndex((tab) => tab.id === tabId)
         const nextTab = currentTabs[currentIndex + 1] ?? currentTabs[currentIndex - 1]
         if (nextTab) {
@@ -164,7 +187,7 @@ function useTerminalTabsInner() {
 
       closeTab(tabId)
     },
-    [activeTabId, activeWorktreeId, closeTab, setActiveTab, setActiveWorktree, tabsByWorktree]
+    [closeTab, setActiveTab, setActiveWorktree]
   )
 
   const handlePtyExit = useCallback(
@@ -200,14 +223,39 @@ function useTerminalTabsInner() {
         return
       }
 
-      const currentTabs = useAppStore.getState().tabsByWorktree[activeWorktreeId] ?? []
-      const currentIndex = currentTabs.findIndex((tab) => tab.id === tabId)
-      if (currentIndex === -1) {
-        return
+      const state = useAppStore.getState()
+      const currentTerminalTabs = state.tabsByWorktree[activeWorktreeId] ?? []
+      const currentEditorFiles = state.openFiles.filter((f) => f.worktreeId === activeWorktreeId)
+      const terminalIdSet = new Set(currentTerminalTabs.map((t) => t.id))
+      const editorIdSet = new Set(currentEditorFiles.map((f) => f.id))
+      const storedOrder = state.tabBarOrderByWorktree[activeWorktreeId]
+
+      // Build unified order (same reconciliation as TabBar)
+      const validIds = new Set([...terminalIdSet, ...editorIdSet])
+      const orderedIds: string[] = (storedOrder ?? []).filter((id) => validIds.has(id))
+      const inOrder = new Set(orderedIds)
+      for (const t of currentTerminalTabs) {
+        if (!inOrder.has(t.id)) {
+          orderedIds.push(t.id)
+        }
+      }
+      for (const f of currentEditorFiles) {
+        if (!inOrder.has(f.id)) {
+          orderedIds.push(f.id)
+        }
       }
 
-      for (const tab of currentTabs.slice(currentIndex + 1)) {
-        closeTab(tab.id)
+      const index = orderedIds.indexOf(tabId)
+      if (index === -1) {
+        return
+      }
+      const rightIds = orderedIds.slice(index + 1)
+      for (const id of rightIds) {
+        if (terminalIdSet.has(id)) {
+          closeTab(id)
+        } else {
+          useAppStore.getState().closeFile(id)
+        }
       }
     },
     [activeWorktreeId, closeTab]
@@ -256,7 +304,8 @@ function useTerminalTabsInner() {
     activeFileId,
     activeTabType,
     expandedPaneByTabId,
-    reorderTabs,
+    tabBarOrder,
+    setTabBarOrder,
     setTabCustomTitle,
     setTabColor,
     closeAllFiles,
