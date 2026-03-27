@@ -1,7 +1,7 @@
 import { execFile } from 'child_process'
-import { readFile } from 'fs/promises'
+import { readFile, rm } from 'fs/promises'
 import { promisify } from 'util'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import type { GitStatusEntry, GitFileStatus, GitDiffResult } from '../../shared/types'
 
 const execFileAsync = promisify(execFile)
@@ -163,8 +163,27 @@ export async function unstageFile(worktreePath: string, filePath: string): Promi
  * Discard working tree changes for a file.
  */
 export async function discardChanges(worktreePath: string, filePath: string): Promise<void> {
-  await execFileAsync('git', ['checkout', '--', filePath], {
-    cwd: worktreePath,
-    encoding: 'utf-8'
-  })
+  const resolvedWorktree = resolve(worktreePath)
+  const resolvedTarget = resolve(worktreePath, filePath)
+  if (!resolvedTarget.startsWith(`${resolvedWorktree}/`)) {
+    throw new Error(`Path "${filePath}" resolves outside the worktree`)
+  }
+
+  let tracked = false
+  try {
+    await execFileAsync('git', ['ls-files', '--error-unmatch', '--', filePath], {
+      cwd: worktreePath,
+      encoding: 'utf-8'
+    })
+    tracked = true
+  } catch {
+    // File is not tracked by git
+  }
+
+  await (tracked
+    ? execFileAsync('git', ['restore', '--worktree', '--source=HEAD', '--', filePath], {
+        cwd: worktreePath,
+        encoding: 'utf-8'
+      })
+    : rm(resolvedTarget, { force: true, recursive: true }))
 }

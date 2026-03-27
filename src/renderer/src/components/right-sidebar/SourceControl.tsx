@@ -15,6 +15,7 @@ import { useAppStore } from '@/store'
 import { detectLanguage } from '@/lib/language-detect'
 import { cn } from '@/lib/utils'
 import type { GitStatusEntry, GitStagingArea } from '../../../../shared/types'
+import { getSourceControlActions } from './source-control-actions'
 
 const STATUS_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   modified: FileEdit,
@@ -252,6 +253,7 @@ export default function SourceControl(): React.JSX.Element {
                 const dirPath = entry.path.includes('/')
                   ? entry.path.slice(0, entry.path.lastIndexOf('/'))
                   : ''
+                const actions = getSourceControlActions(area)
 
                 return (
                   <div
@@ -277,28 +279,36 @@ export default function SourceControl(): React.JSX.Element {
 
                     {/* Action buttons */}
                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                      {area === 'unstaged' || area === 'untracked' ? (
-                        <>
-                          {area === 'unstaged' && (
-                            <ActionButton
-                              icon={Undo2}
-                              title="Discard changes"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                void handleDiscard(entry.path)
-                              }}
-                            />
-                          )}
-                          <ActionButton
-                            icon={Plus}
-                            title="Stage"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              void handleStage(entry.path)
-                            }}
-                          />
-                        </>
-                      ) : (
+                      {actions.includes('discard') && (
+                        <ActionButton
+                          icon={Undo2}
+                          title={area === 'untracked' ? 'Revert untracked file' : 'Discard changes'}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (area === 'untracked') {
+                              if (
+                                !window.confirm(
+                                  `Delete untracked file "${entry.path}"? This cannot be undone.`
+                                )
+                              ) {
+                                return
+                              }
+                            }
+                            void handleDiscard(entry.path)
+                          }}
+                        />
+                      )}
+                      {actions.includes('stage') && (
+                        <ActionButton
+                          icon={Plus}
+                          title="Stage"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void handleStage(entry.path)
+                          }}
+                        />
+                      )}
+                      {actions.includes('unstage') && (
                         <ActionButton
                           icon={Minus}
                           title="Unstage"
