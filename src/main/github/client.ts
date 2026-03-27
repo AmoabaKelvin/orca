@@ -249,14 +249,11 @@ export async function mergePR(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   await acquire()
   try {
-    await execFileAsync(
-      'gh',
-      ['pr', 'merge', String(prNumber), `--${method}`, '--delete-branch', '--yes'],
-      {
-        cwd: repoPath,
-        encoding: 'utf-8'
-      }
-    )
+    await execFileAsync('gh', ['pr', 'merge', String(prNumber), `--${method}`, '--delete-branch'], {
+      cwd: repoPath,
+      encoding: 'utf-8',
+      env: { ...process.env, GH_PROMPT_DISABLED: '1' }
+    })
     return { ok: true }
   } catch (err) {
     const message =
