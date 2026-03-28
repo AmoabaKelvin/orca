@@ -16,7 +16,7 @@ export type PaneManagerOptions = {
   onActivePaneChange?: (pane: ManagedPane) => void
   onLayoutChanged?: () => void
   terminalOptions?: (paneId: number) => Partial<ITerminalOptions>
-  onLinkClick?: (url: string) => void
+  onLinkClick?: (event: MouseEvent | undefined, url: string) => void
 }
 
 export type PaneStyleOptions = {
@@ -42,6 +42,7 @@ export type ManagedPane = {
 
 export type ManagedPaneInternal = {
   xtermContainer: HTMLElement
+  linkTooltip: HTMLElement
   webglAddon: WebglAddon | null
   unicode11Addon: Unicode11Addon
   webLinksAddon: WebLinksAddon
