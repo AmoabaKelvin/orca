@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState, lazy, Suspense } from 'react'
+import { Columns2, Rows2 } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { detectLanguage } from '@/lib/language-detect'
 import { getEditorHeaderCopyState } from './editor-header'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 const MonacoEditor = lazy(() => import('./MonacoEditor'))
 const DiffViewer = lazy(() => import('./DiffViewer'))
@@ -31,6 +33,7 @@ export default function EditorPanel(): React.JSX.Element | null {
   const [copiedPathToast, setCopiedPathToast] = useState<{ fileId: string; token: number } | null>(
     null
   )
+  const [sideBySide, setSideBySide] = useState(true)
 
   // Load file content when active file changes
   useEffect(() => {
@@ -233,6 +236,7 @@ export default function EditorPanel(): React.JSX.Element | null {
     return null
   }
 
+  const isSingleDiff = activeFile.mode === 'diff' && activeFile.diffStaged !== undefined
   const isCombinedDiff = activeFile.mode === 'diff' && activeFile.diffStaged === undefined
   const headerCopyState = getEditorHeaderCopyState(activeFile)
   const resolvedLanguage =
@@ -267,6 +271,23 @@ export default function EditorPanel(): React.JSX.Element | null {
             </span>
           </div>
         </div>
+        {isSingleDiff && (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+                  onClick={() => setSideBySide((prev) => !prev)}
+                >
+                  {sideBySide ? <Rows2 size={14} /> : <Columns2 size={14} />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={4}>
+                {sideBySide ? 'Switch to inline diff' : 'Switch to side-by-side diff'}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
       <Suspense fallback={loadingFallback}>
         {isCombinedDiff ? (
@@ -319,7 +340,7 @@ export default function EditorPanel(): React.JSX.Element | null {
                 originalContent={dc.originalContent}
                 modifiedContent={editBuffers[activeFile.id] ?? dc.modifiedContent}
                 language={resolvedLanguage}
-                filePath={activeFile.relativePath}
+                sideBySide={sideBySide}
                 editable={isEditable}
                 onContentChange={isEditable ? handleContentChange : undefined}
                 onSave={isEditable ? handleSave : undefined}

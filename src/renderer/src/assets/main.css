@@ -355,8 +355,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 52px;
-  padding: 10px 14px;
+  min-height: 36px;
+  padding: 6px 14px;
   background: var(--editor-surface);
   border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   flex-shrink: 0;
@@ -399,7 +399,6 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 4px;
   min-width: 0;
 }
 
