@@ -238,6 +238,12 @@ export default function SourceControl(): React.JSX.Element {
                   <div
                     key={`${area}:${entry.path}`}
                     className="group flex items-center gap-1 px-3 py-0.5 hover:bg-accent/40 transition-colors cursor-pointer"
+                    draggable
+                    onDragStart={(e) => {
+                      const absolutePath = joinPath(worktreePath, entry.path)
+                      e.dataTransfer.setData('text/x-orca-file-path', absolutePath)
+                      e.dataTransfer.effectAllowed = 'copy'
+                    }}
                     onClick={() => handleOpenDiff(entry)}
                   >
                     <StatusIcon

@@ -21,9 +21,21 @@ export function fitAndFocusPanes(manager: PaneManager): void {
   focusActivePane(manager)
 }
 
-export function shellEscapePath(path: string): string {
+function isWindowsUserAgent(userAgent: string): boolean {
+  return userAgent.includes('Windows')
+}
+
+export function shellEscapePath(
+  path: string,
+  userAgent: string = typeof navigator === 'undefined' ? '' : navigator.userAgent
+): string {
+  if (isWindowsUserAgent(userAgent)) {
+    return /^[a-zA-Z0-9_./@:\\-]+$/.test(path) ? path : `"${path}"`
+  }
+
   if (/^[a-zA-Z0-9_./@:-]+$/.test(path)) {
     return path
   }
+
   return `'${path.replace(/'/g, "'\\''")}'`
 }
