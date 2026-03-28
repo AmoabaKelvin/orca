@@ -163,7 +163,7 @@ export default function EditorFileTab({
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={() => {
-              window.api.ui.writeClipboardText(file.filePath)
+              void window.api.ui.writeClipboardText(file.filePath)
             }}
           >
             <Copy className="w-3.5 h-3.5 mr-1.5" />
@@ -171,7 +171,7 @@ export default function EditorFileTab({
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => {
-              window.api.ui.writeClipboardText(file.relativePath)
+              void window.api.ui.writeClipboardText(file.relativePath)
             }}
           >
             <Copy className="w-3.5 h-3.5 mr-1.5" />

@@ -20,7 +20,7 @@ vi.mock('fs/promises', () => ({
   rm: rmMock
 }))
 
-import { discardChanges, getDiff, isWithinWorktree } from './status'
+import { discardChanges, getBranchCompare, getDiff, isWithinWorktree } from './status'
 
 describe('discardChanges', () => {
   beforeEach(() => {
@@ -88,39 +88,135 @@ describe('getDiff', () => {
     readFileMock.mockReset()
   })
 
-  it('returns base64 payloads for unstaged image diffs', async () => {
-    execFileAsyncMock.mockResolvedValueOnce({
-      stdout: Buffer.from([0x89, 0x50, 0x4e, 0x47])
-    })
-    readFileMock.mockResolvedValueOnce(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00]))
+  it('uses the index as the left side for unstaged diffs when present', async () => {
+    execFileAsyncMock.mockResolvedValueOnce({ stdout: Buffer.from('index-content\n') })
+    readFileMock.mockResolvedValue(Buffer.from('working-tree-content'))
 
-    await expect(getDiff('/repo', 'image.png', false)).resolves.toEqual({
-      originalContent: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64'),
-      modifiedContent: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00]).toString('base64'),
-      isImage: true,
-      mimeType: 'image/png'
-    })
+    const result = await getDiff('/repo', 'src/file.ts', false)
 
-    expect(execFileAsyncMock).toHaveBeenCalledWith('git', ['show', 'HEAD:image.png'], {
-      cwd: '/repo',
-      encoding: 'buffer',
-      maxBuffer: 10 * 1024 * 1024
+    expect(execFileAsyncMock).toHaveBeenCalledWith(
+      'git',
+      ['show', ':src/file.ts'],
+      expect.objectContaining({
+        cwd: '/repo',
+        encoding: 'buffer',
+        maxBuffer: 10 * 1024 * 1024
+      })
+    )
+    expect(readFileMock).toHaveBeenCalledWith('/repo/src/file.ts')
+    expect(result).toEqual({
+      kind: 'text',
+      originalContent: 'index-content\n',
+      modifiedContent: 'working-tree-content',
+      originalIsBinary: false,
+      modifiedIsBinary: false
     })
-    expect(readFileMock).toHaveBeenCalledWith('/repo/image.png')
   })
 
-  it('returns base64 payloads for staged image diffs', async () => {
+  it('falls back to HEAD for unstaged diffs when the file is not in the index', async () => {
     execFileAsyncMock
-      .mockResolvedValueOnce({ stdout: Buffer.from([0x01, 0x02]) })
-      .mockResolvedValueOnce({ stdout: Buffer.from([0x03, 0x04]) })
+      .mockRejectedValueOnce(new Error('missing index'))
+      .mockResolvedValueOnce({ stdout: Buffer.from('head-content\n') })
+    readFileMock.mockResolvedValue(Buffer.from('working-tree-content'))
 
-    await expect(getDiff('/repo', 'image.png', true)).resolves.toEqual({
-      originalContent: Buffer.from([0x01, 0x02]).toString('base64'),
-      modifiedContent: Buffer.from([0x03, 0x04]).toString('base64'),
-      isImage: true,
-      mimeType: 'image/png'
+    const result = await getDiff('/repo', 'src/file.ts', false)
+
+    expect(execFileAsyncMock).toHaveBeenNthCalledWith(
+      2,
+      'git',
+      ['show', 'HEAD:src/file.ts'],
+      expect.objectContaining({
+        cwd: '/repo',
+        encoding: 'buffer',
+        maxBuffer: 10 * 1024 * 1024
+      })
+    )
+    expect(result.originalContent).toBe('head-content\n')
+    expect(result.modifiedContent).toBe('working-tree-content')
+  })
+
+  it('marks binary content in the diff payload', async () => {
+    execFileAsyncMock.mockResolvedValueOnce({ stdout: Buffer.from([0x00, 0x61, 0x62]) })
+    readFileMock.mockResolvedValue(Buffer.from('working-tree-content'))
+
+    const result = await getDiff('/repo', 'src/file.bin', false)
+
+    expect(result.kind).toBe('binary')
+    expect(result.originalIsBinary).toBe(true)
+    expect(result.modifiedIsBinary).toBe(false)
+  })
+})
+
+describe('getBranchCompare', () => {
+  beforeEach(() => {
+    execFileAsyncMock.mockReset()
+    readFileMock.mockReset()
+  })
+
+  it('returns a pinned branch compare snapshot and parsed branch entries', async () => {
+    execFileAsyncMock
+      .mockResolvedValueOnce({ stdout: 'main\n' })
+      .mockResolvedValueOnce({ stdout: 'head-oid\n' })
+      .mockResolvedValueOnce({ stdout: 'base-oid\n' })
+      .mockResolvedValueOnce({ stdout: 'merge-base-oid\n' })
+      .mockResolvedValueOnce({
+        stdout: 'M\tfile-a.ts\nR100\told-name.ts\tnew-name.ts\nC100\told-copy.ts\tnew-copy.ts\n'
+      })
+      .mockResolvedValueOnce({ stdout: '7\n' })
+
+    const result = await getBranchCompare('/repo', 'origin/main')
+
+    expect(result.summary).toEqual({
+      baseRef: 'origin/main',
+      baseOid: 'base-oid',
+      compareRef: 'main',
+      headOid: 'head-oid',
+      mergeBase: 'merge-base-oid',
+      changedFiles: 3,
+      commitsAhead: 7,
+      status: 'ready'
     })
+    expect(result.entries).toEqual([
+      { path: 'file-a.ts', status: 'modified' },
+      { path: 'new-name.ts', oldPath: 'old-name.ts', status: 'renamed' },
+      { path: 'new-copy.ts', oldPath: 'old-copy.ts', status: 'copied' }
+    ])
+  })
 
-    expect(readFileMock).not.toHaveBeenCalled()
+  it('returns invalid-base when the compare ref does not resolve', async () => {
+    execFileAsyncMock
+      .mockResolvedValueOnce({ stdout: 'main\n' })
+      .mockResolvedValueOnce({ stdout: 'head-oid\n' })
+      .mockRejectedValueOnce(new Error('missing base'))
+
+    const result = await getBranchCompare('/repo', 'origin/missing')
+
+    expect(result.summary.status).toBe('invalid-base')
+    expect(result.summary.errorMessage).toContain('origin/missing')
+    expect(result.entries).toEqual([])
+  })
+
+  it('returns unborn-head when HEAD cannot be resolved', async () => {
+    execFileAsyncMock.mockRejectedValueOnce(new Error('unborn'))
+
+    const result = await getBranchCompare('/repo', 'origin/main')
+
+    expect(result.summary.status).toBe('unborn-head')
+    expect(result.summary.errorMessage).toContain('committed HEAD')
+    expect(result.entries).toEqual([])
+  })
+
+  it('returns no-merge-base when histories do not intersect', async () => {
+    execFileAsyncMock
+      .mockResolvedValueOnce({ stdout: 'main\n' })
+      .mockResolvedValueOnce({ stdout: 'head-oid\n' })
+      .mockResolvedValueOnce({ stdout: 'base-oid\n' })
+      .mockRejectedValueOnce(new Error('no merge base'))
+
+    const result = await getBranchCompare('/repo', 'origin/main')
+
+    expect(result.summary.status).toBe('no-merge-base')
+    expect(result.summary.errorMessage).toContain('merge base')
+    expect(result.entries).toEqual([])
   })
 })

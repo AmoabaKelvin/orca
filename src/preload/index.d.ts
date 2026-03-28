@@ -12,6 +12,7 @@ import type {
   WorkspaceSessionState,
   UpdateStatus,
   DirEntry,
+  GitBranchCompareResult,
   GitStatusEntry,
   GitDiffResult,
   SearchOptions,
@@ -144,6 +145,21 @@ type GitApi = {
     worktreePath: string
     filePath: string
     staged: boolean
+  }) => Promise<GitDiffResult>
+  branchCompare: (args: {
+    worktreePath: string
+    baseRef: string
+  }) => Promise<GitBranchCompareResult>
+  branchDiff: (args: {
+    worktreePath: string
+    compare: {
+      baseRef: string
+      baseOid: string
+      headOid: string
+      mergeBase: string
+    }
+    filePath: string
+    oldPath?: string
   }) => Promise<GitDiffResult>
   stage: (args: { worktreePath: string; filePath: string }) => Promise<void>
   unstage: (args: { worktreePath: string; filePath: string }) => Promise<void>

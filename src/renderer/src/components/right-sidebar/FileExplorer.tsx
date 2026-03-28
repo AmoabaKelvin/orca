@@ -272,7 +272,7 @@ export default function FileExplorer(): React.JSX.Element {
             >
               <button
                 className={cn(
-                  'flex items-center w-full h-[26px] px-2 gap-1 text-left text-[12px] transition-colors hover:bg-accent/60 rounded-sm',
+                  'flex items-center w-full py-1 px-2 gap-1.5 text-left text-[13px] transition-colors hover:bg-accent/60 rounded-sm',
                   isActive && !node.isDirectory && 'bg-accent text-accent-foreground'
                 )}
                 style={{ paddingLeft: `${node.depth * 16 + 8}px` }}

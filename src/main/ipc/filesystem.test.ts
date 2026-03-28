@@ -11,6 +11,8 @@ const {
   lstatMock,
   getStatusMock,
   getDiffMock,
+  getBranchCompareMock,
+  getBranchDiffMock,
   stageFileMock,
   unstageFileMock,
   discardChangesMock,
@@ -25,6 +27,8 @@ const {
   lstatMock: vi.fn(),
   getStatusMock: vi.fn(),
   getDiffMock: vi.fn(),
+  getBranchCompareMock: vi.fn(),
+  getBranchDiffMock: vi.fn(),
   stageFileMock: vi.fn(),
   unstageFileMock: vi.fn(),
   discardChangesMock: vi.fn(),
@@ -49,6 +53,8 @@ vi.mock('fs/promises', () => ({
 vi.mock('../git/status', () => ({
   getStatus: getStatusMock,
   getDiff: getDiffMock,
+  getBranchCompare: getBranchCompareMock,
+  getBranchDiff: getBranchDiffMock,
   stageFile: stageFileMock,
   unstageFile: unstageFileMock,
   discardChanges: discardChangesMock
@@ -87,6 +93,8 @@ describe('registerFilesystemHandlers', () => {
     lstatMock.mockReset()
     getStatusMock.mockReset()
     getDiffMock.mockReset()
+    getBranchCompareMock.mockReset()
+    getBranchDiffMock.mockReset()
     stageFileMock.mockReset()
     unstageFileMock.mockReset()
     discardChangesMock.mockReset()
@@ -220,5 +228,60 @@ describe('registerFilesystemHandlers', () => {
     ).rejects.toThrow('Access denied: unknown repository or worktree path')
 
     expect(getStatusMock).not.toHaveBeenCalled()
+  })
+
+  it('routes branch compare queries through the git compare helper', async () => {
+    getBranchCompareMock.mockResolvedValue({
+      summary: {
+        baseRef: 'origin/main',
+        baseOid: 'base-oid',
+        compareRef: 'main',
+        headOid: 'head-oid',
+        mergeBase: 'merge-base-oid',
+        changedFiles: 1,
+        status: 'ready'
+      },
+      entries: [{ path: 'src/file.ts', status: 'modified' }]
+    })
+
+    registerFilesystemHandlers(store as never)
+
+    await handlers.get('git:branchCompare')!(null, {
+      worktreePath: '/workspace/repo-feature',
+      baseRef: 'origin/main'
+    })
+
+    expect(getBranchCompareMock).toHaveBeenCalledWith('/workspace/repo-feature', 'origin/main')
+  })
+
+  it('routes branch diff queries through the pinned branch diff helper', async () => {
+    getBranchDiffMock.mockResolvedValue({
+      kind: 'text',
+      originalContent: 'left',
+      modifiedContent: 'right',
+      originalIsBinary: false,
+      modifiedIsBinary: false
+    })
+
+    registerFilesystemHandlers(store as never)
+
+    await handlers.get('git:branchDiff')!(null, {
+      worktreePath: '/workspace/repo-feature',
+      compare: {
+        baseRef: 'origin/main',
+        baseOid: 'base-oid',
+        headOid: 'head-oid',
+        mergeBase: 'merge-base-oid'
+      },
+      filePath: 'src/file.ts',
+      oldPath: 'src/old-file.ts'
+    })
+
+    expect(getBranchDiffMock).toHaveBeenCalledWith('/workspace/repo-feature', {
+      headOid: 'head-oid',
+      mergeBase: 'merge-base-oid',
+      filePath: 'src/file.ts',
+      oldPath: 'src/old-file.ts'
+    })
   })
 })

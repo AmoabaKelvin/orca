@@ -4,10 +4,6 @@ import { basename } from '@/lib/path'
 type EditorLabelVariant = 'fileName' | 'relativePath' | 'fullPath'
 
 function getBaseLabel(file: OpenFile, variant: EditorLabelVariant): string {
-  if (file.mode === 'diff' && file.diffStaged === undefined) {
-    return file.relativePath
-  }
-
   switch (variant) {
     case 'fullPath':
       return file.filePath
@@ -18,20 +14,29 @@ function getBaseLabel(file: OpenFile, variant: EditorLabelVariant): string {
   }
 }
 
-function getDiffSuffix(file: OpenFile): string | null {
-  if (file.mode !== 'diff' || file.diffStaged === undefined) {
-    return null
-  }
-
-  return file.diffStaged ? 'diff staged' : 'diff'
+const DIFF_SOURCE_LABELS: Record<string, string> = {
+  staged: 'staged diff',
+  unstaged: 'diff',
+  branch: 'branch diff'
 }
 
 export function getEditorDisplayLabel(
   file: OpenFile,
   variant: EditorLabelVariant = 'fileName'
 ): string {
-  const baseLabel = getBaseLabel(file, variant)
-  const diffSuffix = getDiffSuffix(file)
+  if (file.mode !== 'diff') {
+    return getBaseLabel(file, variant)
+  }
 
-  return diffSuffix ? `${baseLabel} (${diffSuffix})` : baseLabel
+  const source = file.diffSource
+  if (source === 'combined-uncommitted') {
+    return 'All Changes'
+  }
+  if (source === 'combined-branch') {
+    return `Branch Changes (${file.branchCompare?.baseRef ?? 'base'})`
+  }
+
+  const baseLabel = getBaseLabel(file, variant)
+  const suffix = (source && DIFF_SOURCE_LABELS[source]) ?? 'diff'
+  return `${baseLabel} (${suffix})`
 }

@@ -248,12 +248,16 @@ const api = {
   git: {
     status: (args: { worktreePath: string }): Promise<unknown[]> =>
       ipcRenderer.invoke('git:status', args),
-    diff: (args: {
-      worktreePath: string
-      filePath: string
-      staged: boolean
-    }): Promise<{ originalContent: string; modifiedContent: string }> =>
+    diff: (args: { worktreePath: string; filePath: string; staged: boolean }): Promise<unknown> =>
       ipcRenderer.invoke('git:diff', args),
+    branchCompare: (args: { worktreePath: string; baseRef: string }): Promise<unknown> =>
+      ipcRenderer.invoke('git:branchCompare', args),
+    branchDiff: (args: {
+      worktreePath: string
+      compare: { baseRef: string; baseOid: string; headOid: string; mergeBase: string }
+      filePath: string
+      oldPath?: string
+    }): Promise<unknown> => ipcRenderer.invoke('git:branchDiff', args),
     stage: (args: { worktreePath: string; filePath: string }): Promise<void> =>
       ipcRenderer.invoke('git:stage', args),
     unstage: (args: { worktreePath: string; filePath: string }): Promise<void> =>

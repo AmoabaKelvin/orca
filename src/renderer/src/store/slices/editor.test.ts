@@ -49,8 +49,8 @@ describe('createEditorSlice openDiff', () => {
     store.getState().openDiff('wt-1', '/repo/file.ts', 'file.ts', 'typescript', true)
 
     expect(store.getState().openFiles.map((file) => file.id)).toEqual([
-      '/repo/file.ts::unstaged',
-      '/repo/file.ts::staged'
+      'wt-1::diff::unstaged::file.ts',
+      'wt-1::diff::staged::file.ts'
     ])
   })
 
@@ -60,7 +60,7 @@ describe('createEditorSlice openDiff', () => {
     store.setState({
       openFiles: [
         {
-          id: '/repo/file.ts::staged',
+          id: 'wt-1::diff::staged::file.ts',
           filePath: '/repo/file.ts',
           relativePath: 'file.ts',
           worktreeId: 'wt-1',
@@ -79,12 +79,12 @@ describe('createEditorSlice openDiff', () => {
 
     expect(store.getState().openFiles).toEqual([
       expect.objectContaining({
-        id: '/repo/file.ts::staged',
+        id: 'wt-1::diff::staged::file.ts',
         mode: 'diff',
-        diffStaged: true
+        diffSource: 'staged'
       })
     ])
-    expect(store.getState().activeFileId).toBe('/repo/file.ts::staged')
+    expect(store.getState().activeFileId).toBe('wt-1::diff::staged::file.ts')
   })
 })
 

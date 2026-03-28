@@ -31,7 +31,7 @@ describe('getEditorHeaderCopyState', () => {
         makeOpenFile({
           id: '/repo/file.ts::unstaged',
           mode: 'diff',
-          diffStaged: false
+          diffSource: 'unstaged'
         })
       )
     ).toEqual({
@@ -48,7 +48,7 @@ describe('getEditorHeaderCopyState', () => {
         makeOpenFile({
           id: '/repo/file.ts::staged',
           mode: 'diff',
-          diffStaged: true
+          diffSource: 'staged'
         })
       )
     ).toEqual({
@@ -63,11 +63,11 @@ describe('getEditorHeaderCopyState', () => {
     expect(
       getEditorHeaderCopyState(
         makeOpenFile({
-          id: 'wt-1::all-diffs',
+          id: 'wt-1::all-diffs::uncommitted',
           filePath: '/repo/worktree',
           relativePath: 'All Changes',
           mode: 'diff',
-          diffStaged: undefined
+          diffSource: 'combined-uncommitted'
         })
       )
     ).toEqual({

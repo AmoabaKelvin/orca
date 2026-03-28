@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { OrcaHooks, Repo, RepoHookSettings } from '../../../../shared/types'
 import { REPO_COLORS } from '../../../../shared/constants'
-import { ScrollArea } from '../ui/scroll-area'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
@@ -10,6 +9,7 @@ import { Trash2 } from 'lucide-react'
 import { HookEditor } from './HookEditor'
 import { DEFAULT_REPO_HOOK_SETTINGS } from './SettingsConstants'
 import type { HookName } from './SettingsConstants'
+import { BaseRefPicker } from './BaseRefPicker'
 
 type RepositoryPaneProps = {
   repo: Repo
@@ -25,80 +25,6 @@ export function RepositoryPane({
   removeRepo
 }: RepositoryPaneProps): React.JSX.Element {
   const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null)
-  const [defaultBaseRef, setDefaultBaseRef] = useState('origin/main')
-  const [baseRefQuery, setBaseRefQuery] = useState('')
-  const [baseRefResults, setBaseRefResults] = useState<string[]>([])
-  const [isSearchingBaseRefs, setIsSearchingBaseRefs] = useState(false)
-
-  useEffect(() => {
-    let stale = false
-
-    const loadDefaultBaseRef = async (repoId: string) => {
-      try {
-        const result = await window.api.repos.getBaseRefDefault({ repoId })
-        if (stale) {
-          return
-        }
-        setDefaultBaseRef(result)
-      } catch {
-        if (stale) {
-          return
-        }
-        setDefaultBaseRef('origin/main')
-      }
-    }
-
-    setBaseRefQuery('')
-    setBaseRefResults([])
-    void loadDefaultBaseRef(repo.id)
-
-    return () => {
-      stale = true
-    }
-  }, [repo.id])
-
-  useEffect(() => {
-    const trimmedQuery = baseRefQuery.trim()
-    if (trimmedQuery.length < 2) {
-      setBaseRefResults([])
-      setIsSearchingBaseRefs(false)
-      return
-    }
-
-    let stale = false
-    setIsSearchingBaseRefs(true)
-
-    const timer = window.setTimeout(() => {
-      void window.api.repos
-        .searchBaseRefs({
-          repoId: repo.id,
-          query: trimmedQuery,
-          limit: 20
-        })
-        .then((results) => {
-          if (!stale) {
-            setBaseRefResults(results)
-          }
-        })
-        .catch(() => {
-          if (!stale) {
-            setBaseRefResults([])
-          }
-        })
-        .finally(() => {
-          if (!stale) {
-            setIsSearchingBaseRefs(false)
-          }
-        })
-    }, 200)
-
-    return () => {
-      stale = true
-      window.clearTimeout(timer)
-    }
-  }, [repo.id, baseRefQuery])
-
-  const effectiveBaseRef = repo.worktreeBaseRef ?? defaultBaseRef
 
   const handleRemoveRepo = (repoId: string) => {
     if (confirmingRemove === repoId) {
@@ -188,77 +114,12 @@ export function RepositoryPane({
 
         <div className="space-y-3">
           <Label>Default Worktree Base</Label>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div className="text-sm font-medium text-foreground">{effectiveBaseRef}</div>
-              <p className="text-xs text-muted-foreground">
-                {repo.worktreeBaseRef
-                  ? 'Pinned for this repo'
-                  : `Following primary branch (${defaultBaseRef})`}
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setBaseRefQuery('')
-                setBaseRefResults([])
-                updateRepo(repo.id, {
-                  worktreeBaseRef: undefined
-                })
-              }}
-              disabled={!repo.worktreeBaseRef}
-            >
-              Use Primary
-            </Button>
-          </div>
-
-          <div className="space-y-2">
-            <Input
-              value={baseRefQuery}
-              onChange={(e) => setBaseRefQuery(e.target.value)}
-              placeholder="Search branches by name..."
-              className="max-w-md"
-            />
-            <p className="text-xs text-muted-foreground">Type at least 2 characters.</p>
-          </div>
-
-          {isSearchingBaseRefs ? (
-            <p className="text-xs text-muted-foreground">Searching branches...</p>
-          ) : null}
-
-          {!isSearchingBaseRefs && baseRefQuery.trim().length >= 2 ? (
-            baseRefResults.length > 0 ? (
-              <ScrollArea className="h-48 rounded-md border border-border/50">
-                <div className="p-1">
-                  {baseRefResults.map((ref) => (
-                    <button
-                      key={ref}
-                      onClick={() => {
-                        setBaseRefQuery(ref)
-                        setBaseRefResults([])
-                        updateRepo(repo.id, {
-                          worktreeBaseRef: ref
-                        })
-                      }}
-                      className={`flex w-full items-center justify-between rounded-sm px-3 py-2 text-left text-sm transition-colors hover:bg-muted/60 ${
-                        repo.worktreeBaseRef === ref
-                          ? 'bg-accent text-accent-foreground'
-                          : 'text-foreground'
-                      }`}
-                    >
-                      <span className="truncate">{ref}</span>
-                      {repo.worktreeBaseRef === ref ? (
-                        <span className="text-[10px] uppercase tracking-[0.18em]">Current</span>
-                      ) : null}
-                    </button>
-                  ))}
-                </div>
-              </ScrollArea>
-            ) : (
-              <p className="text-xs text-muted-foreground">No matching branches found.</p>
-            )
-          ) : null}
+          <BaseRefPicker
+            repoId={repo.id}
+            currentBaseRef={repo.worktreeBaseRef}
+            onSelect={(ref) => updateRepo(repo.id, { worktreeBaseRef: ref })}
+            onUsePrimary={() => updateRepo(repo.id, { worktreeBaseRef: undefined })}
+          />
         </div>
       </section>
 

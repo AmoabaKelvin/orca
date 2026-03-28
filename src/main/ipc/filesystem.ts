@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { ipcMain } from 'electron'
 import { readdir, readFile, writeFile, stat, lstat } from 'fs/promises'
 import { extname, relative } from 'path'
@@ -5,13 +6,22 @@ import { spawn } from 'child_process'
 import type { Store } from '../persistence'
 import type {
   DirEntry,
+  GitBranchCompareResult,
   GitStatusEntry,
   GitDiffResult,
   SearchOptions,
   SearchResult,
   SearchFileResult
 } from '../../shared/types'
-import { getStatus, getDiff, stageFile, unstageFile, discardChanges } from '../git/status'
+import {
+  getStatus,
+  getDiff,
+  stageFile,
+  unstageFile,
+  discardChanges,
+  getBranchCompare,
+  getBranchDiff
+} from '../git/status'
 import {
   resolveAuthorizedPath,
   resolveRegisteredWorktreePath,
@@ -299,6 +309,47 @@ export function registerFilesystemHandlers(store: Store): void {
       const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
       const filePath = validateGitRelativeFilePath(worktreePath, args.filePath)
       return getDiff(worktreePath, filePath, args.staged)
+    }
+  )
+
+  ipcMain.handle(
+    'git:branchCompare',
+    async (
+      _event,
+      args: { worktreePath: string; baseRef: string }
+    ): Promise<GitBranchCompareResult> => {
+      const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
+      return getBranchCompare(worktreePath, args.baseRef)
+    }
+  )
+
+  ipcMain.handle(
+    'git:branchDiff',
+    async (
+      _event,
+      args: {
+        worktreePath: string
+        compare: {
+          baseRef: string
+          baseOid: string
+          headOid: string
+          mergeBase: string
+        }
+        filePath: string
+        oldPath?: string
+      }
+    ): Promise<GitDiffResult> => {
+      const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
+      const filePath = validateGitRelativeFilePath(worktreePath, args.filePath)
+      const oldPath = args.oldPath
+        ? validateGitRelativeFilePath(worktreePath, args.oldPath)
+        : undefined
+      return getBranchDiff(worktreePath, {
+        mergeBase: args.compare.mergeBase,
+        headOid: args.compare.headOid,
+        filePath,
+        oldPath
+      })
     }
   )
 

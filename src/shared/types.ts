@@ -211,19 +211,58 @@ export type DirEntry = {
 export type GitFileStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'copied'
 export type GitStagingArea = 'staged' | 'unstaged' | 'untracked'
 
-export type GitStatusEntry = {
+export type GitUncommittedEntry = {
   path: string
   status: GitFileStatus
   area: GitStagingArea
   oldPath?: string
 }
 
-export type GitDiffResult = {
+export type GitStatusEntry = GitUncommittedEntry
+
+export type GitBranchChangeStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'copied'
+
+export type GitBranchChangeEntry = {
+  path: string
+  status: GitBranchChangeStatus
+  oldPath?: string
+}
+
+export type GitBranchCompareSummary = {
+  baseRef: string
+  baseOid: string | null
+  compareRef: string
+  headOid: string | null
+  mergeBase: string | null
+  changedFiles: number
+  commitsAhead?: number
+  status: 'ready' | 'invalid-base' | 'unborn-head' | 'no-merge-base' | 'loading' | 'error'
+  errorMessage?: string
+}
+
+export type GitBranchCompareResult = {
+  summary: GitBranchCompareSummary
+  entries: GitBranchChangeEntry[]
+}
+
+export type GitDiffTextResult = {
+  kind: 'text'
   originalContent: string
   modifiedContent: string
-  isImage?: boolean
-  mimeType?: string
+  originalIsBinary: false
+  modifiedIsBinary: false
 }
+
+export type GitDiffBinaryResult = {
+  kind: 'binary'
+  originalContent: string
+  modifiedContent: string
+} & (
+  | { originalIsBinary: true; modifiedIsBinary: boolean }
+  | { originalIsBinary: boolean; modifiedIsBinary: true }
+)
+
+export type GitDiffResult = GitDiffTextResult | GitDiffBinaryResult
 
 // ─── Search ─────────────────────────────────────────────
 export type SearchMatch = {

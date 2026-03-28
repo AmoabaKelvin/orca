@@ -9,7 +9,9 @@ export type EditorHeaderCopyState = {
 }
 
 export function getEditorHeaderCopyState(file: OpenFile): EditorHeaderCopyState {
-  const isCombinedDiff = file.mode === 'diff' && file.diffStaged === undefined
+  const isCombinedDiff =
+    file.mode === 'diff' &&
+    (file.diffSource === 'combined-uncommitted' || file.diffSource === 'combined-branch')
 
   if (isCombinedDiff) {
     return {

@@ -1,7 +1,31 @@
 /* eslint-disable max-lines */
 import type { StateCreator } from 'zustand'
 import type { AppState } from '../types'
-import type { GitStatusEntry, SearchResult } from '../../../../shared/types'
+import type {
+  GitBranchChangeEntry,
+  GitBranchCompareSummary,
+  GitStatusEntry,
+  SearchResult
+} from '../../../../shared/types'
+
+export type DiffSource =
+  | 'unstaged'
+  | 'staged'
+  | 'branch'
+  | 'combined-uncommitted'
+  | 'combined-branch'
+
+export type BranchCompareSnapshot = Pick<
+  GitBranchCompareSummary,
+  'baseRef' | 'baseOid' | 'compareRef' | 'headOid' | 'mergeBase'
+> & {
+  compareVersion: string
+}
+
+type CombinedDiffAlternate = {
+  source: 'combined-uncommitted' | 'combined-branch'
+  branchCompare?: BranchCompareSnapshot
+}
 
 export type OpenFile = {
   id: string // use filePath as unique key
@@ -11,7 +35,11 @@ export type OpenFile = {
   language: string
   isDirty: boolean
   mode: 'edit' | 'diff'
-  diffStaged?: boolean
+  diffSource?: DiffSource
+  branchCompare?: BranchCompareSnapshot
+  branchOldPath?: string
+  combinedAlternate?: CombinedDiffAlternate
+  combinedAreaFilter?: string // filter combined diff to a specific area (e.g. 'staged', 'unstaged', 'untracked')
   isPreview?: boolean // preview tabs are replaced when another file is single-clicked
 }
 
@@ -61,7 +89,25 @@ export type EditorSlice = {
     language: string,
     staged: boolean
   ) => void
-  openAllDiffs: (worktreeId: string, worktreePath: string) => void
+  openBranchDiff: (
+    worktreeId: string,
+    worktreePath: string,
+    entry: GitBranchChangeEntry,
+    compare: GitBranchCompareSummary,
+    language: string
+  ) => void
+  openAllDiffs: (
+    worktreeId: string,
+    worktreePath: string,
+    alternate?: CombinedDiffAlternate,
+    areaFilter?: string
+  ) => void
+  openBranchAllDiffs: (
+    worktreeId: string,
+    worktreePath: string,
+    compare: GitBranchCompareSummary,
+    alternate?: CombinedDiffAlternate
+  ) => void
 
   // Cursor line tracking per file
   editorCursorLine: Record<string, number>
@@ -70,6 +116,15 @@ export type EditorSlice = {
   // Git status cache
   gitStatusByWorktree: Record<string, GitStatusEntry[]>
   setGitStatus: (worktreeId: string, entries: GitStatusEntry[]) => void
+  gitBranchChangesByWorktree: Record<string, GitBranchChangeEntry[]>
+  gitBranchCompareSummaryByWorktree: Record<string, GitBranchCompareSummary | null>
+  gitBranchCompareRequestKeyByWorktree: Record<string, string>
+  beginGitBranchCompareRequest: (worktreeId: string, requestKey: string, baseRef: string) => void
+  setGitBranchCompareResult: (
+    worktreeId: string,
+    requestKey: string,
+    result: { summary: GitBranchCompareSummary; entries: GitBranchChangeEntry[] }
+  ) => void
 
   // File search state
   fileSearchQuery: string
@@ -172,7 +227,8 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         const updatedPreview = isPreview ? existing.isPreview : false
         if (
           existing.mode === file.mode &&
-          existing.diffStaged === file.diffStaged &&
+          existing.diffSource === file.diffSource &&
+          existing.branchCompare?.compareVersion === file.branchCompare?.compareVersion &&
           existing.isPreview === updatedPreview
         ) {
           return activeResult
@@ -180,7 +236,15 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         return {
           openFiles: s.openFiles.map((f) =>
             f.id === id
-              ? { ...f, mode: file.mode, diffStaged: file.diffStaged, isPreview: updatedPreview }
+              ? {
+                  ...f,
+                  mode: file.mode,
+                  diffSource: file.diffSource,
+                  branchCompare: file.branchCompare,
+                  branchOldPath: file.branchOldPath,
+                  combinedAlternate: file.combinedAlternate,
+                  isPreview: updatedPreview
+                }
               : f
           ),
           ...activeResult
@@ -364,16 +428,15 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
 
   openDiff: (worktreeId, filePath, relativePath, language, staged) =>
     set((s) => {
-      const id = `${filePath}::${staged ? 'staged' : 'unstaged'}`
+      const diffSource: DiffSource = staged ? 'staged' : 'unstaged'
+      const id = `${worktreeId}::diff::${diffSource}::${relativePath}`
       const existing = s.openFiles.find((f) => f.id === id)
       if (existing) {
-        // Ensure mode and diffStaged are up-to-date (e.g. if a plain edit tab
-        // previously occupied this id before the suffix scheme changed).
-        const needsUpdate = existing.mode !== 'diff' || existing.diffStaged !== staged
+        const needsUpdate = existing.mode !== 'diff' || existing.diffSource !== diffSource
         return {
           openFiles: needsUpdate
             ? s.openFiles.map((f) =>
-                f.id === id ? { ...f, mode: 'diff' as const, diffStaged: staged } : f
+                f.id === id ? { ...f, mode: 'diff' as const, diffSource } : f
               )
             : s.openFiles,
           activeFileId: id,
@@ -390,7 +453,7 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         language,
         isDirty: false,
         mode: 'diff',
-        diffStaged: staged
+        diffSource
       }
       return {
         openFiles: [...s.openFiles, newFile],
@@ -401,12 +464,67 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       }
     }),
 
-  openAllDiffs: (worktreeId, worktreePath) =>
+  openBranchDiff: (worktreeId, worktreePath, entry, compare, language) =>
     set((s) => {
-      const id = `${worktreeId}::all-diffs`
+      const branchCompare = toBranchCompareSnapshot(compare)
+      const id = `${worktreeId}::diff::branch::${compare.baseRef}::${branchCompare.compareVersion}::${entry.path}`
       const existing = s.openFiles.find((f) => f.id === id)
       if (existing) {
         return {
+          openFiles: s.openFiles.map((f) =>
+            f.id === id
+              ? {
+                  ...f,
+                  mode: 'diff' as const,
+                  diffSource: 'branch' as const,
+                  branchCompare,
+                  branchOldPath: entry.oldPath
+                }
+              : f
+          ),
+          activeFileId: id,
+          activeTabType: 'editor',
+          activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
+          activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' }
+        }
+      }
+      const newFile: OpenFile = {
+        id,
+        filePath: `${worktreePath}/${entry.path}`,
+        relativePath: entry.path,
+        worktreeId,
+        language,
+        isDirty: false,
+        mode: 'diff',
+        diffSource: 'branch',
+        branchCompare,
+        branchOldPath: entry.oldPath
+      }
+      return {
+        openFiles: [...s.openFiles, newFile],
+        activeFileId: id,
+        activeTabType: 'editor',
+        activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
+        activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' }
+      }
+    }),
+
+  openAllDiffs: (worktreeId, worktreePath, alternate, areaFilter) =>
+    set((s) => {
+      const id = areaFilter
+        ? `${worktreeId}::all-diffs::uncommitted::${areaFilter}`
+        : `${worktreeId}::all-diffs::uncommitted`
+      const label = areaFilter
+        ? ({ staged: 'Staged Changes', unstaged: 'Changes', untracked: 'Untracked Files' }[
+            areaFilter
+          ] ?? 'All Changes')
+        : 'All Changes'
+      const existing = s.openFiles.find((f) => f.id === id)
+      if (existing) {
+        return {
+          openFiles: s.openFiles.map((f) =>
+            f.id === id ? { ...f, combinedAlternate: alternate, combinedAreaFilter: areaFilter } : f
+          ),
           activeFileId: id,
           activeTabType: 'editor',
           activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
@@ -416,12 +534,51 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       const newFile: OpenFile = {
         id,
         filePath: worktreePath,
-        relativePath: 'All Changes',
+        relativePath: label,
         worktreeId,
         language: 'plaintext',
         isDirty: false,
         mode: 'diff',
-        diffStaged: undefined
+        diffSource: 'combined-uncommitted',
+        combinedAlternate: alternate,
+        combinedAreaFilter: areaFilter
+      }
+      return {
+        openFiles: [...s.openFiles, newFile],
+        activeFileId: id,
+        activeTabType: 'editor',
+        activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
+        activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' }
+      }
+    }),
+
+  openBranchAllDiffs: (worktreeId, worktreePath, compare, alternate) =>
+    set((s) => {
+      const branchCompare = toBranchCompareSnapshot(compare)
+      const id = `${worktreeId}::all-diffs::branch::${compare.baseRef}::${branchCompare.compareVersion}`
+      const existing = s.openFiles.find((f) => f.id === id)
+      if (existing) {
+        return {
+          openFiles: s.openFiles.map((f) =>
+            f.id === id ? { ...f, branchCompare, combinedAlternate: alternate } : f
+          ),
+          activeFileId: id,
+          activeTabType: 'editor',
+          activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
+          activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' }
+        }
+      }
+      const newFile: OpenFile = {
+        id,
+        filePath: worktreePath,
+        relativePath: `Branch Changes (${compare.baseRef})`,
+        worktreeId,
+        language: 'plaintext',
+        isDirty: false,
+        mode: 'diff',
+        diffSource: 'combined-branch',
+        branchCompare,
+        combinedAlternate: alternate
       }
       return {
         openFiles: [...s.openFiles, newFile],
@@ -442,9 +599,78 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
   // Git status
   gitStatusByWorktree: {},
   setGitStatus: (worktreeId, entries) =>
+    set((s) => {
+      const prev = s.gitStatusByWorktree[worktreeId]
+      if (
+        prev &&
+        prev.length === entries.length &&
+        prev.every(
+          (e, i) =>
+            e.path === entries[i].path &&
+            e.status === entries[i].status &&
+            e.area === entries[i].area
+        )
+      ) {
+        return s
+      }
+      return { gitStatusByWorktree: { ...s.gitStatusByWorktree, [worktreeId]: entries } }
+    }),
+  gitBranchChangesByWorktree: {},
+  gitBranchCompareSummaryByWorktree: {},
+  gitBranchCompareRequestKeyByWorktree: {},
+  beginGitBranchCompareRequest: (worktreeId, requestKey, baseRef) =>
     set((s) => ({
-      gitStatusByWorktree: { ...s.gitStatusByWorktree, [worktreeId]: entries }
+      gitBranchCompareRequestKeyByWorktree: {
+        ...s.gitBranchCompareRequestKeyByWorktree,
+        [worktreeId]: requestKey
+      },
+      gitBranchCompareSummaryByWorktree: {
+        ...s.gitBranchCompareSummaryByWorktree,
+        [worktreeId]: {
+          baseRef,
+          baseOid: null,
+          compareRef: 'HEAD',
+          headOid: null,
+          mergeBase: null,
+          changedFiles: 0,
+          status: 'loading'
+        }
+      }
     })),
+  setGitBranchCompareResult: (worktreeId, requestKey, result) =>
+    set((s) => {
+      if (s.gitBranchCompareRequestKeyByWorktree[worktreeId] !== requestKey) {
+        return s
+      }
+      const prevEntries = s.gitBranchChangesByWorktree[worktreeId]
+      const prevSummary = s.gitBranchCompareSummaryByWorktree[worktreeId]
+      const entriesUnchanged =
+        prevEntries &&
+        prevEntries.length === result.entries.length &&
+        prevEntries.every(
+          (e, i) =>
+            e.path === result.entries[i].path &&
+            e.status === result.entries[i].status &&
+            e.oldPath === result.entries[i].oldPath
+        )
+      const summaryUnchanged =
+        prevSummary &&
+        prevSummary.status === result.summary.status &&
+        prevSummary.baseOid === result.summary.baseOid &&
+        prevSummary.headOid === result.summary.headOid &&
+        prevSummary.changedFiles === result.summary.changedFiles
+      if (entriesUnchanged && summaryUnchanged) {
+        return s
+      }
+      return {
+        gitBranchChangesByWorktree: entriesUnchanged
+          ? s.gitBranchChangesByWorktree
+          : { ...s.gitBranchChangesByWorktree, [worktreeId]: result.entries },
+        gitBranchCompareSummaryByWorktree: summaryUnchanged
+          ? s.gitBranchCompareSummaryByWorktree
+          : { ...s.gitBranchCompareSummaryByWorktree, [worktreeId]: result.summary }
+      }
+    }),
 
   // File search
   fileSearchQuery: '',
@@ -490,3 +716,24 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
   quickOpenVisible: false,
   setQuickOpenVisible: (visible) => set({ quickOpenVisible: visible })
 })
+
+function getCompareVersion(
+  compare: Pick<GitBranchCompareSummary, 'baseOid' | 'headOid' | 'mergeBase'>
+): string {
+  return [
+    compare.baseOid ?? 'no-base',
+    compare.headOid ?? 'no-head',
+    compare.mergeBase ?? 'no-merge-base'
+  ].join(':')
+}
+
+function toBranchCompareSnapshot(compare: GitBranchCompareSummary): BranchCompareSnapshot {
+  return {
+    baseRef: compare.baseRef,
+    baseOid: compare.baseOid,
+    compareRef: compare.compareRef,
+    headOid: compare.headOid,
+    mergeBase: compare.mergeBase,
+    compareVersion: getCompareVersion(compare)
+  }
+}

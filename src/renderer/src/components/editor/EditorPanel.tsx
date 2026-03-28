@@ -6,8 +6,7 @@ import { getEditorHeaderCopyState } from './editor-header'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { MarkdownViewMode } from '@/store/slices/editor'
 import MarkdownViewToggle from './MarkdownViewToggle'
-import ImageDiffViewer from './ImageDiffViewer'
-import ImageViewer from './ImageViewer'
+import type { GitDiffResult } from '../../../../shared/types'
 
 const MonacoEditor = lazy(() => import('./MonacoEditor'))
 const DiffViewer = lazy(() => import('./DiffViewer'))
@@ -17,16 +16,9 @@ const MarkdownPreview = lazy(() => import('./MarkdownPreview'))
 type FileContent = {
   content: string
   isBinary: boolean
-  isImage?: boolean
-  mimeType?: string
 }
 
-type DiffContent = {
-  originalContent: string
-  modifiedContent: string
-  isImage?: boolean
-  mimeType?: string
-}
+type DiffContent = GitDiffResult
 
 export default function EditorPanel(): React.JSX.Element | null {
   const openFiles = useAppStore((s) => s.openFiles)
@@ -57,7 +49,12 @@ export default function EditorPanel(): React.JSX.Element | null {
         return
       }
       void loadFileContent(activeFile.filePath, activeFile.id)
-    } else if (activeFile.mode === 'diff' && activeFile.diffStaged !== undefined) {
+    } else if (
+      activeFile.mode === 'diff' &&
+      activeFile.diffSource !== undefined &&
+      activeFile.diffSource !== 'combined-uncommitted' &&
+      activeFile.diffSource !== 'combined-branch'
+    ) {
       if (diffContents[activeFile.id]) {
         return
       }
@@ -95,16 +92,39 @@ export default function EditorPanel(): React.JSX.Element | null {
         0,
         file.filePath.length - file.relativePath.length - 1
       )
-      const result = (await window.api.git.diff({
-        worktreePath,
-        filePath: file.relativePath,
-        staged: file.diffStaged ?? false
-      })) as DiffContent
+      const branchCompare =
+        file.branchCompare?.baseOid && file.branchCompare.headOid && file.branchCompare.mergeBase
+          ? file.branchCompare
+          : null
+      const result =
+        file.diffSource === 'branch' && branchCompare
+          ? ((await window.api.git.branchDiff({
+              worktreePath,
+              compare: {
+                baseRef: branchCompare.baseRef,
+                baseOid: branchCompare.baseOid!,
+                headOid: branchCompare.headOid!,
+                mergeBase: branchCompare.mergeBase!
+              },
+              filePath: file.relativePath,
+              oldPath: file.branchOldPath
+            })) as DiffContent)
+          : ((await window.api.git.diff({
+              worktreePath,
+              filePath: file.relativePath,
+              staged: file.diffSource === 'staged'
+            })) as DiffContent)
       setDiffContents((prev) => ({ ...prev, [file.id]: result }))
     } catch (err) {
       setDiffContents((prev) => ({
         ...prev,
-        [file.id]: { originalContent: '', modifiedContent: `Error loading diff: ${err}` }
+        [file.id]: {
+          kind: 'text',
+          originalContent: '',
+          modifiedContent: `Error loading diff: ${err}`,
+          originalIsBinary: false,
+          modifiedIsBinary: false
+        }
       }))
     }
   }
@@ -122,7 +142,7 @@ export default function EditorPanel(): React.JSX.Element | null {
       } else {
         // Diff mode: compare against the original modified content from git
         const dc = diffContents[activeFile.id]
-        const original = dc?.modifiedContent ?? ''
+        const original = dc?.kind === 'text' ? dc.modifiedContent : ''
         markFileDirty(activeFile.id, content !== original)
       }
     },
@@ -146,7 +166,7 @@ export default function EditorPanel(): React.JSX.Element | null {
           // Update the diff's modified content baseline so dirty tracking stays correct
           setDiffContents((prev) => {
             const existing = prev[activeFile.id]
-            if (!existing) {
+            if (!existing || existing.kind !== 'text') {
               return prev
             }
             return {
@@ -248,8 +268,15 @@ export default function EditorPanel(): React.JSX.Element | null {
     return null
   }
 
-  const isSingleDiff = activeFile.mode === 'diff' && activeFile.diffStaged !== undefined
-  const isCombinedDiff = activeFile.mode === 'diff' && activeFile.diffStaged === undefined
+  const isSingleDiff =
+    activeFile.mode === 'diff' &&
+    activeFile.diffSource !== undefined &&
+    activeFile.diffSource !== 'combined-uncommitted' &&
+    activeFile.diffSource !== 'combined-branch'
+  const isCombinedDiff =
+    activeFile.mode === 'diff' &&
+    (activeFile.diffSource === 'combined-uncommitted' ||
+      activeFile.diffSource === 'combined-branch')
   const headerCopyState = getEditorHeaderCopyState(activeFile)
   const resolvedLanguage =
     activeFile.mode === 'diff'
@@ -294,52 +321,54 @@ export default function EditorPanel(): React.JSX.Element | null {
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0">
-      <div className="editor-header">
-        <div className="editor-header-text">
-          <div className="editor-header-path-row">
-            <button
-              type="button"
-              className="editor-header-path"
-              onClick={() => void handleCopyPath()}
-              title={headerCopyState.pathTitle}
-            >
-              {headerCopyState.pathLabel}
-            </button>
-            <span
-              className={`editor-header-copy-toast${copiedPathToast?.fileId === activeFile.id ? ' is-visible' : ''}`}
-              aria-live="polite"
-            >
-              {headerCopyState.copyToastLabel}
-            </span>
+      {!isCombinedDiff && (
+        <div className="editor-header">
+          <div className="editor-header-text">
+            <div className="editor-header-path-row">
+              <button
+                type="button"
+                className="editor-header-path"
+                onClick={() => void handleCopyPath()}
+                title={headerCopyState.pathTitle}
+              >
+                {headerCopyState.pathLabel}
+              </button>
+              <span
+                className={`editor-header-copy-toast${copiedPathToast?.fileId === activeFile.id ? ' is-visible' : ''}`}
+                aria-live="polite"
+              >
+                {headerCopyState.copyToastLabel}
+              </span>
+            </div>
           </div>
+          {isSingleDiff && (
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+                    onClick={() => setSideBySide((prev) => !prev)}
+                  >
+                    {sideBySide ? <Rows2 size={14} /> : <Columns2 size={14} />}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={4}>
+                  {sideBySide ? 'Switch to inline diff' : 'Switch to side-by-side diff'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {isMarkdown && activeFile.mode === 'edit' && (
+            <MarkdownViewToggle
+              mode={mdViewMode}
+              onChange={(mode) => setMarkdownViewMode(activeFile.id, mode)}
+            />
+          )}
         </div>
-        {isSingleDiff && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-                  onClick={() => setSideBySide((prev) => !prev)}
-                >
-                  {sideBySide ? <Rows2 size={14} /> : <Columns2 size={14} />}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" sideOffset={4}>
-                {sideBySide ? 'Switch to inline diff' : 'Switch to side-by-side diff'}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-        {isMarkdown && activeFile.mode === 'edit' && (
-          <MarkdownViewToggle
-            mode={mdViewMode}
-            onChange={(mode) => setMarkdownViewMode(activeFile.id, mode)}
-          />
-        )}
-      </div>
+      )}
       <Suspense fallback={loadingFallback}>
         {isCombinedDiff ? (
-          <CombinedDiffViewer worktreePath={activeFile.filePath} />
+          <CombinedDiffViewer file={activeFile} />
         ) : activeFile.mode === 'edit' ? (
           (() => {
             const fc = fileContents[activeFile.id]
@@ -351,15 +380,6 @@ export default function EditorPanel(): React.JSX.Element | null {
               )
             }
             if (fc.isBinary) {
-              if (fc.isImage) {
-                return (
-                  <ImageViewer
-                    content={fc.content}
-                    filePath={activeFile.filePath}
-                    mimeType={fc.mimeType}
-                  />
-                )
-              }
               return (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                   Binary file — cannot display
@@ -378,17 +398,19 @@ export default function EditorPanel(): React.JSX.Element | null {
                 </div>
               )
             }
-            // Unstaged diffs are editable (right side = working tree file)
-            const isEditable = activeFile.diffStaged === false
-            if (dc.isImage) {
+            const isEditable = activeFile.diffSource === 'unstaged'
+            if (dc.kind === 'binary') {
               return (
-                <ImageDiffViewer
-                  originalContent={dc.originalContent}
-                  modifiedContent={editBuffers[activeFile.id] ?? dc.modifiedContent}
-                  filePath={activeFile.filePath}
-                  mimeType={dc.mimeType}
-                  sideBySide={sideBySide}
-                />
+                <div className="flex h-full items-center justify-center px-6 text-center">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-foreground">Binary file changed</div>
+                    <div className="text-xs text-muted-foreground">
+                      {activeFile.diffSource === 'branch'
+                        ? 'Text diff is unavailable for this file in branch compare.'
+                        : 'Text diff is unavailable for this file.'}
+                    </div>
+                  </div>
+                </div>
               )
             }
             return (
