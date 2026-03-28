@@ -54,8 +54,8 @@ describe('getEditorHeaderCopyState', () => {
     ).toEqual({
       copyText: '/repo/file.ts',
       copyToastLabel: 'File path copied',
-      pathLabel: '/repo/file.ts (diff staged)',
-      pathTitle: '/repo/file.ts (diff staged)'
+      pathLabel: '/repo/file.ts (staged diff)',
+      pathTitle: '/repo/file.ts (staged diff)'
     })
   })
 
