@@ -41,9 +41,9 @@ export function connectPanePty(
   const transport = createIpcPtyTransport(deps.cwd, onExit, onTitleChange, onPtySpawn, onBell)
   deps.paneTransportsRef.current.set(pane.id, transport)
 
-  // Shift+Enter: send the Kitty keyboard protocol sequence so CLI apps
-  // (e.g. Claude Code) can distinguish it from plain Enter and insert a
-  // newline instead of submitting.  xterm.js sends \r for both by default.
+  // Shift+Enter: send ESC + CR (\x1b\r) so CLI apps (e.g. Claude Code)
+  // can distinguish it from plain Enter and insert a newline instead of
+  // submitting.  xterm.js sends bare \r for both by default.
   pane.terminal.attachCustomKeyEventHandler((event) => {
     if (
       event.type === 'keydown' &&
@@ -53,7 +53,7 @@ export function connectPanePty(
       !event.ctrlKey &&
       !event.altKey
     ) {
-      transport.sendInput('\x1b[13;2u')
+      transport.sendInput('\x1b\r')
       return false
     }
     return true
