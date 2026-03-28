@@ -42,6 +42,11 @@ function release(): void {
 // ── Owner/repo resolution for gh api --cache ──────────────────────────
 const ownerRepoCache = new Map<string, { owner: string; repo: string } | null>()
 
+/** @internal — exposed for tests only */
+export function _resetOwnerRepoCache(): void {
+  ownerRepoCache.clear()
+}
+
 async function getOwnerRepo(repoPath: string): Promise<{ owner: string; repo: string } | null> {
   if (ownerRepoCache.has(repoPath)) {
     return ownerRepoCache.get(repoPath)!
@@ -71,23 +76,65 @@ async function getOwnerRepo(repoPath: string): Promise<{ owner: string; repo: st
 export async function getPRForBranch(repoPath: string, branch: string): Promise<PRInfo | null> {
   await acquire()
   try {
+    const ownerRepo = await getOwnerRepo(repoPath)
     // Strip refs/heads/ prefix if present
     const branchName = branch.replace(/^refs\/heads\//, '')
-    const { stdout } = await execFileAsync(
-      'gh',
-      [
-        'pr',
-        'view',
-        branchName,
-        '--json',
-        'number,title,state,url,statusCheckRollup,updatedAt,isDraft'
-      ],
-      {
-        cwd: repoPath,
-        encoding: 'utf-8'
-      }
-    )
-    const data = JSON.parse(stdout)
+    let data: {
+      number: number
+      title: string
+      state: string
+      url: string
+      statusCheckRollup: unknown[]
+      updatedAt: string
+      isDraft?: boolean
+    } | null = null
+
+    if (ownerRepo) {
+      const { stdout } = await execFileAsync(
+        'gh',
+        [
+          'pr',
+          'list',
+          '--repo',
+          `${ownerRepo.owner}/${ownerRepo.repo}`,
+          '--head',
+          branchName,
+          '--state',
+          'all',
+          '--limit',
+          '1',
+          '--json',
+          'number,title,state,url,statusCheckRollup,updatedAt,isDraft'
+        ],
+        {
+          cwd: repoPath,
+          encoding: 'utf-8'
+        }
+      )
+      const list = JSON.parse(stdout) as NonNullable<typeof data>[]
+      data = list[0] ?? null
+    } else {
+      const { stdout } = await execFileAsync(
+        'gh',
+        [
+          'pr',
+          'view',
+          branchName,
+          '--json',
+          'number,title,state,url,statusCheckRollup,updatedAt,isDraft'
+        ],
+        {
+          cwd: repoPath,
+          encoding: 'utf-8'
+        }
+      )
+      data = JSON.parse(stdout)
+    }
+
+    if (!data) {
+      return null
+    }
+
     return {
       number: data.number,
       title: data.title,

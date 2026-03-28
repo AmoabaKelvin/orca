@@ -22,7 +22,6 @@ export default function ChecksPanel(): React.JSX.Element {
   const repos = useAppStore((s) => s.repos)
   const prCache = useAppStore((s) => s.prCache)
   const fetchPRForBranch = useAppStore((s) => s.fetchPRForBranch)
-  const refreshGitHubForWorktree = useAppStore((s) => s.refreshGitHubForWorktree)
 
   const fetchPRChecks = useAppStore((s) => s.fetchPRChecks)
 
@@ -82,9 +81,7 @@ export default function ChecksPanel(): React.JSX.Element {
 
         // Exponential backoff: if checks haven't changed, double the interval (cap 120s).
         // If they changed, reset to 30s.
-        const signature = JSON.stringify(
-          result.map((c) => `${c.name}:${c.status}:${c.conclusion}`)
-        )
+        const signature = JSON.stringify(result.map((c) => `${c.name}:${c.status}:${c.conclusion}`))
         pollIntervalRef.current =
           signature === prevChecksRef.current
             ? Math.min(pollIntervalRef.current * 2, 120_000)
@@ -235,11 +232,13 @@ export default function ChecksPanel(): React.JSX.Element {
           title="Refresh"
           disabled={emptyRefreshing}
           onClick={() => {
-            if (activeWorktreeId) {
-              setEmptyRefreshing(true)
-              refreshGitHubForWorktree(activeWorktreeId)
-              setTimeout(() => setEmptyRefreshing(false), 2000)
+            if (!activeWorktreeId) {
+              return
             }
+            setEmptyRefreshing(true)
+            void handleRefresh().finally(() => {
+              setEmptyRefreshing(false)
+            })
           }}
         >
           <RefreshCw className={cn('size-4', emptyRefreshing && 'animate-spin')} />

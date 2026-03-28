@@ -259,7 +259,7 @@ export const createGitHubSlice: StateCreator<AppState, [], [], GitHubSlice> = (s
 
     // Re-fetch
     if (!worktree.isBare) {
-      void get().fetchPRForBranch(repo.path, branch)
+      void get().fetchPRForBranch(repo.path, branch, { force: true })
     }
     if (worktree.linkedIssue) {
       void get().fetchIssue(repo.path, worktree.linkedIssue)
