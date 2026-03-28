@@ -185,6 +185,38 @@ export function useTerminalKeyboardShortcuts({
       }
     }
 
+    // Shift+Enter → send CSI 13;2 u (Kitty keyboard protocol) to PTY so
+    // CLI apps like Claude Code can distinguish it from plain Enter and
+    // insert a newline.  xterm.js sends bare \r for both by default, and
+    // its attachCustomKeyEventHandler doesn't call preventDefault, so the
+    // browser still fires keypress and xterm processes it.  Intercepting
+    // here in the capture phase with full suppression avoids the double-send.
+    const onShiftEnter = (e: KeyboardEvent): void => {
+      if (!e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) {
+        return
+      }
+      if (e.key !== 'Enter') {
+        return
+      }
+      if (isEditableTarget(e.target)) {
+        return
+      }
+
+      const manager = managerRef.current
+      if (!manager) {
+        return
+      }
+
+      e.preventDefault()
+      e.stopPropagation()
+      const pane = manager.getActivePane() ?? manager.getPanes()[0]
+      if (!pane) {
+        return
+      }
+      const transport = paneTransportsRef.current.get(pane.id)
+      transport?.sendInput('\x1b[13;2u')
+    }
+
     // Ctrl+Backspace → send \x17 (backward-kill-word) to PTY.
     // Skip when focus is in an input/textarea so native word-delete still works.
     const onCtrlBackspace = (e: KeyboardEvent): void => {
@@ -242,10 +274,12 @@ export function useTerminalKeyboardShortcuts({
     }
 
     window.addEventListener('keydown', onKeyDown, { capture: true })
+    window.addEventListener('keydown', onShiftEnter, { capture: true })
     window.addEventListener('keydown', onCtrlBackspace, { capture: true })
     window.addEventListener('keydown', onAltBackspace, { capture: true })
     return () => {
       window.removeEventListener('keydown', onKeyDown, { capture: true })
+      window.removeEventListener('keydown', onShiftEnter, { capture: true })
       window.removeEventListener('keydown', onCtrlBackspace, { capture: true })
       window.removeEventListener('keydown', onAltBackspace, { capture: true })
     }
