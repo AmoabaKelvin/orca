@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import path from 'path'
 
-const { execFileAsyncMock, readFileMock, rmMock } = vi.hoisted(() => ({
+const { execFileAsyncMock, readFileMock, rmMock, existsSyncMock } = vi.hoisted(() => ({
   execFileAsyncMock: vi.fn(),
   readFileMock: vi.fn(),
-  rmMock: vi.fn()
+  rmMock: vi.fn(),
+  existsSyncMock: vi.fn()
 }))
 
 vi.mock('util', async () => {
@@ -20,7 +21,11 @@ vi.mock('fs/promises', () => ({
   rm: rmMock
 }))
 
-import { discardChanges, getBranchCompare, getDiff, isWithinWorktree } from './status'
+vi.mock('fs', () => ({
+  existsSync: existsSyncMock
+}))
+
+import { discardChanges, getBranchCompare, getDiff, getStatus, isWithinWorktree } from './status'
 
 describe('discardChanges', () => {
   beforeEach(() => {
@@ -86,6 +91,7 @@ describe('getDiff', () => {
   beforeEach(() => {
     execFileAsyncMock.mockReset()
     readFileMock.mockReset()
+    existsSyncMock.mockReset()
   })
 
   it('uses the index as the left side for unstaged diffs when present', async () => {
@@ -144,6 +150,71 @@ describe('getDiff', () => {
     expect(result.kind).toBe('binary')
     expect(result.originalIsBinary).toBe(true)
     expect(result.modifiedIsBinary).toBe(false)
+  })
+})
+
+describe('getStatus', () => {
+  beforeEach(() => {
+    execFileAsyncMock.mockReset()
+    readFileMock.mockReset()
+    existsSyncMock.mockReset()
+  })
+
+  it('parses unmerged porcelain v2 entries into unresolved conflict rows', async () => {
+    readFileMock.mockResolvedValue('gitdir: /repo/.git/worktrees/feature\n')
+    existsSyncMock.mockImplementation((target: string) => target.endsWith('MERGE_HEAD'))
+    execFileAsyncMock.mockResolvedValueOnce({
+      stdout:
+        'u UU N... 100644 100644 100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb cccccccccccccccccccccccccccccccccccccccc\tsrc/app.ts\n'
+    })
+
+    const result = await getStatus('/repo')
+
+    expect(result.conflictOperation).toBe('merge')
+    expect(result.entries).toEqual([
+      {
+        path: 'src/app.ts',
+        area: 'unstaged',
+        status: 'modified',
+        conflictKind: 'both_modified',
+        conflictStatus: 'unresolved'
+      }
+    ])
+  })
+
+  it('maps deleted conflicts to deleted when the working tree file is absent', async () => {
+    readFileMock.mockResolvedValue('gitdir: /repo/.git/worktrees/feature\n')
+    existsSyncMock.mockReturnValue(false)
+    execFileAsyncMock.mockResolvedValueOnce({
+      stdout:
+        'u UD N... 100644 100644 000000 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb cccccccccccccccccccccccccccccccccccccccc\tsrc/deleted.ts\n'
+    })
+
+    const result = await getStatus('/repo')
+
+    expect(result.entries[0]).toEqual({
+      path: 'src/deleted.ts',
+      area: 'unstaged',
+      status: 'deleted',
+      conflictKind: 'deleted_by_them',
+      conflictStatus: 'unresolved'
+    })
+  })
+
+  it('falls back to modified when the filesystem existence check throws', async () => {
+    readFileMock.mockResolvedValue('gitdir: /repo/.git/worktrees/feature\n')
+    existsSyncMock.mockImplementation(() => {
+      throw new Error('stat failed')
+    })
+    execFileAsyncMock.mockResolvedValueOnce({
+      stdout:
+        'u AU N... 100644 100644 100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb cccccccccccccccccccccccccccccccccccccccc\tsrc/new.ts\n'
+    })
+
+    const result = await getStatus('/repo')
+
+    expect(result.entries[0]?.status).toBe('modified')
+    expect(result.entries[0]?.conflictKind).toBe('added_by_us')
   })
 })
 

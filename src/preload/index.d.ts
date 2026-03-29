@@ -141,7 +141,7 @@ type FsApi = {
 }
 
 type GitApi = {
-  status: (args: { worktreePath: string }) => Promise<GitStatusEntry[]>
+  status: (args: { worktreePath: string }) => Promise<GitStatusResult>
   diff: (args: {
     worktreePath: string
     filePath: string

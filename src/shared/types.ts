@@ -215,15 +215,35 @@ export type DirEntry = {
 // ─── Git Status ─────────────────────────────────────────────
 export type GitFileStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'copied'
 export type GitStagingArea = 'staged' | 'unstaged' | 'untracked'
+export type GitConflictKind =
+  | 'both_modified'
+  | 'both_added'
+  | 'both_deleted'
+  | 'added_by_us'
+  | 'added_by_them'
+  | 'deleted_by_us'
+  | 'deleted_by_them'
+
+export type GitConflictResolutionStatus = 'unresolved' | 'resolved_locally'
+export type GitConflictStatusSource = 'git' | 'session'
+export type GitConflictOperation = 'merge' | 'rebase' | 'cherry-pick' | 'unknown'
 
 export type GitUncommittedEntry = {
   path: string
   status: GitFileStatus
   area: GitStagingArea
   oldPath?: string
+  conflictKind?: GitConflictKind
+  conflictStatus?: GitConflictResolutionStatus
+  conflictStatusSource?: GitConflictStatusSource
 }
 
 export type GitStatusEntry = GitUncommittedEntry
+
+export type GitStatusResult = {
+  entries: GitStatusEntry[]
+  conflictOperation: GitConflictOperation
+}
 
 export type GitBranchChangeStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'copied'
 

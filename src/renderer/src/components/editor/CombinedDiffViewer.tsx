@@ -1,15 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { LazySection } from './LazySection'
-import { ChevronDown, ChevronRight } from 'lucide-react'
-import { DiffEditor, type DiffOnMount } from '@monaco-editor/react'
 import type { editor as monacoEditor } from 'monaco-editor'
 import { useAppStore } from '@/store'
-import { basename, dirname, joinPath } from '@/lib/path'
-import { detectLanguage } from '@/lib/language-detect'
+import { joinPath } from '@/lib/path'
 import '@/lib/monaco-setup'
-import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import type { OpenFile } from '@/store/slices/editor'
 import type { GitDiffResult, GitStatusEntry } from '../../../../shared/types'
+import { DiffSectionItem } from './DiffSectionItem'
 
 type DiffSection = {
   key: string
@@ -31,6 +28,7 @@ export default function CombinedDiffViewer({ file }: { file: OpenFile }): React.
   const gitBranchChangesByWorktree = useAppStore((s) => s.gitBranchChangesByWorktree)
   const gitBranchCompareSummaryByWorktree = useAppStore((s) => s.gitBranchCompareSummaryByWorktree)
   const openAllDiffs = useAppStore((s) => s.openAllDiffs)
+  const openConflictReview = useAppStore((s) => s.openConflictReview)
   const openBranchAllDiffs = useAppStore((s) => s.openBranchAllDiffs)
   const isDark =
     settings?.theme === 'dark' ||
@@ -49,6 +47,9 @@ export default function CombinedDiffViewer({ file }: { file: OpenFile }): React.
   const uncommittedEntries = React.useMemo(
     () =>
       (gitStatusByWorktree[file.worktreeId] ?? []).filter((entry) => {
+        if (entry.conflictStatus === 'unresolved') {
+          return false
+        }
         if (file.combinedAreaFilter) {
           return entry.area === file.combinedAreaFilter
         }
@@ -211,6 +212,45 @@ export default function CombinedDiffViewer({ file }: { file: OpenFile }): React.
     }
   }, [branchSummary, file, openAllDiffs, openBranchAllDiffs])
 
+  if (sections.length === 0 && (file.skippedConflicts?.length ?? 0) > 0) {
+    return (
+      <div className="flex h-full items-center justify-center px-6 text-center">
+        <div className="max-w-md space-y-3">
+          <div className="text-sm font-medium text-foreground">
+            Conflicted files are reviewed separately
+          </div>
+          <div className="text-xs text-muted-foreground">
+            This diff view excludes unresolved conflicts because the normal two-way diff pipeline is
+            not conflict-safe.
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {file.skippedConflicts!.map((entry) => entry.path).join(', ')}
+          </div>
+          <div className="flex justify-center">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                openConflictReview(
+                  file.worktreeId,
+                  file.filePath,
+                  file.skippedConflicts!.map((entry) => ({
+                    path: entry.path,
+                    conflictKind: entry.conflictKind
+                  })),
+                  'combined-diff-exclusion'
+                )
+              }
+            >
+              Review conflicts
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (sections.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -218,6 +258,38 @@ export default function CombinedDiffViewer({ file }: { file: OpenFile }): React.
       </div>
     )
   }
+
+  const skippedConflictNotice =
+    (file.skippedConflicts?.length ?? 0) > 0 ? (
+      <div className="mx-4 mt-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs">
+        <div className="font-medium text-foreground">Conflicted files are reviewed separately</div>
+        <div className="mt-1 text-muted-foreground">
+          {file.skippedConflicts!.length} unresolved conflict
+          {file.skippedConflicts!.length === 1 ? '' : 's'} were excluded from this diff view.
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={() =>
+              openConflictReview(
+                file.worktreeId,
+                file.filePath,
+                file.skippedConflicts!.map((entry) => ({
+                  path: entry.path,
+                  conflictKind: entry.conflictKind
+                })),
+                'combined-diff-exclusion'
+              )
+            }
+          >
+            Review conflicts
+          </Button>
+        </div>
+      </div>
+    ) : null
 
   return (
     <div className="flex flex-col h-full">
@@ -259,143 +331,25 @@ export default function CombinedDiffViewer({ file }: { file: OpenFile }): React.
       </div>
 
       <div className="flex-1 overflow-auto scrollbar-editor">
-        {sections.map((section, index) => {
-          const language = detectLanguage(section.path)
-          const fileName = basename(section.path)
-          const parentDir = dirname(section.path)
-          const dirPath = parentDir === '.' ? '' : parentDir
-          const isEditable = section.area === 'unstaged'
-
-          const handleMount: DiffOnMount = (editor, monaco) => {
-            const modifiedEditor = editor.getModifiedEditor()
-
-            // Track content size to dynamically resize the container
-            const updateHeight = (): void => {
-              const contentHeight = editor.getModifiedEditor().getContentHeight()
-              setSectionHeights((prev) => {
-                if (prev[index] === contentHeight) {
-                  return prev
-                }
-                return { ...prev, [index]: contentHeight }
-              })
-            }
-            modifiedEditor.onDidContentSizeChange(updateHeight)
-            updateHeight()
-
-            if (!isEditable) {
-              return
-            }
-
-            modifiedEditorsRef.current.set(index, modifiedEditor)
-            modifiedEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () =>
-              handleSectionSaveRef.current(index)
-            )
-            modifiedEditor.onDidChangeModelContent(() => {
-              const current = modifiedEditor.getValue()
-              setSections((prev) =>
-                prev.map((s, i) =>
-                  i === index ? { ...s, dirty: current !== s.modifiedContent } : s
-                )
-              )
-            })
-          }
-
-          return (
-            <LazySection key={section.key} index={index} onVisible={loadSection}>
-              <button
-                className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-accent/30 transition-colors"
-                onClick={() => toggleSection(index)}
-              >
-                {section.collapsed ? (
-                  <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
-                )}
-                <span className="font-medium">
-                  {fileName}
-                  {section.dirty && <span className="text-muted-foreground ml-1">M</span>}
-                </span>
-                {dirPath && <span className="text-muted-foreground text-xs">{dirPath}</span>}
-                <span
-                  className={cn(
-                    'text-xs font-bold ml-auto',
-                    section.status === 'modified' && 'text-amber-500',
-                    section.status === 'added' && 'text-green-500',
-                    section.status === 'deleted' && 'text-red-500'
-                  )}
-                >
-                  {section.area === 'staged'
-                    ? 'Staged'
-                    : section.area === 'unstaged'
-                      ? 'Modified'
-                      : isBranchMode
-                        ? 'Branch'
-                        : ''}
-                </span>
-              </button>
-
-              {!section.collapsed && (
-                <div
-                  style={{
-                    height: sectionHeights[index]
-                      ? sectionHeights[index] + 19
-                      : Math.max(
-                          60,
-                          Math.max(
-                            section.originalContent.split('\n').length,
-                            section.modifiedContent.split('\n').length
-                          ) *
-                            19 +
-                            19
-                        )
-                  }}
-                >
-                  {section.loading ? (
-                    <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
-                      Loading...
-                    </div>
-                  ) : section.diffResult?.kind === 'binary' ? (
-                    <div className="flex h-full items-center justify-center px-6 text-center">
-                      <div className="space-y-2">
-                        <div className="text-sm font-medium text-foreground">
-                          Binary file changed
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {isBranchMode
-                            ? 'Text diff is unavailable for this file in branch compare.'
-                            : 'Text diff is unavailable for this file.'}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <DiffEditor
-                      height="100%"
-                      language={language}
-                      original={section.originalContent}
-                      modified={section.modifiedContent}
-                      theme={isDark ? 'vs-dark' : 'vs'}
-                      onMount={handleMount}
-                      options={{
-                        readOnly: !isEditable,
-                        originalEditable: false,
-                        renderSideBySide: sideBySide,
-                        minimap: { enabled: false },
-                        scrollBeyondLastLine: false,
-                        fontSize: settings?.terminalFontSize ?? 13,
-                        fontFamily: settings?.terminalFontFamily || 'monospace',
-                        lineNumbers: 'on',
-                        automaticLayout: true,
-                        renderOverviewRuler: false,
-                        scrollbar: { vertical: 'hidden', handleMouseWheel: false },
-                        hideUnchangedRegions: { enabled: true }
-                      }}
-                    />
-                  )}
-                </div>
-              )}
-            </LazySection>
-          )
-        })}
+        {skippedConflictNotice}
+        {sections.map((section, index) => (
+          <DiffSectionItem
+            key={section.key}
+            section={section}
+            index={index}
+            isBranchMode={isBranchMode}
+            sideBySide={sideBySide}
+            isDark={isDark}
+            settings={settings}
+            sectionHeight={sectionHeights[index]}
+            loadSection={loadSection}
+            toggleSection={toggleSection}
+            setSectionHeights={setSectionHeights}
+            setSections={setSections}
+            modifiedEditorsRef={modifiedEditorsRef}
+            handleSectionSaveRef={handleSectionSaveRef}
+          />
+        ))}
       </div>
     </div>
   )

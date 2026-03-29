@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, lazy, Suspense } from 'react'
+import React, { useCallback, useEffect, useState, Suspense } from 'react'
 import { Columns2, Rows2 } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { detectLanguage } from '@/lib/language-detect'
@@ -6,12 +6,8 @@ import { getEditorHeaderCopyState } from './editor-header'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { MarkdownViewMode } from '@/store/slices/editor'
 import MarkdownViewToggle from './MarkdownViewToggle'
+import { EditorContent } from './EditorContent'
 import type { GitDiffResult } from '../../../../shared/types'
-
-const MonacoEditor = lazy(() => import('./MonacoEditor'))
-const DiffViewer = lazy(() => import('./DiffViewer'))
-const CombinedDiffViewer = lazy(() => import('./CombinedDiffViewer'))
-const MarkdownPreview = lazy(() => import('./MarkdownPreview'))
 
 type FileContent = {
   content: string
@@ -25,7 +21,7 @@ export default function EditorPanel(): React.JSX.Element | null {
   const activeFileId = useAppStore((s) => s.activeFileId)
   const markFileDirty = useAppStore((s) => s.markFileDirty)
   const pendingEditorReveal = useAppStore((s) => s.pendingEditorReveal)
-
+  const gitStatusByWorktree = useAppStore((s) => s.gitStatusByWorktree)
   const markdownViewMode = useAppStore((s) => s.markdownViewMode)
   const setMarkdownViewMode = useAppStore((s) => s.setMarkdownViewMode)
 
@@ -44,7 +40,13 @@ export default function EditorPanel(): React.JSX.Element | null {
     if (!activeFile) {
       return
     }
+    if (activeFile.mode === 'conflict-review') {
+      return
+    }
     if (activeFile.mode === 'edit') {
+      if (activeFile.conflict?.kind === 'conflict-placeholder') {
+        return
+      }
       if (fileContents[activeFile.id]) {
         return
       }
@@ -278,6 +280,7 @@ export default function EditorPanel(): React.JSX.Element | null {
     (activeFile.diffSource === 'combined-uncommitted' ||
       activeFile.diffSource === 'combined-branch')
   const headerCopyState = getEditorHeaderCopyState(activeFile)
+  const worktreeEntries = gitStatusByWorktree[activeFile.worktreeId] ?? []
   const resolvedLanguage =
     activeFile.mode === 'diff'
       ? detectLanguage(activeFile.relativePath)
@@ -294,30 +297,6 @@ export default function EditorPanel(): React.JSX.Element | null {
       Loading editor...
     </div>
   )
-
-  const renderMonacoEditor = (fc: FileContent): React.JSX.Element => (
-    <MonacoEditor
-      filePath={activeFile.filePath}
-      relativePath={activeFile.relativePath}
-      content={editBuffers[activeFile.id] ?? fc.content}
-      language={resolvedLanguage}
-      onContentChange={handleContentChange}
-      onSave={handleSave}
-      revealLine={pendingEditorReveal?.line}
-      revealColumn={pendingEditorReveal?.column}
-      revealMatchLength={pendingEditorReveal?.matchLength}
-    />
-  )
-
-  const renderMarkdownContent = (fc: FileContent): React.JSX.Element => {
-    const currentContent = editBuffers[activeFile.id] ?? fc.content
-
-    if (mdViewMode === 'preview') {
-      return <MarkdownPreview content={currentContent} filePath={activeFile.filePath} />
-    }
-
-    return renderMonacoEditor(fc)
-  }
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0">
@@ -367,65 +346,20 @@ export default function EditorPanel(): React.JSX.Element | null {
         </div>
       )}
       <Suspense fallback={loadingFallback}>
-        {isCombinedDiff ? (
-          <CombinedDiffViewer file={activeFile} />
-        ) : activeFile.mode === 'edit' ? (
-          (() => {
-            const fc = fileContents[activeFile.id]
-            if (!fc) {
-              return (
-                <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                  Loading...
-                </div>
-              )
-            }
-            if (fc.isBinary) {
-              return (
-                <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                  Binary file — cannot display
-                </div>
-              )
-            }
-            return isMarkdown ? renderMarkdownContent(fc) : renderMonacoEditor(fc)
-          })()
-        ) : (
-          (() => {
-            const dc = diffContents[activeFile.id]
-            if (!dc) {
-              return (
-                <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                  Loading diff...
-                </div>
-              )
-            }
-            const isEditable = activeFile.diffSource === 'unstaged'
-            if (dc.kind === 'binary') {
-              return (
-                <div className="flex h-full items-center justify-center px-6 text-center">
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium text-foreground">Binary file changed</div>
-                    <div className="text-xs text-muted-foreground">
-                      {activeFile.diffSource === 'branch'
-                        ? 'Text diff is unavailable for this file in branch compare.'
-                        : 'Text diff is unavailable for this file.'}
-                    </div>
-                  </div>
-                </div>
-              )
-            }
-            return (
-              <DiffViewer
-                originalContent={dc.originalContent}
-                modifiedContent={editBuffers[activeFile.id] ?? dc.modifiedContent}
-                language={resolvedLanguage}
-                sideBySide={sideBySide}
-                editable={isEditable}
-                onContentChange={isEditable ? handleContentChange : undefined}
-                onSave={isEditable ? handleSave : undefined}
-              />
-            )
-          })()
-        )}
+        <EditorContent
+          activeFile={activeFile}
+          fileContents={fileContents}
+          diffContents={diffContents}
+          editBuffers={editBuffers}
+          worktreeEntries={worktreeEntries}
+          resolvedLanguage={resolvedLanguage}
+          isMarkdown={isMarkdown}
+          mdViewMode={mdViewMode}
+          sideBySide={sideBySide}
+          pendingEditorReveal={pendingEditorReveal}
+          handleContentChange={handleContentChange}
+          handleSave={handleSave}
+        />
       </Suspense>
     </div>
   )

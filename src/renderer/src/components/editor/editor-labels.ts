@@ -24,6 +24,10 @@ export function getEditorDisplayLabel(
   file: OpenFile,
   variant: EditorLabelVariant = 'fileName'
 ): string {
+  if (file.mode === 'conflict-review') {
+    return 'Conflict Review'
+  }
+
   if (file.mode !== 'diff') {
     return getBaseLabel(file, variant)
   }

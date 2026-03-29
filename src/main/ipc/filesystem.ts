@@ -7,8 +7,8 @@ import type { Store } from '../persistence'
 import type {
   DirEntry,
   GitBranchCompareResult,
-  GitStatusEntry,
   GitDiffResult,
+  GitStatusResult,
   SearchOptions,
   SearchResult,
   SearchFileResult
@@ -300,7 +300,7 @@ export function registerFilesystemHandlers(store: Store): void {
   // ─── Git operations ─────────────────────────────────────
   ipcMain.handle(
     'git:status',
-    async (_event, args: { worktreePath: string }): Promise<GitStatusEntry[]> => {
+    async (_event, args: { worktreePath: string }): Promise<GitStatusResult> => {
       const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
       return getStatus(worktreePath)
     }

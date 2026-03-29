@@ -9,6 +9,15 @@ export type EditorHeaderCopyState = {
 }
 
 export function getEditorHeaderCopyState(file: OpenFile): EditorHeaderCopyState {
+  if (file.mode === 'conflict-review') {
+    return {
+      copyText: file.filePath,
+      copyToastLabel: 'Worktree path copied',
+      pathLabel: 'Conflict Review',
+      pathTitle: file.filePath
+    }
+  }
+
   const isCombinedDiff =
     file.mode === 'diff' &&
     (file.diffSource === 'combined-uncommitted' || file.diffSource === 'combined-branch')

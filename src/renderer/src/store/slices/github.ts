@@ -292,8 +292,8 @@ export const createGitHubSlice: StateCreator<AppState, [], [], GitHubSlice> = (s
       return updates
     })
 
-    // Re-fetch
-    if (!worktree.isBare) {
+    // Re-fetch (skip when branch is empty — detached HEAD during rebase)
+    if (!worktree.isBare && branch) {
       void get().fetchPRForBranch(repo.path, branch, { force: true })
     }
     if (worktree.linkedIssue) {

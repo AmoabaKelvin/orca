@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { useAppStore } from '@/store'
-import type { GitStatusEntry } from '../../../../shared/types'
+import type { GitStatusResult } from '../../../../shared/types'
 
 const POLL_INTERVAL_MS = 3000
 
@@ -27,8 +27,8 @@ export function useGitStatusPolling(): void {
       return
     }
     try {
-      const entries = (await window.api.git.status({ worktreePath })) as GitStatusEntry[]
-      setGitStatus(activeWorktreeId, entries)
+      const status = (await window.api.git.status({ worktreePath })) as GitStatusResult
+      setGitStatus(activeWorktreeId, status)
     } catch {
       // ignore
     }
