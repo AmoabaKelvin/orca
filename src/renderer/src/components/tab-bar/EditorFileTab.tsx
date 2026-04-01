@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { X, FileCode, GitCompareArrows, Copy } from 'lucide-react'
+import { X, FileCode, GitCompareArrows, Copy, ShieldAlert } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,6 +49,7 @@ export default function EditorFileTab({
   }
 
   const isDiff = file.mode === 'diff'
+  const isConflictReview = file.mode === 'conflict-review'
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPoint, setMenuPoint] = useState({ x: 0, y: 0 })
 
@@ -104,7 +105,11 @@ export default function EditorFileTab({
             }
           }}
         >
-          {isDiff ? (
+          {isConflictReview ? (
+            <ShieldAlert
+              className={`w-3.5 h-3.5 mr-1.5 shrink-0 ${isActive ? 'text-orange-400' : 'text-orange-400/70'}`}
+            />
+          ) : isDiff ? (
             <GitCompareArrows
               className={`w-3.5 h-3.5 mr-1.5 shrink-0 ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}
             />
