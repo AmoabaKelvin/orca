@@ -182,6 +182,9 @@ export type EditorSlice = {
   trackedConflictPathsByWorktree: Record<string, Record<string, GitConflictKind>>
   trackConflictPath: (worktreeId: string, path: string, conflictKind: GitConflictKind) => void
   setGitStatus: (worktreeId: string, status: GitStatusResult) => void
+  // Why: lightweight updater for conflict operation only, used to clear stale
+  // "Rebasing"/"Merging" badges on non-active worktrees without a full git status poll.
+  setConflictOperation: (worktreeId: string, operation: GitConflictOperation) => void
   gitBranchChangesByWorktree: Record<string, GitBranchChangeEntry[]>
   gitBranchCompareSummaryByWorktree: Record<string, GitBranchCompareSummary | null>
   gitBranchCompareRequestKeyByWorktree: Record<string, string>
@@ -967,6 +970,35 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         trackedConflictPathsByWorktree: trackedUnchanged
           ? s.trackedConflictPathsByWorktree
           : { ...s.trackedConflictPathsByWorktree, [worktreeId]: currentTracked }
+      }
+    }),
+  setConflictOperation: (worktreeId, operation) =>
+    set((s) => {
+      const prev = s.gitConflictOperationByWorktree[worktreeId] ?? 'unknown'
+      if (prev === operation) {
+        return s
+      }
+      // Why: when the operation clears (transitions to 'unknown') on a non-active
+      // worktree, we also need to clear tracked conflict paths — same as the
+      // full setGitStatus handler does for the active worktree.
+      const nextTracked =
+        operation === 'unknown' && prev !== 'unknown'
+          ? {}
+          : s.trackedConflictPathsByWorktree[worktreeId]
+      const trackedUnchanged = nextTracked === s.trackedConflictPathsByWorktree[worktreeId]
+      return {
+        gitConflictOperationByWorktree: {
+          ...s.gitConflictOperationByWorktree,
+          [worktreeId]: operation
+        },
+        ...(trackedUnchanged
+          ? {}
+          : {
+              trackedConflictPathsByWorktree: {
+                ...s.trackedConflictPathsByWorktree,
+                [worktreeId]: nextTracked
+              }
+            })
       }
     }),
   gitBranchChangesByWorktree: {},

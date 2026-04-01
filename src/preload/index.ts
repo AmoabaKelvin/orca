@@ -260,6 +260,8 @@ const api = {
   git: {
     status: (args: { worktreePath: string }): Promise<unknown> =>
       ipcRenderer.invoke('git:status', args),
+    conflictOperation: (args: { worktreePath: string }): Promise<unknown> =>
+      ipcRenderer.invoke('git:conflictOperation', args),
     diff: (args: { worktreePath: string; filePath: string; staged: boolean }): Promise<unknown> =>
       ipcRenderer.invoke('git:diff', args),
     branchCompare: (args: { worktreePath: string; baseRef: string }): Promise<unknown> =>

@@ -13,6 +13,7 @@ import type {
   UpdateStatus,
   DirEntry,
   GitBranchCompareResult,
+  GitConflictOperation,
   GitStatusEntry,
   GitDiffResult,
   SearchOptions,
@@ -144,6 +145,7 @@ type FsApi = {
 
 type GitApi = {
   status: (args: { worktreePath: string }) => Promise<GitStatusResult>
+  conflictOperation: (args: { worktreePath: string }) => Promise<GitConflictOperation>
   diff: (args: {
     worktreePath: string
     filePath: string

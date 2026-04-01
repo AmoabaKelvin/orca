@@ -237,7 +237,7 @@ async function getConflictCompatibilityStatus(
 // rebase is still in progress but REBASE_HEAD is absent. The rebase-merge/ or
 // rebase-apply/ directory persists for the entire rebase, so checking it
 // catches the "rebase in progress, no conflicts on current step" case.
-async function detectConflictOperation(worktreePath: string): Promise<GitConflictOperation> {
+export async function detectConflictOperation(worktreePath: string): Promise<GitConflictOperation> {
   const gitDir = await resolveGitDir(worktreePath)
   const mergeHead = path.join(gitDir, 'MERGE_HEAD')
   const rebaseHead = path.join(gitDir, 'REBASE_HEAD')

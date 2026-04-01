@@ -9,6 +9,7 @@ import type { Store } from '../persistence'
 import type {
   DirEntry,
   GitBranchCompareResult,
+  GitConflictOperation,
   GitDiffResult,
   GitStatusResult,
   SearchOptions,
@@ -17,6 +18,7 @@ import type {
 } from '../../shared/types'
 import {
   getStatus,
+  detectConflictOperation,
   getDiff,
   stageFile,
   unstageFile,
@@ -330,6 +332,17 @@ export function registerFilesystemHandlers(store: Store): void {
     async (_event, args: { worktreePath: string }): Promise<GitStatusResult> => {
       const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
       return getStatus(worktreePath)
+    }
+  )
+
+  // Why: lightweight fs-only check for conflict operation state. Used to poll
+  // non-active worktrees so their "Rebasing"/"Merging" badges clear when the
+  // operation finishes, without running a full `git status`.
+  ipcMain.handle(
+    'git:conflictOperation',
+    async (_event, args: { worktreePath: string }): Promise<GitConflictOperation> => {
+      const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
+      return detectConflictOperation(worktreePath)
     }
   )
 
