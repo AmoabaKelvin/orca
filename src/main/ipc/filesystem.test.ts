@@ -89,22 +89,26 @@ describe('registerFilesystemHandlers', () => {
 
   beforeEach(() => {
     handlers.clear()
-    handleMock.mockReset()
-    trashItemMock.mockReset()
-    readdirMock.mockReset()
-    readFileMock.mockReset()
-    writeFileMock.mockReset()
-    statMock.mockReset()
-    realpathMock.mockReset()
-    lstatMock.mockReset()
-    getStatusMock.mockReset()
-    getDiffMock.mockReset()
-    getBranchCompareMock.mockReset()
-    getBranchDiffMock.mockReset()
-    stageFileMock.mockReset()
-    unstageFileMock.mockReset()
-    discardChangesMock.mockReset()
-    listWorktreesMock.mockReset()
+    for (const mock of [
+      handleMock,
+      trashItemMock,
+      readdirMock,
+      readFileMock,
+      writeFileMock,
+      statMock,
+      realpathMock,
+      lstatMock,
+      getStatusMock,
+      getDiffMock,
+      getBranchCompareMock,
+      getBranchDiffMock,
+      stageFileMock,
+      unstageFileMock,
+      discardChangesMock,
+      listWorktreesMock
+    ]) {
+      mock.mockReset()
+    }
 
     handleMock.mockImplementation((channel, handler) => {
       handlers.set(channel, handler)
@@ -170,6 +174,23 @@ describe('registerFilesystemHandlers', () => {
       isBinary: true,
       isImage: true,
       mimeType: 'image/png'
+    })
+  })
+
+  it('returns base64 content for supported pdf binaries', async () => {
+    const pdfBuffer = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x00])
+    statMock.mockResolvedValue({ size: pdfBuffer.length, isDirectory: () => false, mtimeMs: 123 })
+    readFileMock.mockResolvedValue(pdfBuffer)
+
+    registerFilesystemHandlers(store as never)
+
+    await expect(
+      handlers.get('fs:readFile')!(null, { filePath: '/workspace/repo/document.pdf' })
+    ).resolves.toEqual({
+      content: pdfBuffer.toString('base64'),
+      isBinary: true,
+      isImage: true,
+      mimeType: 'application/pdf'
     })
   })
 
