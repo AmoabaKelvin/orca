@@ -14,6 +14,7 @@ import Landing from './components/Landing'
 import Settings from './components/settings/Settings'
 import RightSidebar from './components/right-sidebar'
 import QuickOpen from './components/QuickOpen'
+import UpdateReminder from './components/UpdateReminder'
 import { useGitStatusPolling } from './components/right-sidebar/useGitStatusPolling'
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -109,7 +110,9 @@ function App(): React.JSX.Element {
             sortBy: 'name',
             filterRepoIds: [],
             uiZoomLevel: 0,
-            worktreeCardProperties: [...DEFAULT_WORKTREE_CARD_PROPERTIES]
+            worktreeCardProperties: [...DEFAULT_WORKTREE_CARD_PROPERTIES],
+            dismissedUpdateVersion: null,
+            lastUpdateCheckAt: null
           })
           hydrateWorkspaceSession({
             activeRepoId: null,
@@ -383,16 +386,19 @@ function App(): React.JSX.Element {
       <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
         {showSidebar ? <Sidebar /> : null}
         <div className="relative flex flex-1 min-w-0 min-h-0 overflow-hidden">
-          <div
-            className={
-              activeView === 'settings' || !activeWorktreeId
-                ? 'hidden flex-1 min-w-0 min-h-0'
-                : 'flex flex-1 min-w-0 min-h-0'
-            }
-          >
-            <Terminal />
+          <div className="flex flex-1 min-w-0 min-h-0 flex-col">
+            <UpdateReminder />
+            <div
+              className={
+                activeView === 'settings' || !activeWorktreeId
+                  ? 'hidden flex-1 min-w-0 min-h-0'
+                  : 'flex flex-1 min-w-0 min-h-0'
+              }
+            >
+              <Terminal />
+            </div>
+            {activeView === 'settings' ? <Settings /> : !activeWorktreeId ? <Landing /> : null}
           </div>
-          {activeView === 'settings' ? <Settings /> : !activeWorktreeId ? <Landing /> : null}
         </div>
         {showSidebar && rightSidebarOpen ? <RightSidebar /> : null}
       </div>

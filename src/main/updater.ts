@@ -15,6 +15,9 @@ import {
   isGitHubReleaseTransitionFailure
 } from './updater-fallback'
 
+const AUTO_UPDATE_CHECK_INTERVAL_MS = 36 * 60 * 60 * 1000
+const AUTO_UPDATE_RETRY_INTERVAL_MS = 60 * 60 * 1000
+
 let mainWindowRef: BrowserWindow | null = null
 let currentStatus: UpdateStatus = { state: 'idle' }
 let userInitiatedCheck = false
@@ -24,6 +27,8 @@ let availableVersion: string | null = null
 let availableReleaseUrl: string | null = null
 let pendingCheckFailureKey: string | null = null
 let pendingCheckFailurePromise: Promise<void> | null = null
+let autoUpdateCheckTimer: ReturnType<typeof setTimeout> | null = null
+let persistLastUpdateCheckAt: ((timestamp: number) => void) | null = null
 /** Guards against the macOS `activate` handler re-opening the old version
  *  while Squirrel's ShipIt is replacing the .app bundle. */
 let quittingForUpdate = false
@@ -162,6 +167,10 @@ async function sendCheckFailureStatus(message: string, userInitiated?: boolean):
             )
             availableVersion = fallbackRelease.version
             availableReleaseUrl = fallbackRelease.releaseUrl
+            persistLastUpdateCheckAt?.(Date.now())
+            if (!userInitiated) {
+              scheduleAutomaticUpdateCheck(AUTO_UPDATE_CHECK_INTERVAL_MS)
+            }
             sendStatus({
               state: 'available',
               version: fallbackRelease.version,
@@ -183,6 +192,7 @@ async function sendCheckFailureStatus(message: string, userInitiated?: boolean):
         // appear to silently do nothing.
         if (userInitiated) {
           clearAvailableUpdateContext()
+          persistLastUpdateCheckAt?.(Date.now())
           sendStatus({ state: 'not-available', userInitiated: true })
           return
         }
@@ -190,11 +200,18 @@ async function sendCheckFailureStatus(message: string, userInitiated?: boolean):
 
       console.warn('[updater] benign check failure:', message)
       clearAvailableUpdateContext()
+      if (!userInitiated) {
+        scheduleAutomaticUpdateCheck(AUTO_UPDATE_RETRY_INTERVAL_MS)
+      }
       sendStatus({ state: 'idle' })
       return
     }
 
     clearAvailableUpdateContext()
+    persistLastUpdateCheckAt?.(Date.now())
+    if (!userInitiated) {
+      scheduleAutomaticUpdateCheck(AUTO_UPDATE_RETRY_INTERVAL_MS)
+    }
     sendErrorStatus(message, userInitiated)
   }
 
@@ -212,7 +229,24 @@ export function getUpdateStatus(): UpdateStatus {
   return currentStatus
 }
 
-export function checkForUpdates(): void {
+function scheduleAutomaticUpdateCheck(delayMs: number): void {
+  if (autoUpdateCheckTimer) {
+    clearTimeout(autoUpdateCheckTimer)
+  }
+  autoUpdateCheckTimer = setTimeout(() => {
+    // Why: Orca is often left running for days. A one-shot startup check means
+    // users can miss fresh releases entirely, so we always keep the next
+    // background attempt scheduled in the main process instead of tying checks
+    // to relaunches or renderer lifetime.
+    runBackgroundUpdateCheck()
+  }, delayMs)
+}
+
+function recordCompletedUpdateCheck(): void {
+  persistLastUpdateCheckAt?.(Date.now())
+}
+
+function runBackgroundUpdateCheck(): void {
   if (!app.isPackaged || is.dev) {
     sendStatus({ state: 'not-available' })
     return
@@ -222,6 +256,10 @@ export function checkForUpdates(): void {
   autoUpdater.checkForUpdates().catch((err) => {
     void sendCheckFailureStatus(String(err?.message ?? err))
   })
+}
+
+export function checkForUpdates(): void {
+  runBackgroundUpdateCheck()
 }
 
 /** Menu-triggered check — delegates feedback to renderer toasts via userInitiated flag */
@@ -262,10 +300,15 @@ export function quitAndInstall(): void {
 
 export function setupAutoUpdater(
   mainWindow: BrowserWindow,
-  opts?: { onBeforeQuit?: () => void }
+  opts?: {
+    getLastUpdateCheckAt?: () => number | null
+    onBeforeQuit?: () => void
+    setLastUpdateCheckAt?: (timestamp: number) => void
+  }
 ): void {
   mainWindowRef = mainWindow
   onBeforeQuitCleanup = opts?.onBeforeQuit ?? null
+  persistLastUpdateCheckAt = opts?.setLastUpdateCheckAt ?? null
 
   if (!app.isPackaged && !is.dev) {
     return
@@ -296,7 +339,9 @@ export function setupAutoUpdater(
     performQuitAndInstall,
     sendCheckFailureStatus,
     sendErrorStatus,
+    recordCompletedUpdateCheck,
     sendStatus,
+    scheduleAutomaticUpdateCheck,
     setAvailableReleaseUrl: (releaseUrl) => {
       availableReleaseUrl = releaseUrl
     },
@@ -308,10 +353,16 @@ export function setupAutoUpdater(
     }
   })
 
-  autoUpdater.checkForUpdates().catch((err) => {
-    // Startup check — don't bother the user, but log for diagnostics
-    console.error('[updater] startup check failed:', err?.message ?? err)
-  })
+  const lastUpdateCheckAt = opts?.getLastUpdateCheckAt?.() ?? null
+  const msSinceLastCheck =
+    lastUpdateCheckAt === null ? Number.POSITIVE_INFINITY : Date.now() - lastUpdateCheckAt
+
+  if (msSinceLastCheck >= AUTO_UPDATE_CHECK_INTERVAL_MS) {
+    runBackgroundUpdateCheck()
+    scheduleAutomaticUpdateCheck(AUTO_UPDATE_CHECK_INTERVAL_MS)
+  } else {
+    scheduleAutomaticUpdateCheck(AUTO_UPDATE_CHECK_INTERVAL_MS - msSinceLastCheck)
+  }
 }
 
 export function downloadUpdate(): void {
