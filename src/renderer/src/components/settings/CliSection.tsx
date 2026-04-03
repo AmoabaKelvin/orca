@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FolderOpen, RefreshCw } from 'lucide-react'
+import { Copy, FolderOpen, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CliInstallStatus } from '../../../../shared/cli-install-types'
 import { Button } from '../ui/button'
@@ -17,6 +17,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/
 type CliSectionProps = {
   currentPlatform: string
 }
+
+const ORCA_SKILL_INSTALL_COMMAND = 'npx skills add orca-cli'
 
 function getRevealLabel(platform: string): string {
   if (platform === 'darwin') {
@@ -65,6 +67,8 @@ export function CliSection({ currentPlatform }: CliSectionProps): React.JSX.Elem
   const isEnabled = status?.state === 'installed'
   const isSupported = status?.supported ?? false
   const revealLabel = getRevealLabel(currentPlatform)
+  const canRevealCommandPath =
+    status?.commandPath != null && ['installed', 'stale', 'conflict'].includes(status.state)
 
   const handleInstall = async (): Promise<void> => {
     setBusyAction('install')
@@ -94,13 +98,22 @@ export function CliSection({ currentPlatform }: CliSectionProps): React.JSX.Elem
     }
   }
 
+  const handleCopySkillInstallCommand = async (): Promise<void> => {
+    try {
+      await window.api.ui.writeClipboardText(ORCA_SKILL_INSTALL_COMMAND)
+      toast.success('Copied Orca skill install command.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to copy install command.')
+    }
+  }
+
   return (
     <section className="space-y-4">
       <div className="space-y-1">
-        <h2 className="text-sm font-semibold">Command Line Interface</h2>
+        <h2 className="text-sm font-semibold">Orca CLI</h2>
         <p className="text-xs text-muted-foreground">
-          Register <code className="rounded bg-muted px-1 py-0.5 text-[11px]">orca</code> in PATH so
-          Terminal commands connect to the Orca app.
+          Use Orca from your terminal to open the app, manage worktrees, and interact with Orca
+          terminals.
         </p>
       </div>
 
@@ -180,13 +193,49 @@ export function CliSection({ currentPlatform }: CliSectionProps): React.JSX.Elem
               variant="ghost"
               size="sm"
               onClick={() => void window.api.shell.openPath(status.commandPath as string)}
-              disabled={loading}
+              disabled={loading || !canRevealCommandPath}
               className="gap-2"
             >
               <FolderOpen className="size-3.5" />
               {revealLabel}
             </Button>
           ) : null}
+        </div>
+
+        <div className="border-t border-border/60 pt-3">
+          <div className="space-y-0.5">
+            <Label>Agent skill</Label>
+            <p className="text-xs text-muted-foreground">
+              Install the Orca skill so agents know to use the{' '}
+              <code className="rounded bg-muted px-1 py-0.5 text-[11px]">orca</code> CLI.
+            </p>
+          </div>
+
+          <div className="mt-3 space-y-1">
+            <p className="text-xs text-muted-foreground">Install command</p>
+            <div className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border/60 bg-background/60 px-3 py-2">
+              <code className="overflow-x-auto whitespace-nowrap text-[11px] text-muted-foreground">
+                {ORCA_SKILL_INSTALL_COMMAND}
+              </code>
+              <TooltipProvider delayDuration={250}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => void handleCopySkillInstallCommand()}
+                      aria-label="Copy skill install command"
+                    >
+                      <Copy className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" sideOffset={6}>
+                    Copy
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
         </div>
       </div>
 

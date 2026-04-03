@@ -27,19 +27,163 @@ type ParsedArgs = {
   flags: Map<string, string | boolean>
 }
 
+type CommandSpec = {
+  path: string[]
+  summary: string
+  usage: string
+  allowedFlags: string[]
+  examples?: string[]
+  notes?: string[]
+}
+
 const DEFAULT_TERMINAL_WAIT_RPC_TIMEOUT_MS = 5 * 60 * 1000
+const GLOBAL_FLAGS = ['help', 'json']
+const COMMAND_SPECS: CommandSpec[] = [
+  {
+    path: ['open'],
+    summary: 'Launch Orca and wait for the runtime to be reachable',
+    usage: 'orca open [--json]',
+    allowedFlags: [...GLOBAL_FLAGS],
+    examples: ['orca open', 'orca open --json']
+  },
+  {
+    path: ['status'],
+    summary: 'Show app/runtime/graph readiness',
+    usage: 'orca status [--json]',
+    allowedFlags: [...GLOBAL_FLAGS],
+    examples: ['orca status', 'orca status --json']
+  },
+  {
+    path: ['repo', 'list'],
+    summary: 'List repos registered in Orca',
+    usage: 'orca repo list [--json]',
+    allowedFlags: [...GLOBAL_FLAGS]
+  },
+  {
+    path: ['repo', 'add'],
+    summary: 'Add a repo to Orca by filesystem path',
+    usage: 'orca repo add --path <path> [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'path']
+  },
+  {
+    path: ['repo', 'show'],
+    summary: 'Show one registered repo',
+    usage: 'orca repo show --repo <selector> [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'repo']
+  },
+  {
+    path: ['repo', 'set-base-ref'],
+    summary: "Set the repo's default base ref for future worktrees",
+    usage: 'orca repo set-base-ref --repo <selector> --ref <ref> [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'repo', 'ref']
+  },
+  {
+    path: ['repo', 'search-refs'],
+    summary: 'Search branch/tag refs within a repo',
+    usage: 'orca repo search-refs --repo <selector> --query <text> [--limit <n>] [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'repo', 'query', 'limit']
+  },
+  {
+    path: ['worktree', 'list'],
+    summary: 'List Orca-managed worktrees',
+    usage: 'orca worktree list [--repo <selector>] [--limit <n>] [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'repo', 'limit']
+  },
+  {
+    path: ['worktree', 'show'],
+    summary: 'Show one worktree',
+    usage: 'orca worktree show --worktree <selector> [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'worktree']
+  },
+  {
+    path: ['worktree', 'create'],
+    summary: 'Create a new Orca-managed worktree',
+    usage:
+      'orca worktree create --repo <selector> --name <name> [--base-branch <ref>] [--issue <number>] [--comment <text>] [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'repo', 'name', 'base-branch', 'issue', 'comment'],
+    notes: ['By default this matches the Orca UI flow and activates the new worktree in the app.']
+  },
+  {
+    path: ['worktree', 'set'],
+    summary: 'Update Orca metadata for a worktree',
+    usage:
+      'orca worktree set --worktree <selector> [--display-name <name>] [--issue <number|null>] [--comment <text>] [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'worktree', 'display-name', 'issue', 'comment']
+  },
+  {
+    path: ['worktree', 'rm'],
+    summary: 'Remove a worktree from Orca and git',
+    usage: 'orca worktree rm --worktree <selector> [--force] [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'worktree', 'force']
+  },
+  {
+    path: ['worktree', 'ps'],
+    summary: 'Show a compact orchestration summary across worktrees',
+    usage: 'orca worktree ps [--limit <n>] [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'limit']
+  },
+  {
+    path: ['terminal', 'list'],
+    summary: 'List live Orca-managed terminals',
+    usage: 'orca terminal list [--worktree <selector>] [--limit <n>] [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'worktree', 'limit']
+  },
+  {
+    path: ['terminal', 'show'],
+    summary: 'Show terminal metadata and preview',
+    usage: 'orca terminal show --terminal <handle> [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'terminal']
+  },
+  {
+    path: ['terminal', 'read'],
+    summary: 'Read bounded terminal output',
+    usage: 'orca terminal read --terminal <handle> [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'terminal']
+  },
+  {
+    path: ['terminal', 'send'],
+    summary: 'Send input to a live terminal',
+    usage:
+      'orca terminal send --terminal <handle> [--text <text>] [--enter] [--interrupt] [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'terminal', 'text', 'enter', 'interrupt']
+  },
+  {
+    path: ['terminal', 'wait'],
+    summary: 'Wait for a terminal condition',
+    usage: 'orca terminal wait --terminal <handle> --for exit [--timeout-ms <ms>] [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'terminal', 'for', 'timeout-ms']
+  },
+  {
+    path: ['terminal', 'stop'],
+    summary: 'Stop terminals for a worktree',
+    usage: 'orca terminal stop --worktree <selector> [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'worktree']
+  }
+]
 
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2))
-  if (parsed.flags.has('help') || parsed.commandPath.length === 0) {
-    printHelp()
+  const helpPath = resolveHelpPath(parsed)
+  if (helpPath !== null) {
+    printHelp(helpPath)
+    if (helpPath.length > 0 && !findCommandSpec(helpPath) && !isCommandGroup(helpPath)) {
+      process.exitCode = 1
+    }
     return
   }
-
-  const client = new RuntimeClient()
+  if (parsed.commandPath.length === 0) {
+    printHelp([])
+    return
+  }
   const json = parsed.flags.has('json')
 
   try {
+    // Why: CLI syntax and flag errors should be reported before any runtime
+    // lookup so users do not get misleading "Orca is not running" failures for
+    // simple command typos or unsupported flags.
+    validateCommandAndFlags(parsed)
+
+    const client = new RuntimeClient()
     const { commandPath } = parsed
 
     if (matches(commandPath, ['open'])) {
@@ -248,6 +392,43 @@ function parseArgs(argv: string[]): ParsedArgs {
   }
 
   return { commandPath, flags }
+}
+
+function resolveHelpPath(parsed: ParsedArgs): string[] | null {
+  if (parsed.commandPath[0] === 'help') {
+    return parsed.commandPath.slice(1)
+  }
+  if (parsed.flags.has('help')) {
+    return parsed.commandPath
+  }
+  return null
+}
+
+function validateCommandAndFlags(parsed: ParsedArgs): void {
+  const spec = findCommandSpec(parsed.commandPath)
+  if (!spec) {
+    throw new RuntimeClientError(
+      'invalid_argument',
+      `Unknown command: ${parsed.commandPath.join(' ')}`
+    )
+  }
+
+  for (const flag of parsed.flags.keys()) {
+    if (!spec.allowedFlags.includes(flag)) {
+      throw new RuntimeClientError(
+        'invalid_argument',
+        `Unknown flag --${flag} for command: ${spec.path.join(' ')}`
+      )
+    }
+  }
+}
+
+function findCommandSpec(commandPath: string[]): CommandSpec | undefined {
+  return COMMAND_SPECS.find((spec) => matches(spec.path, commandPath))
+}
+
+function isCommandGroup(commandPath: string[]): boolean {
+  return commandPath.length === 1 && ['repo', 'worktree', 'terminal'].includes(commandPath[0])
 }
 
 function getRequiredStringFlag(flags: Map<string, string | boolean>, name: string): string {
@@ -470,7 +651,22 @@ function formatWorktreeShow(result: { worktree: RuntimeWorktreeRecord }): string
     .join('\n')
 }
 
-function printHelp(): void {
+function printHelp(commandPath: string[] = []): void {
+  const exactSpec = findCommandSpec(commandPath)
+  if (exactSpec) {
+    console.log(formatCommandHelp(exactSpec))
+    return
+  }
+
+  if (isCommandGroup(commandPath)) {
+    console.log(formatGroupHelp(commandPath[0]))
+    return
+  }
+
+  if (commandPath.length > 0) {
+    console.log(`Unknown command: ${commandPath.join(' ')}\n`)
+  }
+
   console.log(`orca
 
 Usage: orca <command> [options]
@@ -555,6 +751,71 @@ Examples:
   $ orca terminal list --worktree path:/Users/me/orca/workspaces/orca/cli-test-1 --json
   $ orca terminal send --terminal term_123 --text "hi" --enter
   $ orca terminal wait --terminal term_123 --for exit --timeout-ms 60000 --json`)
+}
+
+function formatCommandHelp(spec: CommandSpec): string {
+  const lines = [`orca ${spec.path.join(' ')}`, '', `Usage: ${spec.usage}`, '', spec.summary]
+
+  if (spec.allowedFlags.length > 0) {
+    lines.push('', 'Options:')
+    for (const flag of spec.allowedFlags) {
+      lines.push(`  ${formatFlagHelp(flag)}`)
+    }
+  }
+
+  if (spec.notes && spec.notes.length > 0) {
+    lines.push('', 'Notes:')
+    for (const note of spec.notes) {
+      lines.push(`  ${note}`)
+    }
+  }
+
+  if (spec.examples && spec.examples.length > 0) {
+    lines.push('', 'Examples:')
+    for (const example of spec.examples) {
+      lines.push(`  $ ${example}`)
+    }
+  }
+
+  return lines.join('\n')
+}
+
+function formatGroupHelp(group: string): string {
+  const specs = COMMAND_SPECS.filter((spec) => spec.path[0] === group)
+  const lines = [`orca ${group}`, '', `Usage: orca ${group} <command> [options]`, '', 'Commands:']
+  for (const spec of specs) {
+    lines.push(`  ${spec.path.slice(1).join(' ').padEnd(18)} ${spec.summary}`)
+  }
+  lines.push('', `Run \`orca ${group} <command> --help\` for command-specific usage.`)
+  return lines.join('\n')
+}
+
+function formatFlagHelp(flag: string): string {
+  const helpByFlag: Record<string, string> = {
+    'base-branch': '--base-branch <ref>    Base branch/ref to create the worktree from',
+    comment: '--comment <text>       Comment stored in Orca metadata',
+    'display-name': '--display-name <name>  Override the Orca display name',
+    enter: '--enter                Append Enter after sending text',
+    force: '--force                Force worktree removal when supported',
+    for: '--for exit             Wait condition to satisfy',
+    help: '--help                 Show this help message',
+    interrupt: '--interrupt            Send as an interrupt-style input when supported',
+    issue: '--issue <number|null>  Linked GitHub issue number',
+    json: '--json                 Emit machine-readable JSON',
+    limit: '--limit <n>            Maximum number of rows to return',
+    name: '--name <name>          Name for the new worktree',
+    path: '--path <path>          Filesystem path to the repo',
+    query: '--query <text>        Search text for matching refs',
+    ref: '--ref <ref>            Base ref to persist for the repo',
+    repo: '--repo <selector>      Repo selector such as id:<id>, name:<name>, or path:<path>',
+    terminal: '--terminal <handle>  Runtime-issued terminal handle',
+    text: '--text <text>          Text to send to the terminal',
+    'timeout-ms': '--timeout-ms <ms>     Maximum wait time before timing out',
+    worktree:
+      '--worktree <selector>  Worktree selector such as id:<id>, branch:<branch>, issue:<number>, or path:<path>'
+  }
+
+  return helpByFlag[flag] ?? `--${flag}`
 }
 
 void main()
