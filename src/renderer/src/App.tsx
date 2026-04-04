@@ -14,7 +14,6 @@ import Landing from './components/Landing'
 import Settings from './components/settings/Settings'
 import RightSidebar from './components/right-sidebar'
 import QuickOpen from './components/QuickOpen'
-import UpdateReminder from './components/UpdateReminder'
 import { useGitStatusPolling } from './components/right-sidebar/useGitStatusPolling'
 import {
   setRuntimeGraphStoreStateGetter,
@@ -436,7 +435,6 @@ function App(): React.JSX.Element {
         {showSidebar && rightSidebarOpen ? <RightSidebar /> : null}
       </div>
       <QuickOpen />
-      <UpdateReminder />
       <Toaster closeButton toastOptions={{ className: 'font-sans text-sm' }} />
     </div>
   )
