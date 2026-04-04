@@ -1,18 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { FilePlus, FolderPlus, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { detectLanguage } from '@/lib/language-detect'
 import { dirname, normalizeRelativePath } from '@/lib/path'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu'
 import { FileDeleteDialog } from './FileDeleteDialog'
+import { FileExplorerBgMenu } from './FileExplorerBgMenu'
 import { FileExplorerRow, InlineInputRow } from './FileExplorerRow'
 import type { TreeNode } from './file-explorer-types'
 import { splitPathSegments } from './path-tree'
@@ -24,6 +19,9 @@ import { useFileExplorerKeys } from './useFileExplorerKeys'
 import { useActiveWorktreePath } from './useActiveWorktreePath'
 import { useFileExplorerDragDrop } from './useFileExplorerDragDrop'
 import { useFileExplorerTree } from './useFileExplorerTree'
+
+const isMac = navigator.userAgent.includes('Mac')
+const isWindows = navigator.userAgent.includes('Windows')
 
 export default function FileExplorer(): React.JSX.Element {
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
@@ -64,8 +62,6 @@ export default function FileExplorer(): React.JSX.Element {
   const [bgMenuPoint, setBgMenuPoint] = useState({ x: 0, y: 0 })
   const scrollRef = useRef<HTMLDivElement>(null)
   const flashTimeoutRef = useRef<number | null>(null)
-  const isMac = useMemo(() => navigator.userAgent.includes('Mac'), [])
-  const isWindows = useMemo(() => navigator.userAgent.includes('Windows'), [])
 
   const clearFlashTimeout = useCallback(() => {
     if (flashTimeoutRef.current !== null) {
@@ -73,7 +69,6 @@ export default function FileExplorer(): React.JSX.Element {
       flashTimeoutRef.current = null
     }
   }, [])
-
   const entries = useMemo(
     () => (activeWorktreeId ? (gitStatusByWorktree[activeWorktreeId] ?? []) : []),
     [activeWorktreeId, gitStatusByWorktree]
@@ -127,9 +122,7 @@ export default function FileExplorer(): React.JSX.Element {
     setSelectedPath(null)
     resetAndLoad()
   }, [worktreePath]) // eslint-disable-line react-hooks/exhaustive-deps
-
   useEffect(() => clearFlashTimeout, [clearFlashTimeout])
-
   useEffect(() => {
     for (const dirPath of expanded) {
       if (!dirCache[dirPath]?.children.length && !dirCache[dirPath]?.loading) {
@@ -140,7 +133,6 @@ export default function FileExplorer(): React.JSX.Element {
       }
     }
   }, [expanded]) // eslint-disable-line react-hooks/exhaustive-deps
-
   const {
     inlineInput,
     inlineInputIndex,
@@ -193,12 +185,15 @@ export default function FileExplorer(): React.JSX.Element {
     virtualizer
   })
 
+  // Scroll the inline input into view so the virtualizer renders it.
+  // Without this, an input created at the end of a long tree (e.g. from
+  // the background context menu) can fall outside the visible + overscan
+  // range and never appear.
   useEffect(() => {
     if (inlineInputIndex >= 0) {
       virtualizer.scrollToIndex(inlineInputIndex, { align: 'auto' })
     }
   }, [inlineInputIndex, virtualizer])
-
   const selectedNode = selectedPath ? (rowsByPath.get(selectedPath) ?? null) : null
   useFileExplorerKeys({
     containerRef: scrollRef,
@@ -208,7 +203,6 @@ export default function FileExplorer(): React.JSX.Element {
     startRename,
     requestDelete
   })
-
   const handleClick = useCallback(
     (node: TreeNode) => {
       if (!activeWorktreeId) {
@@ -216,8 +210,7 @@ export default function FileExplorer(): React.JSX.Element {
       }
       setSelectedPath(node.path)
       if (node.isDirectory) {
-        toggleDir(activeWorktreeId, node.path)
-        return
+        return toggleDir(activeWorktreeId, node.path)
       }
       openFile({
         filePath: node.path,
@@ -256,25 +249,16 @@ export default function FileExplorer(): React.JSX.Element {
     container.scrollTop += e.deltaY
   }, [])
 
-  if (!worktreePath) {
+  const isEmptyTree = worktreePath && flatRows.length === 0 && !inlineInput
+  const emptyLabel = !worktreePath
+    ? 'Select a worktree to browse files'
+    : isEmptyTree && !(rootCache?.loading ?? true)
+      ? 'No files in this worktree'
+      : null
+  if (!worktreePath || emptyLabel || isEmptyTree) {
     return (
       <div className="flex h-full items-center justify-center text-[11px] text-muted-foreground px-4 text-center">
-        Select a worktree to browse files
-      </div>
-    )
-  }
-
-  if (flatRows.length === 0 && !inlineInput) {
-    if (rootCache?.loading ?? true) {
-      return (
-        <div className="flex items-center justify-center h-full text-[11px] text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" />
-        </div>
-      )
-    }
-    return (
-      <div className="flex h-full items-center justify-center text-[11px] text-muted-foreground px-4 text-center">
-        No files in this worktree
+        {emptyLabel ?? <Loader2 className="size-4 animate-spin" />}
       </div>
     )
   }
@@ -394,31 +378,13 @@ export default function FileExplorer(): React.JSX.Element {
         </div>
       </ScrollArea>
 
-      <DropdownMenu open={bgMenuOpen} onOpenChange={setBgMenuOpen} modal={false}>
-        <DropdownMenuTrigger asChild>
-          <button
-            aria-hidden
-            tabIndex={-1}
-            className="pointer-events-none fixed size-px opacity-0"
-            style={{ left: bgMenuPoint.x, top: bgMenuPoint.y }}
-          />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          className="w-48"
-          sideOffset={0}
-          align="start"
-          onCloseAutoFocus={(e) => e.preventDefault()}
-        >
-          <DropdownMenuItem onSelect={() => startNew('file', worktreePath, 0)}>
-            <FilePlus />
-            New File
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => startNew('folder', worktreePath, 0)}>
-            <FolderPlus />
-            New Folder
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <FileExplorerBgMenu
+        open={bgMenuOpen}
+        onOpenChange={setBgMenuOpen}
+        point={bgMenuPoint}
+        worktreePath={worktreePath}
+        startNew={startNew}
+      />
 
       <FileDeleteDialog
         pendingDelete={pendingDelete}

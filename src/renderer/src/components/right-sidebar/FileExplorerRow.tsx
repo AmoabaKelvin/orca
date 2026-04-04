@@ -22,9 +22,8 @@ import {
 import { cn } from '@/lib/utils'
 import type { GitFileStatus } from '../../../../shared/types'
 import { STATUS_LABELS } from './status-display'
+import { ORCA_PATH_MIME } from './file-explorer-types'
 import type { TreeNode } from './file-explorer-types'
-
-const ORCA_PATH_MIME = 'text/x-orca-file-path'
 
 const isMac = navigator.userAgent.includes('Mac')
 
@@ -232,6 +231,10 @@ export function FileExplorerRow({
       expandTimerRef.current = null
     }
   }, [])
+
+  // Virtualized rows can unmount mid-drag; cancel the pending expand timer
+  // so it doesn't fire on a stale closure after the row is gone.
+  useEffect(() => () => clearExpandTimer(), [clearExpandTimer])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (!e.dataTransfer.types.includes(ORCA_PATH_MIME)) {

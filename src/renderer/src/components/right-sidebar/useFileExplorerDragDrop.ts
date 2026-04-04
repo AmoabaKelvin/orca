@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { useAppStore } from '@/store'
 import { basename, dirname, joinPath } from '@/lib/path'
 import { detectLanguage } from '@/lib/language-detect'
+import { ORCA_PATH_MIME } from './file-explorer-types'
 
 function extractIpcErrorMessage(err: unknown, fallback: string): string {
   if (!(err instanceof Error)) {
@@ -40,8 +41,6 @@ type UseFileExplorerDragDropResult = {
     onDrop: (e: React.DragEvent) => void
   }
 }
-
-const ORCA_PATH_MIME = 'text/x-orca-file-path'
 
 // Native drag auto-scroll uses a very thin band; a wider zone matches IDE-style
 // tree dragging so users need not hug the scrollbar.
