@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bell, Keyboard, Palette, SlidersHorizontal, SquareTerminal } from 'lucide-react'
 import type { OrcaHooks } from '../../../../shared/types'
@@ -14,7 +15,13 @@ import { SettingsSidebar } from './SettingsSidebar'
 import { SettingsSection } from './SettingsSection'
 import { matchesSettingsSearch, type SettingsSearchEntry } from './settings-search'
 
-type SettingsNavTarget = 'general' | 'appearance' | 'terminal' | 'notifications' | 'shortcuts' | 'repo'
+type SettingsNavTarget =
+  | 'general'
+  | 'appearance'
+  | 'terminal'
+  | 'notifications'
+  | 'shortcuts'
+  | 'repo'
 
 type SettingsNavSection = {
   id: string
