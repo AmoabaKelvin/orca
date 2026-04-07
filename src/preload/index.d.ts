@@ -237,8 +237,6 @@ type Api = {
   cli: CliApi
   preflight: PreflightApi
   notifications: NotificationsApi
-  cli: CliApi
-  preflight: PreflightApi
   shell: ShellApi
   hooks: HooksApi
   cache: CacheApi

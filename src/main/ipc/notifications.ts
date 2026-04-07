@@ -34,7 +34,9 @@ export function registerNotificationHandlers(store: Store): void {
         return { delivered: false }
       }
 
-      const dedupeKey = `${args.source}:${args.worktreeId ?? args.worktreeLabel ?? 'global'}`
+      // Dedupe by worktree, not by source — an agent finishing and a terminal bell
+      // often fire within the same data chunk so only the first one should surface.
+      const dedupeKey = args.worktreeId ?? args.worktreeLabel ?? 'global'
       const now = Date.now()
       const lastSentAt = recentNotifications.get(dedupeKey) ?? 0
       if (now - lastSentAt < NOTIFICATION_COOLDOWN_MS) {

@@ -139,7 +139,7 @@ describe('registerNotificationHandlers', () => {
     expect(notificationShowMock).toHaveBeenCalledTimes(1)
   })
 
-  it('deduplicates repeated notifications for the same worktree and source', () => {
+  it('deduplicates repeated notifications for the same worktree', () => {
     registerNotificationHandlers({
       getSettings: () => ({
         notifications: {
@@ -165,5 +165,30 @@ describe('registerNotificationHandlers', () => {
       delivered: true
     })
     expect(notificationShowMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('deduplicates agent-task-complete and terminal-bell for the same worktree', () => {
+    registerNotificationHandlers({
+      getSettings: () => ({
+        notifications: {
+          enabled: true,
+          agentTaskComplete: true,
+          terminalBell: true,
+          suppressWhenFocused: false
+        }
+      })
+    } as never)
+
+    const handler = handleMock.mock.calls[0][1] as (event: unknown, args: unknown) => unknown
+
+    // Agent fires first — should deliver
+    expect(handler({}, { source: 'agent-task-complete', worktreeId: 'repo::wt1' })).toEqual({
+      delivered: true
+    })
+    // Bell fires immediately after for the same worktree — should be suppressed
+    expect(handler({}, { source: 'terminal-bell', worktreeId: 'repo::wt1' })).toEqual({
+      delivered: false
+    })
+    expect(notificationShowMock).toHaveBeenCalledTimes(1)
   })
 })

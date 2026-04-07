@@ -55,98 +55,68 @@ export function NotificationsPane({
   }
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-4">
-        <div className="space-y-1">
-          <h2 className="text-sm font-semibold">Desktop Notifications</h2>
-          <p className="text-xs text-muted-foreground">
-            Send native system notifications from Orca on macOS, Linux, and Windows.
-          </p>
-        </div>
-
-        <SettingToggle
-          label="Enable Notifications"
-          description="Master switch for all Orca desktop notifications."
-          checked={notificationSettings.enabled}
-          onToggle={() => updateNotificationSettings({ enabled: !notificationSettings.enabled })}
-        />
-
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!notificationSettings.enabled}
-            onClick={() => void window.api.notifications.dispatch({ source: 'test' })}
-            className="gap-2"
-          >
-            <BellRing className="size-3.5" />
-            Send Test Notification
-          </Button>
-          <p className="text-xs text-muted-foreground">
-            Uses the same native delivery path as real Orca notifications.
-          </p>
-        </div>
-      </section>
+    <div className="space-y-1">
+      <SettingToggle
+        label="Enable Notifications"
+        description="Native system notifications for background events."
+        checked={notificationSettings.enabled}
+        onToggle={() => updateNotificationSettings({ enabled: !notificationSettings.enabled })}
+      />
 
       <Separator />
 
-      <section className="space-y-4">
-        <div className="space-y-1">
-          <h2 className="text-sm font-semibold">Triggers</h2>
-          <p className="text-xs text-muted-foreground">
-            Choose which background events should surface outside the app.
-          </p>
-        </div>
+      <SettingToggle
+        icon={<Bot className="size-4" />}
+        label="Agent Task Complete"
+        description="A coding agent finishes and becomes idle."
+        checked={notificationSettings.agentTaskComplete}
+        disabled={!notificationSettings.enabled}
+        onToggle={() =>
+          updateNotificationSettings({
+            agentTaskComplete: !notificationSettings.agentTaskComplete
+          })
+        }
+      />
 
-        <SettingToggle
-          icon={<Bot className="size-4" />}
-          label="Agent Task Complete"
-          description="Notify when a coding agent transitions from working to idle."
-          checked={notificationSettings.agentTaskComplete}
-          disabled={!notificationSettings.enabled}
-          onToggle={() =>
-            updateNotificationSettings({
-              agentTaskComplete: !notificationSettings.agentTaskComplete
-            })
-          }
-        />
-
-        <SettingToggle
-          icon={<Siren className="size-4" />}
-          label="Terminal Bell"
-          description="Notify when a background terminal emits a bell character."
-          checked={notificationSettings.terminalBell}
-          disabled={!notificationSettings.enabled}
-          onToggle={() =>
-            updateNotificationSettings({
-              terminalBell: !notificationSettings.terminalBell
-            })
-          }
-        />
-      </section>
+      <SettingToggle
+        icon={<Siren className="size-4" />}
+        label="Terminal Bell"
+        description="A background terminal emits a bell character."
+        checked={notificationSettings.terminalBell}
+        disabled={!notificationSettings.enabled}
+        onToggle={() =>
+          updateNotificationSettings({
+            terminalBell: !notificationSettings.terminalBell
+          })
+        }
+      />
 
       <Separator />
 
-      <section className="space-y-4">
-        <div className="space-y-1">
-          <h2 className="text-sm font-semibold">Filtering</h2>
-          <p className="text-xs text-muted-foreground">
-            Reduce noise when you are already looking at the relevant worktree.
-          </p>
-        </div>
+      <SettingToggle
+        label="Suppress While Focused"
+        description="Skip notifications when the triggering worktree is already visible."
+        checked={notificationSettings.suppressWhenFocused}
+        disabled={!notificationSettings.enabled}
+        onToggle={() =>
+          updateNotificationSettings({
+            suppressWhenFocused: !notificationSettings.suppressWhenFocused
+          })
+        }
+      />
 
-        <SettingToggle
-          label="Suppress While Focused"
-          description="Do not notify when Orca is focused and the triggering worktree is already active."
-          checked={notificationSettings.suppressWhenFocused}
+      <div className="px-1 pt-3">
+        <Button
+          variant="outline"
+          size="sm"
           disabled={!notificationSettings.enabled}
-          onToggle={() =>
-            updateNotificationSettings({
-              suppressWhenFocused: !notificationSettings.suppressWhenFocused
-            })
-          }
-        />
-      </section>
+          onClick={() => void window.api.notifications.dispatch({ source: 'test' })}
+          className="gap-2"
+        >
+          <BellRing className="size-3.5" />
+          Send Test Notification
+        </Button>
+      </div>
     </div>
   )
 }
@@ -180,6 +150,7 @@ function SettingToggle({
       <button
         role="switch"
         aria-checked={checked}
+        aria-label={label}
         disabled={disabled}
         onClick={onToggle}
         className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border border-transparent transition-colors ${
