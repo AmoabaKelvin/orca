@@ -32,7 +32,6 @@ export default function Terminal(): React.JSX.Element | null {
   const createTab = useAppStore((s) => s.createTab)
   const closeTab = useAppStore((s) => s.closeTab)
   const setActiveTab = useAppStore((s) => s.setActiveTab)
-  const reorderTabs = useAppStore((s) => s.reorderTabs)
   const setActiveWorktree = useAppStore((s) => s.setActiveWorktree)
   const setTabCustomTitle = useAppStore((s) => s.setTabCustomTitle)
   const setTabColor = useAppStore((s) => s.setTabColor)
@@ -49,6 +48,9 @@ export default function Terminal(): React.JSX.Element | null {
   const pinFile = useAppStore((s) => s.pinFile)
 
   const markFileDirty = useAppStore((s) => s.markFileDirty)
+  const setTabBarOrder = useAppStore((s) => s.setTabBarOrder)
+  const tabBarOrderByWorktree = useAppStore((s) => s.tabBarOrderByWorktree)
+  const tabBarOrder = activeWorktreeId ? tabBarOrderByWorktree[activeWorktreeId] : undefined
 
   const tabs = activeWorktreeId ? (tabsByWorktree[activeWorktreeId] ?? []) : []
   const allWorktrees = Object.values(worktreesByRepo).flat()
@@ -149,7 +151,11 @@ export default function Terminal(): React.JSX.Element | null {
       return
     }
 
-    if (tabs.length > 0) {
+    // Why: skip auto-creation if terminal tabs already exist, or if editor files
+    // are open for this worktree. The user may have intentionally closed all
+    // terminal tabs while keeping editors open — auto-spawning a terminal would
+    // be disruptive.
+    if (tabs.length > 0 || worktreeFiles.length > 0) {
       if (initialTabCreationGuardRef.current === activeWorktreeId) {
         initialTabCreationGuardRef.current = null
       }
@@ -163,16 +169,38 @@ export default function Terminal(): React.JSX.Element | null {
     }
     initialTabCreationGuardRef.current = activeWorktreeId
     createTab(activeWorktreeId)
-  }, [workspaceSessionReady, activeWorktreeId, tabs.length, createTab])
-
-  const totalTabs = tabs.length + worktreeFiles.length
+  }, [workspaceSessionReady, activeWorktreeId, tabs.length, worktreeFiles.length, createTab])
 
   const handleNewTab = useCallback(() => {
     if (!activeWorktreeId) {
       return
     }
-    createTab(activeWorktreeId)
-  }, [activeWorktreeId, createTab])
+    const newTab = createTab(activeWorktreeId)
+    setActiveTabType('terminal')
+    // Why: persist the tab bar order with the new terminal at the end of the
+    // current visual order. Without this, reconcileOrder falls back to
+    // terminals-first when tabBarOrderByWorktree is unset, causing a new
+    // terminal to jump to index 0 instead of appending after editor tabs.
+    const state = useAppStore.getState()
+    const currentTerminals = state.tabsByWorktree[activeWorktreeId] ?? []
+    const currentEditors = state.openFiles.filter((f) => f.worktreeId === activeWorktreeId)
+    const stored = state.tabBarOrderByWorktree[activeWorktreeId]
+    const termIds = currentTerminals.map((t) => t.id)
+    const editorIds = currentEditors.map((f) => f.id)
+    const validIds = new Set([...termIds, ...editorIds])
+    const base = (stored ?? []).filter((id) => validIds.has(id))
+    const inBase = new Set(base)
+    for (const id of [...termIds, ...editorIds]) {
+      if (!inBase.has(id)) {
+        base.push(id)
+        inBase.add(id)
+      }
+    }
+    // The new tab is already in base via termIds; move it to the end
+    const order = base.filter((id) => id !== newTab.id)
+    order.push(newTab.id)
+    setTabBarOrder(activeWorktreeId, order)
+  }, [activeWorktreeId, createTab, setActiveTabType, setTabBarOrder])
 
   const handleCloseTab = useCallback(
     (tabId: string) => {
@@ -188,11 +216,18 @@ export default function Terminal(): React.JSX.Element | null {
 
       const currentTabs = state.tabsByWorktree[owningWorktreeId] ?? []
       if (currentTabs.length <= 1) {
-        // Last tab in this worktree. Only clear the active worktree if this
-        // tab belongs to the currently focused worktree.
         closeTab(tabId)
         if (state.activeWorktreeId === owningWorktreeId) {
-          setActiveWorktree(null)
+          // Why: only deactivate the worktree when no tabs of any kind remain.
+          // Editor files are a separate tab type; closing the last terminal tab
+          // should switch to the editor view instead of tearing down the workspace.
+          const worktreeFile = state.openFiles.find((f) => f.worktreeId === owningWorktreeId)
+          if (worktreeFile) {
+            setActiveFile(worktreeFile.id)
+            setActiveTabType('editor')
+          } else {
+            setActiveWorktree(null)
+          }
         }
         return
       }
@@ -207,7 +242,7 @@ export default function Terminal(): React.JSX.Element | null {
       }
       closeTab(tabId)
     },
-    [closeTab, setActiveTab, setActiveWorktree]
+    [closeTab, setActiveTab, setActiveFile, setActiveTabType, setActiveWorktree]
   )
 
   const handlePtyExit = useCallback(
@@ -394,7 +429,7 @@ export default function Terminal(): React.JSX.Element | null {
       {/* Animated tab bar container using CSS grid for smooth height animation */}
       <div
         className="grid transition-[grid-template-rows] duration-200 ease-in-out"
-        style={{ gridTemplateRows: activeWorktreeId && totalTabs >= 2 ? '1fr' : '0fr' }}
+        style={{ gridTemplateRows: activeWorktreeId ? '1fr' : '0fr' }}
       >
         <div className="overflow-hidden">
           {activeWorktreeId && (
@@ -406,7 +441,7 @@ export default function Terminal(): React.JSX.Element | null {
               onClose={handleCloseTab}
               onCloseOthers={handleCloseOthers}
               onCloseToRight={handleCloseTabsToRight}
-              onReorder={reorderTabs}
+              onReorder={setTabBarOrder}
               onNewTab={handleNewTab}
               onSetCustomTitle={setTabCustomTitle}
               onSetTabColor={setTabColor}
@@ -422,6 +457,7 @@ export default function Terminal(): React.JSX.Element | null {
               onCloseFile={handleCloseFile}
               onCloseAllFiles={closeAllFiles}
               onPinFile={pinFile}
+              tabBarOrder={tabBarOrder}
             />
           )}
         </div>

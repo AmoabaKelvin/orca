@@ -55,7 +55,31 @@ export type WorktreeMeta = {
   lastActivityAt: number
 }
 
-// ─── Terminal Tab ────────────────────────────────────────────────────
+// ─── Unified Tab ────────────────────────────────────────────────────
+export type TabContentType = 'terminal' | 'editor' | 'diff' | 'conflict-review'
+
+export type Tab = {
+  id: string // UUID for terminals, filePath for editors (preserves current convention)
+  groupId: string
+  worktreeId: string
+  contentType: TabContentType
+  label: string // display title (auto-derived from PTY or filename)
+  customLabel: string | null
+  color: string | null
+  sortOrder: number
+  createdAt: number
+  isPreview?: boolean // preview tabs get replaced by next single-click open
+  isPinned?: boolean // pinned tabs survive "close others"
+}
+
+export type TabGroup = {
+  id: string
+  worktreeId: string
+  activeTabId: string | null
+  tabOrder: string[] // canonical visual order of tab IDs
+}
+
+// ─── Terminal Tab (legacy — used by persistence and TerminalContentSlice) ─
 export type TerminalTab = {
   id: string
   ptyId: string | null
@@ -122,6 +146,11 @@ export type WorkspaceSessionState = {
   activeFileIdByWorktree?: Record<string, string | null>
   /** Per-worktree active tab type (terminal vs editor) at shutdown. */
   activeTabTypeByWorktree?: Record<string, 'terminal' | 'editor'>
+  /** Unified tab model — present when saved by a build that includes TabsSlice.
+   *  Read-path checks for this first; falls back to legacy fields if absent. */
+  unifiedTabs?: Record<string, Tab[]>
+  /** Tab group model — present alongside unifiedTabs. */
+  tabGroups?: Record<string, TabGroup[]>
 }
 
 // ─── GitHub ──────────────────────────────────────────────────────────

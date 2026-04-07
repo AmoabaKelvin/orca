@@ -46,7 +46,8 @@ type TabItem =
 
 /**
  * Reconcile stored order with the current set of terminal + editor tabs.
- * Keeps items that still exist in their stored positions, appends new items at the end.
+ * Keeps items that still exist in their stored positions, appends new items
+ * at the end in their natural array order (not grouped by type).
  */
 function reconcileOrder(
   storedOrder: string[] | undefined,
@@ -58,14 +59,14 @@ function reconcileOrder(
   const result: string[] = (storedOrder ?? []).filter((id) => validIds.has(id))
   const inResult = new Set(result)
 
-  for (const id of terminalIds) {
+  // Why: append new items in the order they appear across both lists rather
+  // than grouping by type. This ensures a newly created terminal tab appears
+  // after existing editor tabs instead of jumping to the front.
+  const allIds = [...terminalIds, ...editorFileIds]
+  for (const id of allIds) {
     if (!inResult.has(id)) {
       result.push(id)
-    }
-  }
-  for (const id of editorFileIds) {
-    if (!inResult.has(id)) {
-      result.push(id)
+      inResult.add(id)
     }
   }
   return result

@@ -50,6 +50,7 @@ globalThis.window = { api: mockApi }
 import { createRepoSlice } from './repos'
 import { createWorktreeSlice } from './worktrees'
 import { createTerminalSlice } from './terminals'
+import { createTabsSlice } from './tabs'
 import { createUISlice } from './ui'
 import { createSettingsSlice } from './settings'
 import { createGitHubSlice } from './github'
@@ -60,6 +61,7 @@ function createTestStore() {
     ...createRepoSlice(...a),
     ...createWorktreeSlice(...a),
     ...createTerminalSlice(...a),
+    ...createTabsSlice(...a),
     ...createUISlice(...a),
     ...createSettingsSlice(...a),
     ...createGitHubSlice(...a),

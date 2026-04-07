@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
@@ -80,14 +81,13 @@ function useTerminalTabsInner() {
     const validIds = new Set([...terminalIdSet, ...editorIdSet])
     const orderedIds: string[] = (tabBarOrder ?? []).filter((id) => validIds.has(id))
     const inOrder = new Set(orderedIds)
-    for (const t of tabs) {
-      if (!inOrder.has(t.id)) {
-        orderedIds.push(t.id)
-      }
-    }
-    for (const f of worktreeFiles) {
-      if (!inOrder.has(f.id)) {
-        orderedIds.push(f.id)
+    // Why: append new items in a single pass rather than terminals-first.
+    // This ensures a newly created terminal appears after existing editor
+    // tabs instead of jumping to the front.
+    for (const id of [...tabs.map((t) => t.id), ...worktreeFiles.map((f) => f.id)]) {
+      if (!inOrder.has(id)) {
+        orderedIds.push(id)
+        inOrder.add(id)
       }
     }
     return orderedIds.map((id) => ({
@@ -145,7 +145,11 @@ function useTerminalTabsInner() {
       setInitialTabCreationGuard(null)
       return
     }
-    if (tabs.length > 0) {
+    // Why: skip auto-creation if terminal tabs already exist, or if editor files
+    // are open for this worktree. The user may have intentionally closed all
+    // terminal tabs while keeping editors open — auto-spawning a terminal would
+    // be disruptive.
+    if (tabs.length > 0 || worktreeFiles.length > 0) {
       if (initialTabCreationGuard === activeWorktreeId) {
         setInitialTabCreationGuard(null)
       }
@@ -157,14 +161,45 @@ function useTerminalTabsInner() {
 
     setInitialTabCreationGuard(activeWorktreeId)
     createTab(activeWorktreeId)
-  }, [activeWorktreeId, createTab, initialTabCreationGuard, tabs.length, workspaceSessionReady])
+  }, [
+    activeWorktreeId,
+    createTab,
+    initialTabCreationGuard,
+    tabs.length,
+    worktreeFiles.length,
+    workspaceSessionReady
+  ])
 
   const handleNewTab = useCallback(() => {
     if (!activeWorktreeId) {
       return
     }
-    createTab(activeWorktreeId)
-  }, [activeWorktreeId, createTab])
+    const newTab = createTab(activeWorktreeId)
+    setActiveTabType('terminal')
+    // Why: persist the tab bar order with the new terminal at the end of the
+    // current visual order. Without this, reconcileOrder falls back to
+    // terminals-first when tabBarOrderByWorktree is unset, causing a new
+    // terminal to jump to index 0 instead of appending after editor tabs.
+    const state = useAppStore.getState()
+    const currentTerminals = state.tabsByWorktree[activeWorktreeId] ?? []
+    const currentEditors = state.openFiles.filter((f) => f.worktreeId === activeWorktreeId)
+    const stored = state.tabBarOrderByWorktree[activeWorktreeId]
+    const termIds = currentTerminals.map((t) => t.id)
+    const editorIds = currentEditors.map((f) => f.id)
+    const validIds = new Set([...termIds, ...editorIds])
+    const base = (stored ?? []).filter((id) => validIds.has(id))
+    const inBase = new Set(base)
+    for (const id of [...termIds, ...editorIds]) {
+      if (!inBase.has(id)) {
+        base.push(id)
+        inBase.add(id)
+      }
+    }
+    // The new tab is already in base via termIds; move it to the end
+    const order = base.filter((id) => id !== newTab.id)
+    order.push(newTab.id)
+    setTabBarOrder(activeWorktreeId, order)
+  }, [activeWorktreeId, createTab, setActiveTabType, setTabBarOrder])
 
   const handleCloseTab = useCallback(
     (tabId: string) => {
@@ -182,7 +217,16 @@ function useTerminalTabsInner() {
       if (currentTabs.length <= 1) {
         closeTab(tabId)
         if (state.activeWorktreeId === owningWorktreeId) {
-          setActiveWorktree(null)
+          // Why: only deactivate the worktree when no tabs of any kind remain.
+          // Editor files are a separate tab type; closing the last terminal tab
+          // should switch to the editor view instead of tearing down the workspace.
+          const worktreeFile = state.openFiles.find((f) => f.worktreeId === owningWorktreeId)
+          if (worktreeFile) {
+            setActiveFile(worktreeFile.id)
+            setActiveTabType('editor')
+          } else {
+            setActiveWorktree(null)
+          }
         }
         return
       }
@@ -197,7 +241,7 @@ function useTerminalTabsInner() {
 
       closeTab(tabId)
     },
-    [closeTab, setActiveTab, setActiveWorktree]
+    [closeTab, setActiveTab, setActiveFile, setActiveTabType, setActiveWorktree]
   )
 
   const handlePtyExit = useCallback(
@@ -244,14 +288,13 @@ function useTerminalTabsInner() {
       const validIds = new Set([...terminalIdSet, ...editorIdSet])
       const orderedIds: string[] = (storedOrder ?? []).filter((id) => validIds.has(id))
       const inOrder = new Set(orderedIds)
-      for (const t of currentTerminalTabs) {
-        if (!inOrder.has(t.id)) {
-          orderedIds.push(t.id)
-        }
-      }
-      for (const f of currentEditorFiles) {
-        if (!inOrder.has(f.id)) {
-          orderedIds.push(f.id)
+      for (const id of [
+        ...currentTerminalTabs.map((t) => t.id),
+        ...currentEditorFiles.map((f) => f.id)
+      ]) {
+        if (!inOrder.has(id)) {
+          orderedIds.push(id)
+          inOrder.add(id)
         }
       }
 
