@@ -39,12 +39,28 @@ export function isWslPath(path: string): boolean {
 }
 
 /**
- * Convert a WSL UNC Windows path to its Linux equivalent.
- * Returns the path unchanged if it is not a WSL path.
+ * Convert a Windows path to a Linux path for commands that will execute inside WSL.
+ * Returns the path unchanged if it is already POSIX-style.
+ *
+ * Why: WSL hook/setup environments may need both the worktree UNC path
+ * (\\wsl.localhost\...) and regular Windows install paths (C:\Users\...)
+ * translated before passing them to bash. Leaving drive paths untouched
+ * breaks scripts that read ORCA_ROOT_PATH or similar env vars inside WSL.
  */
 export function toLinuxPath(windowsPath: string): string {
   const info = parseWslPath(windowsPath)
-  return info ? info.linuxPath : windowsPath
+  if (info) {
+    return info.linuxPath
+  }
+
+  const driveMatch = windowsPath.match(/^([A-Za-z]):[/\\](.*)$/)
+  if (!driveMatch) {
+    return windowsPath
+  }
+
+  const driveLetter = driveMatch[1].toLowerCase()
+  const rest = driveMatch[2].replace(/\\/g, '/')
+  return `/mnt/${driveLetter}/${rest}`
 }
 
 /**

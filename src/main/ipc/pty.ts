@@ -96,6 +96,7 @@ export function registerPtyHandlers(mainWindow: BrowserWindow, runtime?: OrcaRun
       let shellPath: string
       let shellArgs: string[]
       let effectiveCwd: string
+      let validationCwd: string
       if (wslInfo) {
         // Why: use `bash -c "cd ... && exec bash -l"` instead of `--cd` because
         // wsl.exe's --cd flag fails with ERROR_PATH_NOT_FOUND in some Node
@@ -107,14 +108,20 @@ export function registerPtyHandlers(mainWindow: BrowserWindow, runtime?: OrcaRun
         // Why: set cwd to a valid Windows directory so node-pty's native
         // spawn doesn't fail on the UNC path.
         effectiveCwd = process.env.USERPROFILE || process.env.HOMEPATH || 'C:\\'
+        // Why: still validate the requested WSL UNC path, not the fallback
+        // Windows cwd. Otherwise a deleted/mistyped WSL worktree silently
+        // spawns a shell in the home directory and hides the real error.
+        validationCwd = cwd
       } else if (process.platform === 'win32') {
         shellPath = process.env.COMSPEC || 'powershell.exe'
         shellArgs = []
         effectiveCwd = cwd
+        validationCwd = cwd
       } else {
         shellPath = process.env.SHELL || '/bin/zsh'
         shellArgs = ['-l']
         effectiveCwd = cwd
+        validationCwd = cwd
       }
 
       // Why: node-pty's posix_spawnp error is opaque (no errno). Pre-validate
@@ -136,14 +143,14 @@ export function registerPtyHandlers(mainWindow: BrowserWindow, runtime?: OrcaRun
         }
       }
 
-      if (!existsSync(effectiveCwd)) {
+      if (!existsSync(validationCwd)) {
         throw new Error(
-          `Working directory "${effectiveCwd}" does not exist. ` +
+          `Working directory "${validationCwd}" does not exist. ` +
             `It may have been deleted or is on an unmounted volume.`
         )
       }
-      if (!statSync(effectiveCwd).isDirectory()) {
-        throw new Error(`Working directory "${effectiveCwd}" is not a directory.`)
+      if (!statSync(validationCwd).isDirectory()) {
+        throw new Error(`Working directory "${validationCwd}" is not a directory.`)
       }
 
       const spawnEnv = {

@@ -157,7 +157,11 @@ export async function gitExecFileAsyncBuffer(
  */
 export function gitExecFileSync(
   args: string[],
-  options: { cwd: string; encoding?: BufferEncoding; stdio?: any }
+  options: {
+    cwd: string
+    encoding?: BufferEncoding
+    stdio?: SpawnOptions['stdio']
+  }
 ): string {
   const resolved = resolveCommand('git', args, options.cwd)
   return execFileSync(resolved.binary, resolved.args, {

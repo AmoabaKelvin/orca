@@ -132,25 +132,14 @@ export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store
 
       // Compute worktree path
       let worktreePath = computeWorktreePath(sanitizedName, repo.path, settings)
-      if (isWslPath(repo.path)) {
-        // Why: WSL worktrees live under ~/orca/workspaces inside the WSL
-        // filesystem. Validate against that root, not the Windows workspace dir.
-        const wslInfo = parseWslPath(repo.path)
-        const wslHome = wslInfo ? getWslHome(wslInfo.distro) : null
-        if (wslHome) {
-          worktreePath = ensurePathWithinWorkspace(
-            worktreePath,
-            join(wslHome, 'orca', 'workspaces')
-          )
-        } else {
-          // Why: if WSL home resolution fails (distro unresponsive, etc.),
-          // computeWorktreePath falls back to the Windows workspace dir.
-          // Still validate against it so the path check is never skipped.
-          worktreePath = ensurePathWithinWorkspace(worktreePath, settings.workspaceDir)
-        }
-      } else {
-        worktreePath = ensurePathWithinWorkspace(worktreePath, settings.workspaceDir)
-      }
+      // Why: WSL worktrees live under ~/orca/workspaces inside the WSL
+      // filesystem. Validate against that root, not the Windows workspace dir.
+      // If WSL home lookup fails, keep using the configured workspace root so
+      // the path traversal guard still runs on the fallback path.
+      const wslInfo = isWslPath(repo.path) ? parseWslPath(repo.path) : null
+      const wslHome = wslInfo ? getWslHome(wslInfo.distro) : null
+      const workspaceRoot = wslHome ? join(wslHome, 'orca', 'workspaces') : settings.workspaceDir
+      worktreePath = ensurePathWithinWorkspace(worktreePath, workspaceRoot)
 
       // Determine base branch
       const baseBranch = args.baseBranch || repo.worktreeBaseRef || getDefaultBaseRef(repo.path)
