@@ -301,10 +301,20 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
         activeTabType = fallbackFile ? 'editor' : 'terminal'
       }
 
+      // Why: restore the last-active terminal tab for this worktree so the
+      // user returns to the same tab they left, not always the first one.
+      const restoredTabId = s.activeTabIdByWorktree[worktreeId] ?? null
+      const worktreeTabs = s.tabsByWorktree[worktreeId] ?? []
+      const tabStillExists = restoredTabId
+        ? worktreeTabs.some((t) => t.id === restoredTabId)
+        : false
+      const activeTabId = tabStillExists ? restoredTabId : (worktreeTabs[0]?.id ?? null)
+
       return {
         activeWorktreeId: worktreeId,
         activeFileId,
         activeTabType,
+        activeTabId,
         worktreesByRepo: applyWorktreeUpdates(
           s.worktreesByRepo,
           worktreeId,
