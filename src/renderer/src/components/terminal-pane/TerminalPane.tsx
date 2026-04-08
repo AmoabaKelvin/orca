@@ -394,20 +394,22 @@ export default function TerminalPane({
           // Serialization failure for one pane should not block others.
         }
       }
-      if (Object.keys(buffers).length === 0) {
-        return
-      }
       const activePaneId = manager.getActivePane()?.id ?? panes[0]?.id ?? null
       const layout = serializeTerminalLayout(container, activePaneId, expandedPaneIdRef.current)
+      if (Object.keys(buffers).length > 0) {
+        layout.buffersByLeafId = buffers
+      }
       // Merge pane titles so the shutdown snapshot doesn't silently drop them.
+      // Why: the old early-return on empty buffers skipped this entirely, which
+      // meant titles were lost on restart when the terminal had no scrollback
+      // content (e.g. fresh pane, cleared screen).
       const titleEntries = panes
         .filter((p) => paneTitlesRef.current[p.id])
         .map((p) => [paneLeafId(p.id), paneTitlesRef.current[p.id]] as const)
-      setTabLayout(tabId, {
-        ...layout,
-        buffersByLeafId: buffers,
-        ...(titleEntries.length > 0 && { titlesByLeafId: Object.fromEntries(titleEntries) })
-      })
+      if (titleEntries.length > 0) {
+        layout.titlesByLeafId = Object.fromEntries(titleEntries)
+      }
+      setTabLayout(tabId, layout)
     }
     shutdownBufferCaptures.add(captureBuffers)
     return () => {
