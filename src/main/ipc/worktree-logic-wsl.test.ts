@@ -1,4 +1,4 @@
-import { join } from 'path'
+import { win32 } from 'path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { getWslHomeMock, parseWslPathMock } = vi.hoisted(() => ({
@@ -46,6 +46,6 @@ describe('computeWorktreePath WSL layout', () => {
         nestWorkspaces: false,
         workspaceDir: 'C:\\workspaces'
       })
-    ).toBe(join('C:\\workspaces', 'feature'))
+    ).toBe(win32.join('C:\\workspaces', 'feature'))
   })
 })
