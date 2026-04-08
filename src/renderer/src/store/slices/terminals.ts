@@ -17,6 +17,9 @@ import {
 export type TerminalSlice = {
   tabsByWorktree: Record<string, TerminalTab[]>
   activeTabId: string | null
+  /** Per-worktree last-active terminal tab — restored on worktree switch so
+   *  the user returns to the same tab they left, not always tabs[0]. */
+  activeTabIdByWorktree: Record<string, string | null>
   ptyIdsByTabId: Record<string, string[]>
   suppressedPtyExitIds: Record<string, true>
   expandedPaneByTabId: Record<string, boolean>
@@ -64,6 +67,7 @@ export type TerminalSlice = {
 export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> = (set, get) => ({
   tabsByWorktree: {},
   activeTabId: null,
+  activeTabIdByWorktree: {},
   ptyIdsByTabId: {},
   suppressedPtyExitIds: {},
   expandedPaneByTabId: {},
@@ -150,6 +154,7 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
           [worktreeId]: [...existing, tab]
         },
         activeTabId: tab.id,
+        activeTabIdByWorktree: { ...s.activeTabIdByWorktree, [worktreeId]: tab.id },
         ptyIdsByTabId: { ...s.ptyIdsByTabId, [tab.id]: [] },
         terminalLayoutsByTabId: { ...s.terminalLayoutsByTabId, [tab.id]: emptyLayoutSnapshot() }
       }
@@ -185,9 +190,20 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
           delete nextCacheTimer[key]
         }
       }
+      // Why: keep activeTabIdByWorktree in sync when a tab is closed in a
+      // background worktree. Without this, the remembered tab becomes stale
+      // and restoring it on worktree switch falls back to tabs[0].
+      const nextActiveTabIdByWorktree = { ...s.activeTabIdByWorktree }
+      for (const [wId, tabs] of Object.entries(next)) {
+        if (nextActiveTabIdByWorktree[wId] === tabId) {
+          nextActiveTabIdByWorktree[wId] = tabs[0]?.id ?? null
+        }
+      }
+
       return {
         tabsByWorktree: next,
         activeTabId: s.activeTabId === tabId ? null : s.activeTabId,
+        activeTabIdByWorktree: nextActiveTabIdByWorktree,
         ptyIdsByTabId: nextPtyIdsByTabId,
         expandedPaneByTabId: nextExpanded,
         canExpandPaneByTabId: nextCanExpand,
@@ -244,7 +260,16 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
     })
   },
 
-  setActiveTab: (tabId) => set({ activeTabId: tabId }),
+  setActiveTab: (tabId) =>
+    set((s) => {
+      const worktreeId = s.activeWorktreeId
+      return {
+        activeTabId: tabId,
+        activeTabIdByWorktree: worktreeId
+          ? { ...s.activeTabIdByWorktree, [worktreeId]: tabId }
+          : s.activeTabIdByWorktree
+      }
+    }),
 
   updateTabTitle: (tabId, title) => {
     set((s) => {
@@ -531,10 +556,34 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
         }
       }
 
+      // Why: restore per-worktree active terminal tab from session.
+      // If the session has the map, validate that each tab ID still exists.
+      // Otherwise, derive it: the active worktree gets activeTabId, others
+      // default to their first tab.
+      let activeTabIdByWorktree: Record<string, string | null> = {}
+      if (session.activeTabIdByWorktree) {
+        for (const [wId, tabId] of Object.entries(session.activeTabIdByWorktree)) {
+          if (validWorktreeIds.has(wId) && tabId && validTabIds.has(tabId)) {
+            activeTabIdByWorktree[wId] = tabId
+          }
+        }
+      } else {
+        // Legacy sessions: best-effort derivation
+        if (activeWorktreeId && activeTabId) {
+          activeTabIdByWorktree[activeWorktreeId] = activeTabId
+        }
+        for (const [wId, tabs] of Object.entries(tabsByWorktree)) {
+          if (!activeTabIdByWorktree[wId] && tabs.length > 0) {
+            activeTabIdByWorktree[wId] = tabs[0].id
+          }
+        }
+      }
+
       return {
         activeRepoId,
         activeWorktreeId,
         activeTabId,
+        activeTabIdByWorktree,
         tabsByWorktree,
         pendingReconnectWorktreeIds,
         pendingReconnectTabByWorktree,

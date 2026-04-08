@@ -149,6 +149,8 @@ export type WorkspaceSessionState = {
   activeFileIdByWorktree?: Record<string, string | null>
   /** Per-worktree active tab type (terminal vs editor) at shutdown. */
   activeTabTypeByWorktree?: Record<string, 'terminal' | 'editor'>
+  /** Per-worktree last-active terminal tab ID at shutdown. */
+  activeTabIdByWorktree?: Record<string, string | null>
   /** Unified tab model — present when saved by a build that includes TabsSlice.
    *  Read-path checks for this first; falls back to legacy fields if absent. */
   unifiedTabs?: Record<string, Tab[]>

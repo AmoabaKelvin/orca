@@ -114,6 +114,7 @@ function App(): React.JSX.Element {
   const openFiles = useAppStore((s) => s.openFiles)
   const activeFileIdByWorktree = useAppStore((s) => s.activeFileIdByWorktree)
   const activeTabTypeByWorktree = useAppStore((s) => s.activeTabTypeByWorktree)
+  const activeTabIdByWorktree = useAppStore((s) => s.activeTabIdByWorktree)
 
   // Right sidebar + editor state
   const toggleRightSidebar = useAppStore((s) => s.toggleRightSidebar)
@@ -240,6 +241,7 @@ function App(): React.JSX.Element {
         tabsByWorktree,
         terminalLayoutsByTabId,
         activeWorktreeIdsOnShutdown,
+        activeTabIdByWorktree,
         ...buildEditorSessionData(openFiles, activeFileIdByWorktree, activeTabTypeByWorktree)
       })
     }, 150)
@@ -254,7 +256,8 @@ function App(): React.JSX.Element {
     terminalLayoutsByTabId,
     openFiles,
     activeFileIdByWorktree,
-    activeTabTypeByWorktree
+    activeTabTypeByWorktree,
+    activeTabIdByWorktree
   ])
 
   // On shutdown, capture terminal scrollback buffers and flush to disk.
@@ -282,6 +285,7 @@ function App(): React.JSX.Element {
         tabsByWorktree: state.tabsByWorktree,
         terminalLayoutsByTabId: state.terminalLayoutsByTabId,
         activeWorktreeIdsOnShutdown,
+        activeTabIdByWorktree: state.activeTabIdByWorktree,
         ...buildEditorSessionData(
           state.openFiles,
           state.activeFileIdByWorktree,
