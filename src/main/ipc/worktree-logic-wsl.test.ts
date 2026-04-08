@@ -1,3 +1,4 @@
+import { join } from 'path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { getWslHomeMock, parseWslPathMock } = vi.hoisted(() => ({
@@ -45,6 +46,6 @@ describe('computeWorktreePath WSL layout', () => {
         nestWorkspaces: false,
         workspaceDir: 'C:\\workspaces'
       })
-    ).toBe('C:\\workspaces\\feature')
+    ).toBe(join('C:\\workspaces', 'feature'))
   })
 })
