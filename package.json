@@ -1,6 +1,6 @@
 {
   "name": "orca",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "An Electron application with React and TypeScript",
   "homepage": "https://github.com/stablyai/orca",
   "author": "stablyai",
@@ -125,6 +125,9 @@
       "electron",
       "esbuild",
       "node-pty"
-    ]
+    ],
+    "patchedDependencies": {
+      "@xterm/addon-fit@0.11.0": "patches/@xterm__addon-fit@0.11.0.patch"
+    }
   }
 }
