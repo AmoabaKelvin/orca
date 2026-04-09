@@ -96,10 +96,7 @@ export default function ImageViewer({
   }
 
   const previewPane = isPdf ? (
-    <div
-      className="relative flex flex-1 items-center justify-center overflow-auto bg-muted/20 p-4"
-      title="Open PDF in popup"
-    >
+    <div className="relative flex flex-1 items-center justify-center overflow-auto bg-muted/20 p-4">
       {/* Why: Electron's Chromium PDF viewer can fail to initialize inside a
           sandboxed iframe even when the Blob URL is valid. Using <embed> keeps
           the preview isolated to the browser's native PDF surface without
@@ -108,21 +105,6 @@ export default function ImageViewer({
         src={previewUrl}
         type={mimeType}
         className="h-full min-h-[24rem] w-full rounded-md border border-border/60 bg-background"
-      />
-      {/* Why: the native PDF surface handles pointer events itself, so the
-          parent container does not reliably see clicks for opening the popup.
-          This overlay keeps the "open expanded preview" affordance working. */}
-      <div
-        className="absolute inset-0 z-10 cursor-pointer"
-        onClick={() => setIsPopupOpen(true)}
-        role="button"
-        tabIndex={0}
-        aria-label="Open PDF in popup"
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            setIsPopupOpen(true)
-          }
-        }}
       />
     </div>
   ) : (
@@ -198,31 +180,29 @@ export default function ImageViewer({
           <span>{estimatedSize}</span>
         </div>
       </div>
-      <Dialog open={isPopupOpen} onOpenChange={setIsPopupOpen}>
-        <DialogContent
-          showCloseButton={false}
-          className="top-1/2 left-1/2 h-[80vh] w-[70vw] max-w-[70vw] -translate-x-1/2 -translate-y-1/2 gap-0 overflow-hidden border border-border/60 bg-background p-0 shadow-2xl sm:max-w-[70vw]"
-        >
-          <DialogTitle className="sr-only">{filename}</DialogTitle>
-          <div className="flex items-center justify-between border-b border-border/60 bg-background/95 px-3 py-2">
-            <div className="min-w-0 truncate text-sm font-medium text-foreground">{filename}</div>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-              onClick={() => setIsPopupOpen(false)}
-            >
-              <X size={14} />
-              <span>Close</span>
-            </button>
-          </div>
-          <div className="flex h-[calc(100%-4.5rem)] w-full min-h-0 items-center justify-center overflow-auto bg-muted/20 p-4">
-            {isPdf ? (
-              <embed
-                src={previewUrl}
-                type={mimeType}
-                className="h-full w-full rounded-md border border-border/60 bg-background"
-              />
-            ) : (
+      {/* Why: native Chromium PDF embeds need direct pointer input for paging,
+          zoom, selection, and sidebar toggles. Intercepting every click to
+          force a second modal preview breaks those controls on some Macs and
+          can leave the dialog shell visible around a half-initialized viewer. */}
+      {!isPdf && (
+        <Dialog open={isPopupOpen} onOpenChange={setIsPopupOpen}>
+          <DialogContent
+            showCloseButton={false}
+            className="top-1/2 left-1/2 h-[80vh] w-[70vw] max-w-[70vw] -translate-x-1/2 -translate-y-1/2 gap-0 overflow-hidden border border-border/60 bg-background p-0 shadow-2xl sm:max-w-[70vw]"
+          >
+            <DialogTitle className="sr-only">{filename}</DialogTitle>
+            <div className="flex items-center justify-between border-b border-border/60 bg-background/95 px-3 py-2">
+              <div className="min-w-0 truncate text-sm font-medium text-foreground">{filename}</div>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                onClick={() => setIsPopupOpen(false)}
+              >
+                <X size={14} />
+                <span>Close</span>
+              </button>
+            </div>
+            <div className="flex h-[calc(100%-4.5rem)] w-full min-h-0 items-center justify-center overflow-auto bg-muted/20 p-4">
               <div
                 className="flex items-center justify-center"
                 style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}
@@ -233,14 +213,14 @@ export default function ImageViewer({
                   className="block max-h-full max-w-full object-contain"
                 />
               </div>
-            )}
-          </div>
-          <div className="flex items-center justify-between border-t border-border/60 bg-background/95 px-3 py-2 text-xs text-muted-foreground">
-            <div>Press Esc to close</div>
-            <div className="tabular-nums">{isPdf ? 'PDF preview' : `${zoomPercent}%`}</div>
-          </div>
-        </DialogContent>
-      </Dialog>
+            </div>
+            <div className="flex items-center justify-between border-t border-border/60 bg-background/95 px-3 py-2 text-xs text-muted-foreground">
+              <div>Press Esc to close</div>
+              <div className="tabular-nums">{zoomPercent}%</div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   )
 }
