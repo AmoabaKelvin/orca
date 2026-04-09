@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   registerCliHandlersMock,
   registerPreflightHandlersMock,
+  registerClaudeUsageHandlersMock,
   registerGitHubHandlersMock,
+  registerStatsHandlersMock,
   registerNotificationHandlersMock,
   registerSettingsHandlersMock,
   registerShellHandlersMock,
@@ -16,7 +18,9 @@ const {
 } = vi.hoisted(() => ({
   registerCliHandlersMock: vi.fn(),
   registerPreflightHandlersMock: vi.fn(),
+  registerClaudeUsageHandlersMock: vi.fn(),
   registerGitHubHandlersMock: vi.fn(),
+  registerStatsHandlersMock: vi.fn(),
   registerNotificationHandlersMock: vi.fn(),
   registerSettingsHandlersMock: vi.fn(),
   registerShellHandlersMock: vi.fn(),
@@ -36,8 +40,16 @@ vi.mock('./preflight', () => ({
   registerPreflightHandlers: registerPreflightHandlersMock
 }))
 
+vi.mock('./claude-usage', () => ({
+  registerClaudeUsageHandlers: registerClaudeUsageHandlersMock
+}))
+
 vi.mock('./github', () => ({
   registerGitHubHandlers: registerGitHubHandlersMock
+}))
+
+vi.mock('./stats', () => ({
+  registerStatsHandlers: registerStatsHandlersMock
 }))
 
 vi.mock('./notifications', () => ({
@@ -79,7 +91,9 @@ describe('registerCoreHandlers', () => {
   beforeEach(() => {
     registerCliHandlersMock.mockReset()
     registerPreflightHandlersMock.mockReset()
+    registerClaudeUsageHandlersMock.mockReset()
     registerGitHubHandlersMock.mockReset()
+    registerStatsHandlersMock.mockReset()
     registerNotificationHandlersMock.mockReset()
     registerSettingsHandlersMock.mockReset()
     registerShellHandlersMock.mockReset()
@@ -94,10 +108,14 @@ describe('registerCoreHandlers', () => {
   it('passes the store through to handler registrars that need it', () => {
     const store = { marker: 'store' }
     const runtime = { marker: 'runtime' }
+    const stats = { marker: 'stats' }
+    const claudeUsage = { marker: 'claudeUsage' }
 
-    registerCoreHandlers(store as never, runtime as never)
+    registerCoreHandlers(store as never, runtime as never, stats as never, claudeUsage as never)
 
-    expect(registerGitHubHandlersMock).toHaveBeenCalledWith(store)
+    expect(registerClaudeUsageHandlersMock).toHaveBeenCalledWith(claudeUsage)
+    expect(registerGitHubHandlersMock).toHaveBeenCalledWith(store, stats)
+    expect(registerStatsHandlersMock).toHaveBeenCalledWith(stats)
     expect(registerNotificationHandlersMock).toHaveBeenCalledWith(store)
     expect(registerSettingsHandlersMock).toHaveBeenCalledWith(store)
     expect(registerSessionHandlersMock).toHaveBeenCalledWith(store)

@@ -2,8 +2,11 @@ import { registerCliHandlers } from './cli'
 import { registerPreflightHandlers } from './preflight'
 import type { Store } from '../persistence'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
+import type { StatsCollector } from '../stats/collector'
 import { registerFilesystemHandlers } from './filesystem'
+import { registerClaudeUsageHandlers } from './claude-usage'
 import { registerGitHubHandlers } from './github'
+import { registerStatsHandlers } from './stats'
 import { registerRuntimeHandlers } from './runtime'
 import { registerNotificationHandlers } from './notifications'
 import { registerSessionHandlers } from './session'
@@ -15,11 +18,19 @@ import {
   registerClipboardHandlers,
   registerUpdaterHandlers
 } from '../window/attach-main-window-services'
+import type { ClaudeUsageStore } from '../claude-usage/store'
 
-export function registerCoreHandlers(store: Store, runtime: OrcaRuntimeService): void {
+export function registerCoreHandlers(
+  store: Store,
+  runtime: OrcaRuntimeService,
+  stats: StatsCollector,
+  claudeUsage: ClaudeUsageStore
+): void {
   registerCliHandlers()
   registerPreflightHandlers()
-  registerGitHubHandlers(store)
+  registerClaudeUsageHandlers(claudeUsage)
+  registerGitHubHandlers(store, stats)
+  registerStatsHandlers(stats)
   registerNotificationHandlers(store)
   registerSettingsHandlers(store)
   registerShellHandlers()

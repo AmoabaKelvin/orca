@@ -24,9 +24,20 @@ import type {
   GitStatusEntry,
   GitDiffResult,
   SearchOptions,
-  SearchResult
+  SearchResult,
+  StatsSummary
 } from '../../shared/types'
 import type { RuntimeStatus, RuntimeSyncWindowGraph } from '../../shared/runtime-types'
+import type {
+  ClaudeUsageBreakdownKind,
+  ClaudeUsageBreakdownRow,
+  ClaudeUsageDailyPoint,
+  ClaudeUsageRange,
+  ClaudeUsageScanState,
+  ClaudeUsageScope,
+  ClaudeUsageSessionRow,
+  ClaudeUsageSummary
+} from '../../shared/claude-usage-types'
 
 type ReposApi = {
   list: () => Promise<Repo[]>
@@ -249,6 +260,34 @@ type PreflightApi = {
   check: () => Promise<PreflightStatus>
 }
 
+type StatsApi = {
+  getSummary: () => Promise<StatsSummary>
+}
+
+type ClaudeUsageApi = {
+  getScanState: () => Promise<ClaudeUsageScanState>
+  setEnabled: (args: { enabled: boolean }) => Promise<ClaudeUsageScanState>
+  refresh: (args?: { force?: boolean }) => Promise<ClaudeUsageScanState>
+  getSummary: (args: {
+    scope: ClaudeUsageScope
+    range: ClaudeUsageRange
+  }) => Promise<ClaudeUsageSummary>
+  getDaily: (args: {
+    scope: ClaudeUsageScope
+    range: ClaudeUsageRange
+  }) => Promise<ClaudeUsageDailyPoint[]>
+  getBreakdown: (args: {
+    scope: ClaudeUsageScope
+    range: ClaudeUsageRange
+    kind: ClaudeUsageBreakdownKind
+  }) => Promise<ClaudeUsageBreakdownRow[]>
+  getRecentSessions: (args: {
+    scope: ClaudeUsageScope
+    range: ClaudeUsageRange
+    limit?: number
+  }) => Promise<ClaudeUsageSessionRow[]>
+}
+
 type Api = {
   repos: ReposApi
   worktrees: WorktreesApi
@@ -263,6 +302,8 @@ type Api = {
   cache: CacheApi
   session: SessionApi
   updater: UpdaterApi
+  stats: StatsApi
+  claudeUsage: ClaudeUsageApi
   fs: FsApi
   git: GitApi
   ui: UIApi

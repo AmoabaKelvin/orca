@@ -36,6 +36,10 @@ describe('registerGitHubHandlers', () => {
       }
     ]
   }
+  const stats = {
+    hasCountedPR: () => false,
+    record: vi.fn()
+  }
 
   beforeEach(() => {
     handleMock.mockReset()
@@ -54,7 +58,7 @@ describe('registerGitHubHandlers', () => {
   it('normalizes registered repo paths before invoking github clients', async () => {
     getPRForBranchMock.mockResolvedValue({ number: 42 })
 
-    registerGitHubHandlers(store as never)
+    registerGitHubHandlers(store as never, stats as never)
 
     await handlers['gh:prForBranch'](null, {
       repoPath: '/workspace/repo/../repo',
@@ -65,7 +69,7 @@ describe('registerGitHubHandlers', () => {
   })
 
   it('rejects unknown repository paths', async () => {
-    registerGitHubHandlers(store as never)
+    registerGitHubHandlers(store as never, stats as never)
 
     expect(() =>
       handlers['gh:issue'](null, {
@@ -80,7 +84,7 @@ describe('registerGitHubHandlers', () => {
   it('forwards listIssues for registered repositories', async () => {
     listIssuesMock.mockResolvedValue([])
 
-    registerGitHubHandlers(store as never)
+    registerGitHubHandlers(store as never, stats as never)
 
     await handlers['gh:listIssues'](null, {
       repoPath: '/workspace/repo',

@@ -3,8 +3,9 @@ import {
   detectAgentStatusFromTitle,
   clearWorkingIndicators,
   createAgentStatusTracker,
-  normalizeTerminalTitle
-} from '@/lib/agent-status'
+  normalizeTerminalTitle,
+  extractLastOscTitle
+} from '../../../../shared/agent-detection'
 
 export type PtyTransport = {
   connect: (options: {
@@ -137,18 +138,9 @@ export function registerEagerPtyBuffer(
   return handle
 }
 
-// eslint-disable-next-line no-control-regex -- intentional terminal escape sequence matching
-const OSC_TITLE_RE = /\x1b\]([012]);([^\x07\x1b]*?)(?:\x07|\x1b\\)/g
-
-export function extractLastOscTitle(data: string): string | null {
-  let last: string | null = null
-  let m: RegExpExecArray | null
-  OSC_TITLE_RE.lastIndex = 0
-  while ((m = OSC_TITLE_RE.exec(data)) !== null) {
-    last = m[2]
-  }
-  return last
-}
+// extractLastOscTitle is now imported from shared/agent-detection.ts
+// Re-export for consumers that import it from this module.
+export { extractLastOscTitle } from '../../../../shared/agent-detection'
 
 export type IpcPtyTransportOptions = {
   cwd?: string

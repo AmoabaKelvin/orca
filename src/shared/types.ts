@@ -507,3 +507,14 @@ export type SearchOptions = {
   excludePattern?: string
   maxResults?: number
 }
+
+// ─── Stats ──────────────────────────────────────────────────────────
+
+export type StatsSummary = {
+  totalAgentsSpawned: number
+  totalPRsCreated: number
+  totalAgentTimeMs: number
+  // For display formatting — sourced from aggregates, not the event log,
+  // so it survives event trimming.
+  firstEventAt: number | null // timestamp of first-ever event, for "tracking since..."
+}

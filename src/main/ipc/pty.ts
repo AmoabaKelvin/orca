@@ -42,6 +42,10 @@ export function registerPtyHandlers(mainWindow: BrowserWindow, runtime?: OrcaRun
         ptyProcesses.delete(id)
         ptyShellName.delete(id)
         ptyLoadGeneration.delete(id)
+        // Why: notify runtime so the agent detector can close out any live
+        // agent sessions. Without this, killed PTYs would remain in the
+        // detector's liveAgents map and accumulate inflated durations.
+        runtime?.onPtyExit(id, -1)
       }
     }
     // Advance generation for the next page load
@@ -137,9 +141,7 @@ export function registerPtyHandlers(mainWindow: BrowserWindow, runtime?: OrcaRun
         try {
           accessSync(shellPath, fsConstants.X_OK)
         } catch {
-          throw new Error(
-            `Shell "${shellPath}" is not executable. Check file permissions.`
-          )
+          throw new Error(`Shell "${shellPath}" is not executable. Check file permissions.`)
         }
       }
 
@@ -180,9 +182,7 @@ export function registerPtyHandlers(mainWindow: BrowserWindow, runtime?: OrcaRun
         const primaryError = err instanceof Error ? err.message : String(err)
 
         if (process.platform !== 'win32') {
-          const fallbackShells = ['/bin/zsh', '/bin/bash', '/bin/sh'].filter(
-            (s) => s !== shellPath
-          )
+          const fallbackShells = ['/bin/zsh', '/bin/bash', '/bin/sh'].filter((s) => s !== shellPath)
           for (const fallback of fallbackShells) {
             try {
               accessSync(fallback, fsConstants.X_OK)

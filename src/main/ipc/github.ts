@@ -1,6 +1,8 @@
 import { ipcMain } from 'electron'
 import { resolve } from 'path'
+import type { Repo } from '../../shared/types'
 import type { Store } from '../persistence'
+import type { StatsCollector } from '../stats/collector'
 import {
   getPRForBranch,
   getIssue,
@@ -14,29 +16,43 @@ import {
   starOrca
 } from '../github/client'
 
-function assertRegisteredRepoPath(repoPath: string, store: Store): string {
+// Why: returns the full Repo object instead of just the path string so that
+// callers have access to repo.id for stat tracking and other context.
+function assertRegisteredRepo(repoPath: string, store: Store): Repo {
   const resolvedRepoPath = resolve(repoPath)
-  const registeredRepo = store.getRepos().find((repo) => resolve(repo.path) === resolvedRepoPath)
-  if (!registeredRepo) {
+  const repo = store.getRepos().find((r) => resolve(r.path) === resolvedRepoPath)
+  if (!repo) {
     throw new Error('Access denied: unknown repository path')
   }
-  return registeredRepo.path
+  return repo
 }
 
-export function registerGitHubHandlers(store: Store): void {
-  ipcMain.handle('gh:prForBranch', (_event, args: { repoPath: string; branch: string }) => {
-    const repoPath = assertRegisteredRepoPath(args.repoPath, store)
-    return getPRForBranch(repoPath, args.branch)
+export function registerGitHubHandlers(store: Store, stats: StatsCollector): void {
+  ipcMain.handle('gh:prForBranch', async (_event, args: { repoPath: string; branch: string }) => {
+    const repo = assertRegisteredRepo(args.repoPath, store)
+    const pr = await getPRForBranch(repo.path, args.branch)
+    // Emit pr_created when a PR is first detected for a branch.
+    // Why here: the renderer polls gh:prForBranch to check PR status per worktree.
+    // This captures PRs opened from any workflow (Orca UI, gh CLI, github.com).
+    if (pr && !stats.hasCountedPR(pr.url)) {
+      stats.record({
+        type: 'pr_created',
+        at: Date.now(),
+        repoId: repo.id,
+        meta: { prNumber: pr.number, prUrl: pr.url }
+      })
+    }
+    return pr
   })
 
   ipcMain.handle('gh:issue', (_event, args: { repoPath: string; number: number }) => {
-    const repoPath = assertRegisteredRepoPath(args.repoPath, store)
-    return getIssue(repoPath, args.number)
+    const repo = assertRegisteredRepo(args.repoPath, store)
+    return getIssue(repo.path, args.number)
   })
 
   ipcMain.handle('gh:listIssues', (_event, args: { repoPath: string; limit?: number }) => {
-    const repoPath = assertRegisteredRepoPath(args.repoPath, store)
-    return listIssues(repoPath, args.limit)
+    const repo = assertRegisteredRepo(args.repoPath, store)
+    return listIssues(repo.path, args.limit)
   })
 
   ipcMain.handle(
@@ -50,8 +66,8 @@ export function registerGitHubHandlers(store: Store): void {
         noCache?: boolean
       }
     ) => {
-      const repoPath = assertRegisteredRepoPath(args.repoPath, store)
-      return getPRChecks(repoPath, args.prNumber, args.headSha, {
+      const repo = assertRegisteredRepo(args.repoPath, store)
+      return getPRChecks(repo.path, args.prNumber, args.headSha, {
         noCache: args.noCache
       })
     }
@@ -60,24 +76,24 @@ export function registerGitHubHandlers(store: Store): void {
   ipcMain.handle(
     'gh:prComments',
     (_event, args: { repoPath: string; prNumber: number; noCache?: boolean }) => {
-      const repoPath = assertRegisteredRepoPath(args.repoPath, store)
-      return getPRComments(repoPath, args.prNumber, { noCache: args.noCache })
+      const repo = assertRegisteredRepo(args.repoPath, store)
+      return getPRComments(repo.path, args.prNumber, { noCache: args.noCache })
     }
   )
 
   ipcMain.handle(
     'gh:resolveReviewThread',
     (_event, args: { repoPath: string; threadId: string; resolve: boolean }) => {
-      const repoPath = assertRegisteredRepoPath(args.repoPath, store)
-      return resolveReviewThread(repoPath, args.threadId, args.resolve)
+      const repo = assertRegisteredRepo(args.repoPath, store)
+      return resolveReviewThread(repo.path, args.threadId, args.resolve)
     }
   )
 
   ipcMain.handle(
     'gh:updatePRTitle',
     (_event, args: { repoPath: string; prNumber: number; title: string }) => {
-      const repoPath = assertRegisteredRepoPath(args.repoPath, store)
-      return updatePRTitle(repoPath, args.prNumber, args.title)
+      const repo = assertRegisteredRepo(args.repoPath, store)
+      return updatePRTitle(repo.path, args.prNumber, args.title)
     }
   )
 
@@ -87,8 +103,8 @@ export function registerGitHubHandlers(store: Store): void {
       _event,
       args: { repoPath: string; prNumber: number; method?: 'merge' | 'squash' | 'rebase' }
     ) => {
-      const repoPath = assertRegisteredRepoPath(args.repoPath, store)
-      return mergePR(repoPath, args.prNumber, args.method)
+      const repo = assertRegisteredRepo(args.repoPath, store)
+      return mergePR(repo.path, args.prNumber, args.method)
     }
   )
 

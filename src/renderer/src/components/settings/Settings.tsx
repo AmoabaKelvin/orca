@@ -1,6 +1,14 @@
 /* eslint-disable max-lines */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, GitBranch, Keyboard, Palette, SlidersHorizontal, SquareTerminal } from 'lucide-react'
+import {
+  BarChart3,
+  Bell,
+  GitBranch,
+  Keyboard,
+  Palette,
+  SlidersHorizontal,
+  SquareTerminal
+} from 'lucide-react'
 import type { OrcaHooks } from '../../../../shared/types'
 import { getRepoKindLabel, isFolderRepo } from '../../../../shared/repo-kind'
 import { useAppStore } from '../../store'
@@ -13,6 +21,7 @@ import { TerminalPane, TERMINAL_PANE_SEARCH_ENTRIES } from './TerminalPane'
 import { RepositoryPane, getRepositoryPaneSearchEntries } from './RepositoryPane'
 import { GitPane, GIT_PANE_SEARCH_ENTRIES } from './GitPane'
 import { NotificationsPane, NOTIFICATIONS_PANE_SEARCH_ENTRIES } from './NotificationsPane'
+import { StatsPane, STATS_PANE_SEARCH_ENTRIES } from '../stats/StatsPane'
 import { SettingsSidebar } from './SettingsSidebar'
 import { SettingsSection } from './SettingsSection'
 import { matchesSettingsSearch, type SettingsSearchEntry } from './settings-search'
@@ -24,6 +33,7 @@ type SettingsNavTarget =
   | 'terminal'
   | 'notifications'
   | 'shortcuts'
+  | 'stats'
   | 'repo'
 
 type SettingsNavSection = {
@@ -234,6 +244,13 @@ function Settings(): React.JSX.Element {
         icon: Keyboard,
         searchEntries: SHORTCUTS_PANE_SEARCH_ENTRIES
       },
+      {
+        id: 'stats',
+        title: 'Stats & Usage',
+        description: 'Orca stats and Claude usage analytics.',
+        icon: BarChart3,
+        searchEntries: STATS_PANE_SEARCH_ENTRIES
+      },
       ...repos.map((repo) => ({
         id: `repo-${repo.id}`,
         title: repo.displayName,
@@ -434,6 +451,15 @@ function Settings(): React.JSX.Element {
                   searchEntries={SHORTCUTS_PANE_SEARCH_ENTRIES}
                 >
                   <ShortcutsPane />
+                </SettingsSection>
+
+                <SettingsSection
+                  id="stats"
+                  title="Stats"
+                  description="How much Orca has helped you."
+                  searchEntries={STATS_PANE_SEARCH_ENTRIES}
+                >
+                  <StatsPane />
                 </SettingsSection>
 
                 {repos.map((repo) => {

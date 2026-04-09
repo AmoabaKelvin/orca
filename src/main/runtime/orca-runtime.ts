@@ -39,6 +39,8 @@ import { createSetupRunnerScript, getEffectiveHooks, runHook } from '../hooks'
 import { REPO_COLORS } from '../../shared/constants'
 import { listRepoWorktrees } from '../repo-worktrees'
 import type { Store } from '../persistence'
+import type { StatsCollector } from '../stats/collector'
+import { AgentDetector } from '../stats/agent-detector'
 import {
   computeBranchName,
   computeWorktreePath,
@@ -147,9 +149,13 @@ export class OrcaRuntimeService {
   private ptyController: RuntimePtyController | null = null
   private notifier: RuntimeNotifier | null = null
   private resolvedWorktreeCache: ResolvedWorktreeCache | null = null
+  private agentDetector: AgentDetector | null = null
 
-  constructor(store: RuntimeStore | null = null) {
+  constructor(store: RuntimeStore | null = null, stats?: StatsCollector) {
     this.store = store
+    if (stats) {
+      this.agentDetector = new AgentDetector(stats)
+    }
   }
 
   getRuntimeId(): string {
@@ -247,6 +253,10 @@ export class OrcaRuntimeService {
   }
 
   onPtyData(ptyId: string, data: string, at: number): void {
+    // Agent detection runs on raw data before leaf processing, since the
+    // tail buffer logic normalizes away the OSC sequences we need.
+    this.agentDetector?.onData(ptyId, data, at)
+
     for (const leaf of this.leaves.values()) {
       if (leaf.ptyId !== ptyId) {
         continue
@@ -263,6 +273,8 @@ export class OrcaRuntimeService {
   }
 
   onPtyExit(ptyId: string, exitCode: number): void {
+    this.agentDetector?.onExit(ptyId)
+
     for (const leaf of this.leaves.values()) {
       if (leaf.ptyId !== ptyId) {
         continue

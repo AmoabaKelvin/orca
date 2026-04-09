@@ -2,6 +2,8 @@ import { app, BrowserWindow, nativeImage, nativeTheme } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import devIcon from '../../resources/icon-dev.png?asset'
 import { Store, initDataPath } from './persistence'
+import { StatsCollector, initStatsPath } from './stats/collector'
+import { ClaudeUsageStore, initClaudeUsagePath } from './claude-usage/store'
 import { killAllPty } from './ipc/pty'
 import { registerCoreHandlers } from './ipc/register-core-handlers'
 import { triggerStartupNotificationRegistration } from './ipc/notifications'
@@ -20,6 +22,8 @@ import { createMainWindow } from './window/createMainWindow'
 
 let mainWindow: BrowserWindow | null = null
 let store: Store | null = null
+let stats: StatsCollector | null = null
+let claudeUsage: ClaudeUsageStore | null = null
 let runtime: OrcaRuntimeService | null = null
 let runtimeRpc: OrcaRuntimeRpcServer | null = null
 
@@ -30,6 +34,10 @@ configureDevUserDataPath(is.dev)
 // orca-dev in dev mode) but before app.setName('Orca') inside whenReady
 // (which would change the resolved path on case-sensitive filesystems).
 initDataPath()
+// Why: same timing constraint as initDataPath — capture the userData path
+// before app.setName changes it. See persistence.ts:20-28.
+initStatsPath()
+initClaudeUsagePath()
 enableMainProcessGpuFeatures()
 
 function openMainWindow(): BrowserWindow {
@@ -65,7 +73,9 @@ app.whenReady().then(async () => {
   })
 
   store = new Store()
-  runtime = new OrcaRuntimeService(store)
+  stats = new StatsCollector()
+  claudeUsage = new ClaudeUsageStore(store)
+  runtime = new OrcaRuntimeService(store, stats)
   nativeTheme.themeSource = store.getSettings().theme ?? 'system'
 
   registerAppMenu({
@@ -83,7 +93,7 @@ app.whenReady().then(async () => {
       mainWindow?.webContents.send('terminal:zoom', 'reset')
     }
   })
-  registerCoreHandlers(store, runtime)
+  registerCoreHandlers(store, runtime, stats, claudeUsage)
   runtimeRpc = new OrcaRuntimeRpcServer({
     runtime,
     userDataPath: app.getPath('userData')
@@ -116,6 +126,12 @@ app.whenReady().then(async () => {
 })
 
 app.on('before-quit', () => {
+  // Why: stats.flush() must run before killAllPty() so it can read the
+  // live agent state and emit synthetic agent_stop events for agents that
+  // are still running. killAllPty() does not call runtime.onPtyExit(),
+  // so without this ordering, running agents would produce orphaned
+  // agent_start events with no matching stops.
+  stats?.flush()
   killAllPty()
   if (runtimeRpc) {
     void runtimeRpc.stop().catch((error) => {

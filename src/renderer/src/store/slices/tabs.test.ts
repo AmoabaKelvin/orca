@@ -41,6 +41,22 @@ const mockApi = {
   cache: {
     getGitHub: vi.fn().mockResolvedValue(null),
     setGitHub: vi.fn().mockResolvedValue(undefined)
+  },
+  claudeUsage: {
+    getScanState: vi.fn().mockResolvedValue({
+      enabled: false,
+      isScanning: false,
+      lastScanStartedAt: null,
+      lastScanCompletedAt: null,
+      lastScanError: null,
+      hasAnyClaudeData: false
+    }),
+    setEnabled: vi.fn().mockResolvedValue({}),
+    refresh: vi.fn().mockResolvedValue({}),
+    getSummary: vi.fn().mockResolvedValue(null),
+    getDaily: vi.fn().mockResolvedValue([]),
+    getBreakdown: vi.fn().mockResolvedValue([]),
+    getRecentSessions: vi.fn().mockResolvedValue([])
   }
 }
 
@@ -55,6 +71,8 @@ import { createUISlice } from './ui'
 import { createSettingsSlice } from './settings'
 import { createGitHubSlice } from './github'
 import { createEditorSlice } from './editor'
+import { createStatsSlice } from './stats'
+import { createClaudeUsageSlice } from './claude-usage'
 
 const WT = 'repo1::/tmp/feature'
 
@@ -67,7 +85,9 @@ function createTestStore() {
     ...createUISlice(...a),
     ...createSettingsSlice(...a),
     ...createGitHubSlice(...a),
-    ...createEditorSlice(...a)
+    ...createEditorSlice(...a),
+    ...createStatsSlice(...a),
+    ...createClaudeUsageSlice(...a)
   }))
 }
 

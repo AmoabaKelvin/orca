@@ -6,6 +6,8 @@ import type { UISlice } from './slices/ui'
 import type { SettingsSlice } from './slices/settings'
 import type { GitHubSlice } from './slices/github'
 import type { EditorSlice } from './slices/editor'
+import type { StatsSlice } from './slices/stats'
+import type { ClaudeUsageSlice } from './slices/claude-usage'
 
 export type AppState = RepoSlice &
   WorktreeSlice &
@@ -14,4 +16,6 @@ export type AppState = RepoSlice &
   UISlice &
   SettingsSlice &
   GitHubSlice &
-  EditorSlice
+  EditorSlice &
+  StatsSlice &
+  ClaudeUsageSlice

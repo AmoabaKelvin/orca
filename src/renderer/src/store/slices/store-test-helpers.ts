@@ -16,6 +16,8 @@ import { createUISlice } from './ui'
 import { createSettingsSlice } from './settings'
 import { createGitHubSlice } from './github'
 import { createEditorSlice } from './editor'
+import { createStatsSlice } from './stats'
+import { createClaudeUsageSlice } from './claude-usage'
 
 export const TEST_REPO = {
   id: 'repo1',
@@ -34,7 +36,9 @@ export function createTestStore() {
     ...createUISlice(...a),
     ...createSettingsSlice(...a),
     ...createGitHubSlice(...a),
-    ...createEditorSlice(...a)
+    ...createEditorSlice(...a),
+    ...createStatsSlice(...a),
+    ...createClaudeUsageSlice(...a)
   }))
 }
 

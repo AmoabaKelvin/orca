@@ -8,6 +8,8 @@ import { createUISlice } from './slices/ui'
 import { createSettingsSlice } from './slices/settings'
 import { createGitHubSlice } from './slices/github'
 import { createEditorSlice } from './slices/editor'
+import { createStatsSlice } from './slices/stats'
+import { createClaudeUsageSlice } from './slices/claude-usage'
 
 export const useAppStore = create<AppState>()((...a) => ({
   ...createRepoSlice(...a),
@@ -17,7 +19,9 @@ export const useAppStore = create<AppState>()((...a) => ({
   ...createUISlice(...a),
   ...createSettingsSlice(...a),
   ...createGitHubSlice(...a),
-  ...createEditorSlice(...a)
+  ...createEditorSlice(...a),
+  ...createStatsSlice(...a),
+  ...createClaudeUsageSlice(...a)
 }))
 
 export type { AppState } from './types'
