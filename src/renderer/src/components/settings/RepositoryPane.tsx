@@ -74,7 +74,7 @@ export function getRepositoryPaneSearchEntries(repo: Repo): SettingsSearchEntry[
             ]
           },
           {
-            title: 'GitHub Issue Command',
+            title: 'Custom GitHub Issue Command',
             description:
               'File-based linked-issue command configured via orca.yaml and optional local override.',
             keywords: [
@@ -167,7 +167,7 @@ export function RepositoryPane({
       'orca.yaml hooks',
       'Legacy Repo-Local Hooks',
       'When to Run Setup',
-      'GitHub Issue Command'
+      'Custom GitHub Issue Command'
     ].includes(entry.title)
   )
 

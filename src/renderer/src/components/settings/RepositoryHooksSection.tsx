@@ -362,13 +362,13 @@ export function RepositoryHooksSection({
       </SearchableSetting>
 
       <SearchableSetting
-        title="GitHub Issue Command"
+        title="Custom GitHub Issue Command"
         description="Optional per-user override for the linked-issue command."
         keywords={['github issue command', 'issue command', 'workflow', 'agent', 'github']}
       >
         <div className="space-y-3 rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm">
           <div className="space-y-1">
-            <h5 className="text-sm font-semibold">GitHub Issue Command</h5>
+            <h5 className="text-sm font-semibold">Custom GitHub Issue Command</h5>
           </div>
           <div className="space-y-2">
             <textarea
