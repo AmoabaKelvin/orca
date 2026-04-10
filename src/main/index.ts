@@ -4,6 +4,7 @@ import devIcon from '../../resources/icon-dev.png?asset'
 import { Store, initDataPath } from './persistence'
 import { StatsCollector, initStatsPath } from './stats/collector'
 import { ClaudeUsageStore, initClaudeUsagePath } from './claude-usage/store'
+import { CodexUsageStore, initCodexUsagePath } from './codex-usage/store'
 import { killAllPty } from './ipc/pty'
 import { registerCoreHandlers } from './ipc/register-core-handlers'
 import { triggerStartupNotificationRegistration } from './ipc/notifications'
@@ -26,6 +27,7 @@ let mainWindow: BrowserWindow | null = null
 let store: Store | null = null
 let stats: StatsCollector | null = null
 let claudeUsage: ClaudeUsageStore | null = null
+let codexUsage: CodexUsageStore | null = null
 let runtime: OrcaRuntimeService | null = null
 let runtimeRpc: OrcaRuntimeRpcServer | null = null
 
@@ -42,6 +44,7 @@ initDataPath()
 // before app.setName changes it. See persistence.ts:20-28.
 initStatsPath()
 initClaudeUsagePath()
+initCodexUsagePath()
 enableMainProcessGpuFeatures()
 
 function openMainWindow(): BrowserWindow {
@@ -57,9 +60,12 @@ function openMainWindow(): BrowserWindow {
   if (!claudeUsage) {
     throw new Error('Claude usage store must be initialized before opening the main window')
   }
+  if (!codexUsage) {
+    throw new Error('Codex usage store must be initialized before opening the main window')
+  }
 
   const window = createMainWindow(store)
-  registerCoreHandlers(store, runtime, stats, claudeUsage, window.webContents.id)
+  registerCoreHandlers(store, runtime, stats, claudeUsage, codexUsage, window.webContents.id)
   attachMainWindowServices(window, store, runtime)
   window.on('closed', () => {
     if (mainWindow === window) {
@@ -86,6 +92,7 @@ app.whenReady().then(async () => {
   store = new Store()
   stats = new StatsCollector()
   claudeUsage = new ClaudeUsageStore(store)
+  codexUsage = new CodexUsageStore(store)
   runtime = new OrcaRuntimeService(store, stats)
   nativeTheme.themeSource = store.getSettings().theme ?? 'system'
 

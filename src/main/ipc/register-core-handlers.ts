@@ -5,6 +5,7 @@ import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import type { StatsCollector } from '../stats/collector'
 import { registerFilesystemHandlers } from './filesystem'
 import { registerClaudeUsageHandlers } from './claude-usage'
+import { registerCodexUsageHandlers } from './codex-usage'
 import { registerGitHubHandlers } from './github'
 import { registerStatsHandlers } from './stats'
 import { registerRuntimeHandlers } from './runtime'
@@ -21,18 +22,21 @@ import {
   registerUpdaterHandlers
 } from '../window/attach-main-window-services'
 import type { ClaudeUsageStore } from '../claude-usage/store'
+import type { CodexUsageStore } from '../codex-usage/store'
 
 export function registerCoreHandlers(
   store: Store,
   runtime: OrcaRuntimeService,
   stats: StatsCollector,
   claudeUsage: ClaudeUsageStore,
+  codexUsage: CodexUsageStore,
   mainWindowWebContentsId: number | null = null
 ): void {
   setTrustedBrowserRendererWebContentsId(mainWindowWebContentsId)
   registerCliHandlers()
   registerPreflightHandlers()
   registerClaudeUsageHandlers(claudeUsage)
+  registerCodexUsageHandlers(codexUsage)
   registerGitHubHandlers(store, stats)
   registerStatsHandlers(stats)
   registerNotificationHandlers(store)

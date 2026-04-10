@@ -8,6 +8,7 @@ import type { GitHubSlice } from './slices/github'
 import type { EditorSlice } from './slices/editor'
 import type { StatsSlice } from './slices/stats'
 import type { ClaudeUsageSlice } from './slices/claude-usage'
+import type { CodexUsageSlice } from './slices/codex-usage'
 import type { BrowserSlice } from './slices/browser'
 
 export type AppState = RepoSlice &
@@ -20,4 +21,5 @@ export type AppState = RepoSlice &
   EditorSlice &
   StatsSlice &
   ClaudeUsageSlice &
+  CodexUsageSlice &
   BrowserSlice

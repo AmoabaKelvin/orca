@@ -62,6 +62,22 @@ const mockApi = {
     getDaily: vi.fn().mockResolvedValue([]),
     getBreakdown: vi.fn().mockResolvedValue([]),
     getRecentSessions: vi.fn().mockResolvedValue([])
+  },
+  codexUsage: {
+    getScanState: vi.fn().mockResolvedValue({
+      enabled: false,
+      isScanning: false,
+      lastScanStartedAt: null,
+      lastScanCompletedAt: null,
+      lastScanError: null,
+      hasAnyCodexData: false
+    }),
+    setEnabled: vi.fn().mockResolvedValue({}),
+    refresh: vi.fn().mockResolvedValue({}),
+    getSummary: vi.fn().mockResolvedValue(null),
+    getDaily: vi.fn().mockResolvedValue([]),
+    getBreakdown: vi.fn().mockResolvedValue([]),
+    getRecentSessions: vi.fn().mockResolvedValue([])
   }
 }
 
@@ -78,6 +94,7 @@ import { createGitHubSlice } from './github'
 import { createEditorSlice } from './editor'
 import { createStatsSlice } from './stats'
 import { createClaudeUsageSlice } from './claude-usage'
+import { createCodexUsageSlice } from './codex-usage'
 import { createBrowserSlice } from './browser'
 
 function createTestStore() {
@@ -92,6 +109,7 @@ function createTestStore() {
     ...createEditorSlice(...a),
     ...createStatsSlice(...a),
     ...createClaudeUsageSlice(...a),
+    ...createCodexUsageSlice(...a),
     ...createBrowserSlice(...a)
   }))
 }

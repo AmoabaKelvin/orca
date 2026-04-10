@@ -18,6 +18,7 @@ import { createGitHubSlice } from './github'
 import { createEditorSlice } from './editor'
 import { createStatsSlice } from './stats'
 import { createClaudeUsageSlice } from './claude-usage'
+import { createCodexUsageSlice } from './codex-usage'
 import { createBrowserSlice } from './browser'
 
 export const TEST_REPO = {
@@ -40,6 +41,7 @@ export function createTestStore() {
     ...createEditorSlice(...a),
     ...createStatsSlice(...a),
     ...createClaudeUsageSlice(...a),
+    ...createCodexUsageSlice(...a),
     ...createBrowserSlice(...a)
   }))
 }

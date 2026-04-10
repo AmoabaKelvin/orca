@@ -4,6 +4,7 @@ const {
   registerCliHandlersMock,
   registerPreflightHandlersMock,
   registerClaudeUsageHandlersMock,
+  registerCodexUsageHandlersMock,
   registerGitHubHandlersMock,
   registerStatsHandlersMock,
   registerNotificationHandlersMock,
@@ -21,6 +22,7 @@ const {
   registerCliHandlersMock: vi.fn(),
   registerPreflightHandlersMock: vi.fn(),
   registerClaudeUsageHandlersMock: vi.fn(),
+  registerCodexUsageHandlersMock: vi.fn(),
   registerGitHubHandlersMock: vi.fn(),
   registerStatsHandlersMock: vi.fn(),
   registerNotificationHandlersMock: vi.fn(),
@@ -46,6 +48,10 @@ vi.mock('./preflight', () => ({
 
 vi.mock('./claude-usage', () => ({
   registerClaudeUsageHandlers: registerClaudeUsageHandlersMock
+}))
+
+vi.mock('./codex-usage', () => ({
+  registerCodexUsageHandlers: registerCodexUsageHandlersMock
 }))
 
 vi.mock('./github', () => ({
@@ -101,6 +107,7 @@ describe('registerCoreHandlers', () => {
     registerCliHandlersMock.mockReset()
     registerPreflightHandlersMock.mockReset()
     registerClaudeUsageHandlersMock.mockReset()
+    registerCodexUsageHandlersMock.mockReset()
     registerGitHubHandlersMock.mockReset()
     registerStatsHandlersMock.mockReset()
     registerNotificationHandlersMock.mockReset()
@@ -121,10 +128,18 @@ describe('registerCoreHandlers', () => {
     const runtime = { marker: 'runtime' }
     const stats = { marker: 'stats' }
     const claudeUsage = { marker: 'claudeUsage' }
+    const codexUsage = { marker: 'codexUsage' }
 
-    registerCoreHandlers(store as never, runtime as never, stats as never, claudeUsage as never)
+    registerCoreHandlers(
+      store as never,
+      runtime as never,
+      stats as never,
+      claudeUsage as never,
+      codexUsage as never
+    )
 
     expect(registerClaudeUsageHandlersMock).toHaveBeenCalledWith(claudeUsage)
+    expect(registerCodexUsageHandlersMock).toHaveBeenCalledWith(codexUsage)
     expect(registerGitHubHandlersMock).toHaveBeenCalledWith(store, stats)
     expect(registerStatsHandlersMock).toHaveBeenCalledWith(stats)
     expect(registerNotificationHandlersMock).toHaveBeenCalledWith(store)

@@ -1,16 +1,15 @@
 import { useEffect } from 'react'
 import {
   Activity,
+  Brain,
   Coins,
   DatabaseZap,
   FolderKanban,
-  Gauge,
   RefreshCw,
   SlidersHorizontal,
-  Sparkles,
-  Waypoints
+  Sparkles
 } from 'lucide-react'
-import type { ClaudeUsageRange, ClaudeUsageScope } from '../../../../shared/claude-usage-types'
+import type { CodexUsageRange, CodexUsageScope } from '../../../../shared/codex-usage-types'
 import { useAppStore } from '../../store'
 import { Button } from '../ui/button'
 import {
@@ -23,16 +22,16 @@ import {
   DropdownMenuTrigger
 } from '../ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
-import { ClaudeUsageDailyChart } from './ClaudeUsageDailyChart'
 import { ClaudeUsageLoadingState } from './ClaudeUsageLoadingState'
+import { CodexUsageDailyChart } from './CodexUsageDailyChart'
 import { StatCard } from './StatCard'
 
-const RANGE_OPTIONS: ClaudeUsageRange[] = ['7d', '30d', '90d', 'all']
-const SCOPE_OPTIONS: { value: ClaudeUsageScope; label: string }[] = [
+const RANGE_OPTIONS: CodexUsageRange[] = ['7d', '30d', '90d', 'all']
+const SCOPE_OPTIONS: { value: CodexUsageScope; label: string }[] = [
   { value: 'orca', label: 'Orca worktrees only' },
-  { value: 'all', label: 'All local Claude usage' }
+  { value: 'all', label: 'All local Codex usage' }
 ]
-const RANGE_LABELS: Record<ClaudeUsageRange, string> = {
+const RANGE_LABELS: Record<CodexUsageRange, string> = {
   '7d': 'Last 7 days',
   '30d': 'Last 30 days',
   '90d': 'Last 90 days',
@@ -76,41 +75,41 @@ function formatSessionTime(timestamp: string): string {
   })
 }
 
-export function ClaudeUsagePane(): React.JSX.Element {
-  const scanState = useAppStore((state) => state.claudeUsageScanState)
-  const summary = useAppStore((state) => state.claudeUsageSummary)
-  const daily = useAppStore((state) => state.claudeUsageDaily)
-  const modelBreakdown = useAppStore((state) => state.claudeUsageModelBreakdown)
-  const projectBreakdown = useAppStore((state) => state.claudeUsageProjectBreakdown)
-  const recentSessions = useAppStore((state) => state.claudeUsageRecentSessions)
-  const scope = useAppStore((state) => state.claudeUsageScope)
-  const range = useAppStore((state) => state.claudeUsageRange)
-  const fetchClaudeUsage = useAppStore((state) => state.fetchClaudeUsage)
-  const setClaudeUsageEnabled = useAppStore((state) => state.setClaudeUsageEnabled)
-  const refreshClaudeUsage = useAppStore((state) => state.refreshClaudeUsage)
-  const setClaudeUsageScope = useAppStore((state) => state.setClaudeUsageScope)
-  const setClaudeUsageRange = useAppStore((state) => state.setClaudeUsageRange)
+export function CodexUsagePane(): React.JSX.Element {
+  const scanState = useAppStore((state) => state.codexUsageScanState)
+  const summary = useAppStore((state) => state.codexUsageSummary)
+  const daily = useAppStore((state) => state.codexUsageDaily)
+  const modelBreakdown = useAppStore((state) => state.codexUsageModelBreakdown)
+  const projectBreakdown = useAppStore((state) => state.codexUsageProjectBreakdown)
+  const recentSessions = useAppStore((state) => state.codexUsageRecentSessions)
+  const scope = useAppStore((state) => state.codexUsageScope)
+  const range = useAppStore((state) => state.codexUsageRange)
+  const fetchCodexUsage = useAppStore((state) => state.fetchCodexUsage)
+  const setCodexUsageEnabled = useAppStore((state) => state.setCodexUsageEnabled)
+  const refreshCodexUsage = useAppStore((state) => state.refreshCodexUsage)
+  const setCodexUsageScope = useAppStore((state) => state.setCodexUsageScope)
+  const setCodexUsageRange = useAppStore((state) => state.setCodexUsageRange)
 
   useEffect(() => {
-    void fetchClaudeUsage()
-  }, [fetchClaudeUsage])
+    void fetchCodexUsage()
+  }, [fetchCodexUsage])
 
   if (!scanState?.enabled) {
     return (
       <div className="rounded-lg border border-border/60 bg-card/40 p-4">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-foreground">Claude Usage Tracking</h3>
+            <h3 className="text-sm font-semibold text-foreground">Codex Usage Tracking</h3>
             <p className="text-sm text-muted-foreground">
-              Reads local Claude usage logs to show token, model, and session stats.
+              Reads local Codex usage logs to show token, model, and session stats.
             </p>
           </div>
           <button
             type="button"
             role="switch"
             aria-checked={false}
-            aria-label="Enable Claude usage analytics"
-            onClick={() => void setClaudeUsageEnabled(true)}
+            aria-label="Enable Codex usage analytics"
+            onClick={() => void setCodexUsageEnabled(true)}
             className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent bg-muted-foreground/30 transition-colors"
           >
             <span className="pointer-events-none block size-3.5 translate-x-0.5 rounded-full bg-background shadow-sm transition-transform" />
@@ -121,16 +120,22 @@ export function ClaudeUsagePane(): React.JSX.Element {
   }
 
   if (!summary && (scanState.isScanning || scanState.lastScanCompletedAt === null)) {
-    return <ClaudeUsageLoadingState />
+    return (
+      <ClaudeUsageLoadingState
+        title="Codex Usage Tracking"
+        summaryCardCount={6}
+        summaryGridClassName="md:grid-cols-3"
+      />
+    )
   }
 
-  const hasAnyData = summary?.hasAnyClaudeData ?? scanState.hasAnyClaudeData
+  const hasAnyData = summary?.hasAnyCodexData ?? scanState.hasAnyCodexData
 
   return (
     <div className="space-y-4 rounded-lg border border-border/60 bg-card/30 p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold text-foreground">Claude Usage Tracking</h3>
+          <h3 className="text-sm font-semibold text-foreground">Codex Usage Tracking</h3>
           <p className="mt-1 text-xs text-muted-foreground">
             {formatUpdatedAt(scanState.lastScanCompletedAt)}
             {scanState.lastScanError ? ` • Last scan error: ${scanState.lastScanError}` : ''}
@@ -142,7 +147,7 @@ export function ClaudeUsagePane(): React.JSX.Element {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon-xs" aria-label="Claude usage options">
+                    <Button variant="ghost" size="icon-xs" aria-label="Codex usage options">
                       <SlidersHorizontal className="size-3.5" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -156,7 +161,7 @@ export function ClaudeUsagePane(): React.JSX.Element {
               <DropdownMenuLabel>Scope</DropdownMenuLabel>
               <DropdownMenuRadioGroup
                 value={scope}
-                onValueChange={(value) => void setClaudeUsageScope(value as ClaudeUsageScope)}
+                onValueChange={(value) => void setCodexUsageScope(value as CodexUsageScope)}
               >
                 {SCOPE_OPTIONS.map((option) => (
                   <DropdownMenuRadioItem key={option.value} value={option.value}>
@@ -168,7 +173,7 @@ export function ClaudeUsagePane(): React.JSX.Element {
               <DropdownMenuLabel>Range</DropdownMenuLabel>
               <DropdownMenuRadioGroup
                 value={range}
-                onValueChange={(value) => void setClaudeUsageRange(value as ClaudeUsageRange)}
+                onValueChange={(value) => void setCodexUsageRange(value as CodexUsageRange)}
               >
                 {RANGE_OPTIONS.map((option) => (
                   <DropdownMenuRadioItem key={option} value={option}>
@@ -184,9 +189,9 @@ export function ClaudeUsagePane(): React.JSX.Element {
                 <Button
                   variant="ghost"
                   size="icon-xs"
-                  onClick={() => void refreshClaudeUsage()}
+                  onClick={() => void refreshCodexUsage()}
                   disabled={scanState.isScanning}
-                  aria-label="Refresh Claude usage"
+                  aria-label="Refresh Codex usage"
                 >
                   <RefreshCw className={`size-3.5 ${scanState.isScanning ? 'animate-spin' : ''}`} />
                 </Button>
@@ -200,8 +205,8 @@ export function ClaudeUsagePane(): React.JSX.Element {
             type="button"
             role="switch"
             aria-checked={true}
-            aria-label="Enable Claude usage analytics"
-            onClick={() => void setClaudeUsageEnabled(false)}
+            aria-label="Enable Codex usage analytics"
+            onClick={() => void setCodexUsageEnabled(false)}
             className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent bg-foreground transition-colors"
           >
             <span className="pointer-events-none block size-3.5 translate-x-4 rounded-full bg-background shadow-sm transition-transform" />
@@ -217,11 +222,11 @@ export function ClaudeUsagePane(): React.JSX.Element {
 
       {!hasAnyData ? (
         <div className="rounded-lg border border-dashed border-border/60 bg-card/30 px-4 py-6 text-sm text-muted-foreground">
-          No local Claude usage found yet for this scope.
+          No local Codex usage found yet for this scope.
         </div>
       ) : (
         <>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-3">
             <StatCard
               label="Input tokens"
               value={formatTokens(summary?.inputTokens ?? 0)}
@@ -233,36 +238,18 @@ export function ClaudeUsagePane(): React.JSX.Element {
               icon={<Activity className="size-4" />}
             />
             <StatCard
-              label="Cache read"
-              value={formatTokens(summary?.cacheReadTokens ?? 0)}
+              label="Cached input"
+              value={formatTokens(summary?.cachedInputTokens ?? 0)}
               icon={<DatabaseZap className="size-4" />}
             />
             <StatCard
-              label="Cache write"
-              value={formatTokens(summary?.cacheWriteTokens ?? 0)}
-              icon={<Waypoints className="size-4" />}
+              label="Reasoning output"
+              value={formatTokens(summary?.reasoningOutputTokens ?? 0)}
+              icon={<Brain className="size-4" />}
             />
             <StatCard
-              label="Cache reuse rate"
-              value={
-                summary?.cacheReuseRate !== null && summary?.cacheReuseRate !== undefined
-                  ? `${Math.round(summary.cacheReuseRate * 100)}%`
-                  : 'n/a'
-              }
-              icon={<Gauge className="size-4" />}
-            />
-            <StatCard
-              label="Zero-cache-read turns"
-              value={
-                summary && summary.turns > 0
-                  ? `${Math.round((summary.zeroCacheReadTurns / summary.turns) * 100)}%`
-                  : 'n/a'
-              }
-              icon={<DatabaseZap className="size-4" />}
-            />
-            <StatCard
-              label="Sessions / Turns"
-              value={`${(summary?.sessions ?? 0).toLocaleString()} / ${(summary?.turns ?? 0).toLocaleString()}`}
+              label="Sessions / Events"
+              value={`${(summary?.sessions ?? 0).toLocaleString()} / ${(summary?.events ?? 0).toLocaleString()}`}
               icon={<FolderKanban className="size-4" />}
             />
             <StatCard
@@ -272,11 +259,11 @@ export function ClaudeUsagePane(): React.JSX.Element {
             />
           </div>
           <p className="px-1 text-xs text-muted-foreground">
-            Cache reuse rate is calculated as cache read tokens / (input tokens + cache read
-            tokens).
+            Reasoning tokens are shown for visibility, but cost is calculated from uncached input,
+            cached input, and output only.
           </p>
 
-          <ClaudeUsageDailyChart daily={daily} />
+          <CodexUsageDailyChart daily={daily} />
 
           <div className="grid gap-4 xl:grid-cols-2">
             <section className="rounded-lg border border-border/60 bg-card/40 p-4">
@@ -292,11 +279,12 @@ export function ClaudeUsagePane(): React.JSX.Element {
                     <div className="flex items-center justify-between gap-3 text-sm">
                       <span className="truncate text-foreground">{row.label}</span>
                       <span className="shrink-0 text-muted-foreground">
-                        {formatTokens(row.inputTokens + row.outputTokens)}
+                        {formatTokens(row.totalTokens)}
                       </span>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {row.sessions} sessions • {row.turns} turns
+                      {row.sessions} sessions • {row.events} events
+                      {row.hasInferredPricing ? ' • inferred pricing' : ''}
                     </div>
                   </div>
                 ))}
@@ -316,11 +304,11 @@ export function ClaudeUsagePane(): React.JSX.Element {
                     <div className="flex items-center justify-between gap-3 text-sm">
                       <span className="truncate text-foreground">{row.label}</span>
                       <span className="shrink-0 text-muted-foreground">
-                        {formatTokens(row.inputTokens + row.outputTokens)}
+                        {formatTokens(row.totalTokens)}
                       </span>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {row.sessions} sessions • {row.turns} turns
+                      {row.sessions} sessions • {row.events} events
                     </div>
                   </div>
                 ))}
@@ -332,10 +320,7 @@ export function ClaudeUsagePane(): React.JSX.Element {
             <div className="mb-3">
               <h4 className="text-sm font-semibold text-foreground">Recent sessions</h4>
               <p className="text-xs text-muted-foreground">
-                Cache reuse rate:{' '}
-                {summary?.cacheReuseRate !== null && summary?.cacheReuseRate !== undefined
-                  ? `${Math.round(summary.cacheReuseRate * 100)}%`
-                  : 'n/a'}
+                Most recent local Codex sessions in this scope.
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -345,10 +330,10 @@ export function ClaudeUsagePane(): React.JSX.Element {
                     <th className="px-2 py-2 font-medium">Last active</th>
                     <th className="px-2 py-2 font-medium">Project</th>
                     <th className="px-2 py-2 font-medium">Model</th>
-                    <th className="px-2 py-2 font-medium">Turns</th>
+                    <th className="px-2 py-2 font-medium">Events</th>
                     <th className="px-2 py-2 font-medium">Input</th>
                     <th className="px-2 py-2 font-medium">Output</th>
-                    <th className="px-2 py-2 font-medium">Cache</th>
+                    <th className="px-2 py-2 font-medium">Total</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -358,8 +343,11 @@ export function ClaudeUsagePane(): React.JSX.Element {
                         {formatSessionTime(row.lastActiveAt)}
                       </td>
                       <td className="px-2 py-2 text-foreground">{row.projectLabel}</td>
-                      <td className="px-2 py-2 text-muted-foreground">{row.model ?? 'Unknown'}</td>
-                      <td className="px-2 py-2 text-muted-foreground">{row.turns}</td>
+                      <td className="px-2 py-2 text-muted-foreground">
+                        {row.model ?? 'Unknown'}
+                        {row.hasInferredPricing ? ' *' : ''}
+                      </td>
+                      <td className="px-2 py-2 text-muted-foreground">{row.events}</td>
                       <td className="px-2 py-2 text-muted-foreground">
                         {formatTokens(row.inputTokens)}
                       </td>
@@ -367,7 +355,7 @@ export function ClaudeUsagePane(): React.JSX.Element {
                         {formatTokens(row.outputTokens)}
                       </td>
                       <td className="px-2 py-2 text-muted-foreground">
-                        {formatTokens(row.cacheReadTokens + row.cacheWriteTokens)}
+                        {formatTokens(row.totalTokens)}
                       </td>
                     </tr>
                   ))}

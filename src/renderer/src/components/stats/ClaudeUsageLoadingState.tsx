@@ -1,11 +1,21 @@
 import { RefreshCw } from 'lucide-react'
 
-export function ClaudeUsageLoadingState(): React.JSX.Element {
+type ClaudeUsageLoadingStateProps = {
+  title?: string
+  summaryCardCount?: number
+  summaryGridClassName?: string
+}
+
+export function ClaudeUsageLoadingState({
+  title = 'Claude Usage Tracking',
+  summaryCardCount = 8,
+  summaryGridClassName = 'md:grid-cols-2 xl:grid-cols-4'
+}: ClaudeUsageLoadingStateProps): React.JSX.Element {
   return (
     <div className="space-y-4 rounded-lg border border-border/60 bg-card/30 p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold text-foreground">Claude Usage Tracking</h3>
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
           <div className="mt-2 h-3 w-40 animate-pulse rounded bg-muted/70" />
         </div>
         <div className="flex shrink-0 items-center gap-2 self-start">
@@ -18,8 +28,8 @@ export function ClaudeUsageLoadingState(): React.JSX.Element {
 
       <div className="h-3 w-48 animate-pulse rounded bg-muted/60" />
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 6 }, (_, index) => (
+      <div className={`grid gap-3 ${summaryGridClassName}`}>
+        {Array.from({ length: summaryCardCount }, (_, index) => (
           <div key={index} className="space-y-3 rounded-lg border border-border/60 bg-card/40 p-4">
             <div className="h-3 w-24 animate-pulse rounded bg-muted/70" />
             <div className="h-7 w-20 animate-pulse rounded bg-muted/60" />

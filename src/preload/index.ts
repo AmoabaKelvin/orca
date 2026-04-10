@@ -590,6 +590,22 @@ const api = {
       ipcRenderer.invoke('claudeUsage:getRecentSessions', args)
   },
 
+  codexUsage: {
+    getScanState: (): Promise<unknown> => ipcRenderer.invoke('codexUsage:getScanState'),
+    setEnabled: (args: { enabled: boolean }): Promise<unknown> =>
+      ipcRenderer.invoke('codexUsage:setEnabled', args),
+    refresh: (args?: { force?: boolean }): Promise<unknown> =>
+      ipcRenderer.invoke('codexUsage:refresh', args),
+    getSummary: (args: { scope: string; range: string }): Promise<unknown> =>
+      ipcRenderer.invoke('codexUsage:getSummary', args),
+    getDaily: (args: { scope: string; range: string }): Promise<unknown> =>
+      ipcRenderer.invoke('codexUsage:getDaily', args),
+    getBreakdown: (args: { scope: string; range: string; kind: string }): Promise<unknown> =>
+      ipcRenderer.invoke('codexUsage:getBreakdown', args),
+    getRecentSessions: (args: { scope: string; range: string; limit?: number }): Promise<unknown> =>
+      ipcRenderer.invoke('codexUsage:getRecentSessions', args)
+  },
+
   runtime: {
     syncWindowGraph: (graph: RuntimeSyncWindowGraph): Promise<RuntimeStatus> =>
       ipcRenderer.invoke('runtime:syncWindowGraph', graph),

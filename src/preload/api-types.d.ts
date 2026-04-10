@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Why: the preload contract is intentionally centralized in one declaration file so renderer and preload stay in lockstep when IPC surfaces change. */
 import type {
   BrowserLoadError,
   CreateWorktreeResult,
@@ -37,6 +38,16 @@ import type {
   ClaudeUsageSessionRow,
   ClaudeUsageSummary
 } from '../../shared/claude-usage-types'
+import type {
+  CodexUsageBreakdownKind,
+  CodexUsageBreakdownRow,
+  CodexUsageDailyPoint,
+  CodexUsageRange,
+  CodexUsageScanState,
+  CodexUsageScope,
+  CodexUsageSessionRow,
+  CodexUsageSummary
+} from '../../shared/codex-usage-types'
 
 export type BrowserApi = {
   registerGuest: (args: { browserTabId: string; webContentsId: number }) => Promise<void>
@@ -82,6 +93,30 @@ export type ClaudeUsageApi = {
     range: ClaudeUsageRange
     limit?: number
   }) => Promise<ClaudeUsageSessionRow[]>
+}
+
+export type CodexUsageApi = {
+  getScanState: () => Promise<CodexUsageScanState>
+  setEnabled: (args: { enabled: boolean }) => Promise<CodexUsageScanState>
+  refresh: (args?: { force?: boolean }) => Promise<CodexUsageScanState>
+  getSummary: (args: {
+    scope: CodexUsageScope
+    range: CodexUsageRange
+  }) => Promise<CodexUsageSummary>
+  getDaily: (args: {
+    scope: CodexUsageScope
+    range: CodexUsageRange
+  }) => Promise<CodexUsageDailyPoint[]>
+  getBreakdown: (args: {
+    scope: CodexUsageScope
+    range: CodexUsageRange
+    kind: CodexUsageBreakdownKind
+  }) => Promise<CodexUsageBreakdownRow[]>
+  getRecentSessions: (args: {
+    scope: CodexUsageScope
+    range: CodexUsageRange
+    limit?: number
+  }) => Promise<CodexUsageSessionRow[]>
 }
 
 export type PreloadApi = {
@@ -217,6 +252,7 @@ export type PreloadApi = {
   }
   stats: StatsApi
   claudeUsage: ClaudeUsageApi
+  codexUsage: CodexUsageApi
   fs: {
     readDir: (args: { dirPath: string }) => Promise<DirEntry[]>
     readFile: (args: {
