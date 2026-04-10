@@ -3,6 +3,7 @@ import type { IDisposable } from '@xterm/xterm'
 import { isGeminiTerminalTitle, isClaudeAgent } from '@/lib/agent-status'
 import { scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
 import { useAppStore } from '@/store'
+import type { AgentStatusOscPayload } from '../../../../shared/agent-status-types'
 import type { PtyTransport } from './pty-transport'
 import { createIpcPtyTransport } from './pty-transport'
 import { shouldSeedCacheTimerOnInitialTitle } from './cache-timer-seeding'
@@ -66,6 +67,9 @@ export function connectPanePty(
     // first emitting a non-agent title, the cache timer would persist as stale
     // state. Clear it unconditionally on PTY exit.
     deps.setCacheTimerStartedAt(cacheKey, null)
+    // Why: a dead terminal has no running agent — remove its explicit status
+    // entry so the hover UI only shows what is running *now*.
+    useAppStore.getState().removeAgentStatus(cacheKey)
     // The runtime graph is the CLI's source for live terminal bindings, so
     // we must republish when a pane loses its PTY instead of waiting for a
     // broader layout change that may never happen.
@@ -154,6 +158,18 @@ export function connectPanePty(
     // the agent has exited. Clear any running cache timer so the sidebar doesn't
     // show a stale countdown for a tab that no longer has an active Claude session.
     deps.setCacheTimerStartedAt(cacheKey, null)
+    // Why: the agent process is gone, so its explicit status is no longer meaningful.
+    // Remove the entry so the hover UI does not show stale "working" for a dead agent.
+    useAppStore.getState().removeAgentStatus(cacheKey)
+  }
+  const onAgentStatus = (payload: AgentStatusOscPayload): void => {
+    // Why: the PTY stream already tells us which tab and pane produced the data,
+    // so we can write directly to the zustand slice without any env-var plumbing.
+    // cacheKey is the same `${tabId}:${paneId}` composite used for cache timers.
+    const currentTitle = useAppStore
+      .getState()
+      .tabsByWorktree[deps.worktreeId]?.find((t) => t.id === deps.tabId)?.title
+    useAppStore.getState().setAgentStatus(cacheKey, payload, currentTitle)
   }
 
   // Why: remote repos route PTY spawn through the SSH provider. Resolve the
@@ -176,7 +192,8 @@ export function connectPanePty(
     onBell,
     onAgentBecameIdle,
     onAgentBecameWorking,
-    onAgentExited
+    onAgentExited,
+    onAgentStatus
   })
   const hasExistingPaneTransport = deps.paneTransportsRef.current.size > 0
   deps.paneTransportsRef.current.set(pane.id, transport)

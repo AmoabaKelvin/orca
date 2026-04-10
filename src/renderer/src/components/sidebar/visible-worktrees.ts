@@ -125,7 +125,8 @@ export function getVisibleWorktreeIds(): string[] {
       allWorktrees,
       state.tabsByWorktree,
       repoMap,
-      state.prCache
+      state.prCache,
+      state.agentStatusByPaneKey
     ).map((w) => w.id)
   } else {
     const sorted = [...allWorktrees].sort(
@@ -134,7 +135,9 @@ export function getVisibleWorktreeIds(): string[] {
         state.tabsByWorktree,
         repoMap,
         state.prCache,
-        Date.now()
+        Date.now(),
+        null,
+        state.agentStatusByPaneKey
       )
     )
     sortedIds = sorted.map((w) => w.id)
