@@ -73,6 +73,7 @@ describe('isTerminalLinkActivation', () => {
 describe('handleOscLink', () => {
   it('opens http links only when the platform modifier is pressed', () => {
     setPlatform('Macintosh')
+    storeState.settings = { openLinksInApp: false }
 
     handleOscLink('https://example.com', { metaKey: false, ctrlKey: false }, deps)
     expect(openUrlMock).not.toHaveBeenCalled()
@@ -98,6 +99,16 @@ describe('handleOscLink', () => {
     expect(openUrlMock).not.toHaveBeenCalled()
     expect(preventDefault).toHaveBeenCalled()
     expect(stopPropagation).toHaveBeenCalled()
+  })
+
+  it('defaults to Orca when settings have not hydrated yet', () => {
+    setPlatform('Macintosh')
+    storeState.settings = undefined
+
+    handleOscLink('https://example.com', { metaKey: true, ctrlKey: false, shiftKey: false }, deps)
+
+    expect(createBrowserTabMock).toHaveBeenCalledWith('wt-1', 'https://example.com/')
+    expect(openUrlMock).not.toHaveBeenCalled()
   })
 
   it('uses the system browser for shift+cmd/ctrl+click even when Orca browser tabs are enabled', () => {
