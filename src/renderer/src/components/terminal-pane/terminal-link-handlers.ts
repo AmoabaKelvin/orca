@@ -31,8 +31,8 @@ export function getTerminalFileOpenHint(): string {
 
 export function getTerminalUrlOpenHint(): string {
   return isMacPlatform()
-    ? '⌘+click to open in Orca, ⇧⌘+click for system browser'
-    : 'Ctrl+click to open in Orca, Shift+Ctrl+click for system browser'
+    ? '⌘+click to open or ⇧⌘+click for system browser'
+    : 'Ctrl+click to open or Shift+Ctrl+click for system browser'
 }
 
 export function openDetectedFilePath(

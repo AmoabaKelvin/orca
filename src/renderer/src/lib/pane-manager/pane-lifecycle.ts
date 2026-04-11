@@ -21,8 +21,8 @@ const ENABLE_WEBGL_RENDERER = true
 
 function getTerminalUrlOpenHint(): string {
   return navigator.userAgent.includes('Mac')
-    ? '⌘+click to open in Orca, ⇧⌘+click for system browser'
-    : 'Ctrl+click to open in Orca, Shift+Ctrl+click for system browser'
+    ? '⌘+click to open or ⇧⌘+click for system browser'
+    : 'Ctrl+click to open or Shift+Ctrl+click for system browser'
 }
 
 export function createPaneDOM(
