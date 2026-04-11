@@ -1,5 +1,6 @@
 /* eslint-disable max-lines */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { cn } from '@/lib/utils'
 import {
   ArrowLeft,
   ArrowRight,
@@ -24,6 +25,7 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import { useAppStore } from '@/store'
 import { ORCA_BROWSER_BLANK_URL, ORCA_BROWSER_PARTITION } from '../../../../shared/constants'
 import type { BrowserLoadError, BrowserTab as BrowserTabState } from '../../../../shared/types'
 import {
@@ -259,6 +261,7 @@ export default function BrowserPane({
   onSetUrl: (tabId: string, url: string) => void
 }): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const addressBarInputRef = useRef<HTMLInputElement | null>(null)
   const webviewRef = useRef<Electron.WebviewTag | null>(null)
   const browserTabIdRef = useRef(browserTab.id)
   browserTabIdRef.current = browserTab.id
@@ -273,6 +276,8 @@ export default function BrowserPane({
   const addressBarValueRef = useRef(browserTab.url)
   const [resourceNotice, setResourceNotice] = useState<string | null>(null)
   const grab = useGrabMode(browserTab.id)
+  const consumeAddressBarFocusRequest = useAppStore((s) => s.consumeAddressBarFocusRequest)
+  const keepAddressBarFocusRef = useRef(false)
 
   // Inline toast that appears near the grabbed element instead of the global
   // bottom-right toaster, so feedback feels spatially connected to the action.
@@ -374,6 +379,60 @@ export default function BrowserPane({
     )
   }, [browserTab.id])
 
+  const focusAddressBarNow = useCallback(() => {
+    const input = addressBarInputRef.current
+    if (!input) {
+      return false
+    }
+    webviewRef.current?.blur()
+    input.focus()
+    input.select()
+    return document.activeElement === input
+  }, [])
+
+  const focusWebviewNow = useCallback(() => {
+    const webview = webviewRef.current
+    if (!webview) {
+      return false
+    }
+    addressBarInputRef.current?.blur()
+    webview.focus()
+    return document.activeElement === webview
+  }, [])
+
+  useEffect(() => {
+    if (!consumeAddressBarFocusRequest(browserTab.id)) {
+      return
+    }
+    keepAddressBarFocusRef.current = true
+    // Why: terminal activation restores xterm focus on a later animation frame
+    // when the surface changes. A single address-bar focus attempt can lose
+    // that race, leaving the new browser tab on <body>. Retry briefly across a
+    // few frames so a freshly opened blank tab still lands in the location bar,
+    // but keep the request one-shot so revisiting the tab later does not steal
+    // focus back from the user.
+    let cancelled = false
+    let frameId = 0
+    let attempts = 0
+    const focusAddressBar = (): void => {
+      if (cancelled) {
+        return
+      }
+      focusAddressBarNow()
+      attempts += 1
+      if (attempts < 6) {
+        frameId = window.requestAnimationFrame(focusAddressBar)
+      } else {
+        keepAddressBarFocusRef.current = false
+      }
+    }
+    frameId = window.requestAnimationFrame(focusAddressBar)
+    return () => {
+      cancelled = true
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [browserTab.id, consumeAddressBarFocusRequest, focusAddressBarNow])
+
   useEffect(() => {
     onUpdatePageStateRef.current = onUpdatePageState
     onSetUrlRef.current = onSetUrl
@@ -440,6 +499,9 @@ export default function BrowserPane({
         })
       }
       syncNavigationState(webview)
+      if (keepAddressBarFocusRef.current) {
+        focusAddressBarNow()
+      }
     }
 
     const handleDidStartLoading = (): void => {
@@ -497,6 +559,18 @@ export default function BrowserPane({
       rememberLiveBrowserUrl(browserTab.id, currentUrl)
       setAddressBarValue(toDisplayUrl(currentUrl))
       onSetUrlRef.current(browserTab.id, currentUrl)
+      if (keepAddressBarFocusRef.current && currentUrl === ORCA_BROWSER_BLANK_URL) {
+        focusAddressBarNow()
+      } else {
+        keepAddressBarFocusRef.current = false
+        // Why: a freshly opened blank tab should start in the address bar, but
+        // after the user actually navigates somewhere the browser surface
+        // should take focus so keyboard interaction continues in the page
+        // instead of leaving the location bar selected after load completes.
+        if (document.activeElement === addressBarInputRef.current) {
+          focusWebviewNow()
+        }
+      }
       onUpdatePageStateRef.current(browserTab.id, {
         loading: false,
         title: webview.getTitle() || currentUrl,
@@ -610,7 +684,7 @@ export default function BrowserPane({
         evictParkedWebviews(browserTab.id)
       }
     }
-  }, [browserTab.id, syncNavigationState])
+  }, [browserTab.id, focusAddressBarNow, focusWebviewNow, syncNavigationState])
 
   useEffect(() => {
     const webview = webviewRef.current
@@ -695,6 +769,18 @@ export default function BrowserPane({
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [grab])
+
+  // Why: a focused webview guest receives Cmd/Ctrl+C inside Chromium, not the
+  // host renderer window. Main forwards the chord back only when the page
+  // would not use it for native copy, so grab mode still toggles from web
+  // content without stealing real copy from inputs or selections.
+  useEffect(() => {
+    return window.api.browser.onGrabModeToggle((tabId) => {
+      if (tabId === browserTab.id) {
+        grabRef.current.toggle()
+      }
+    })
+  }, [browserTab.id])
 
   // Why: single-key shortcuts (C / S) let the user copy the hovered element
   // without clicking. During 'armed'/'awaiting' state, the shortcut calls the
@@ -821,6 +907,7 @@ export default function BrowserPane({
   }, [grab, showGrabToast])
 
   const submitAddressBar = (): void => {
+    keepAddressBarFocusRef.current = false
     const nextUrl = normalizeBrowserNavigationUrl(addressBarValue)
     if (!nextUrl) {
       onUpdatePageStateRef.current(browserTab.id, {
@@ -844,6 +931,9 @@ export default function BrowserPane({
     }
     trackNextLoadingEventRef.current = nextUrl !== ORCA_BROWSER_BLANK_URL
     webview.src = nextUrl
+    if (nextUrl !== ORCA_BROWSER_BLANK_URL) {
+      focusWebviewNow()
+    }
   }
 
   // Why: the store initially holds 'about:blank', but once the webview loads
@@ -921,6 +1011,7 @@ export default function BrowserPane({
         >
           <Globe className="size-4 shrink-0 text-muted-foreground" />
           <Input
+            ref={addressBarInputRef}
             value={addressBarValue}
             onChange={(event) => setAddressBarValue(event.target.value)}
             className="h-auto border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
@@ -973,8 +1064,26 @@ export default function BrowserPane({
         </div>
       ) : null}
       {grab.state !== 'idle' ? (
-        <div className="flex items-center gap-2 border-b border-border/60 bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
-          <Crosshair className="size-3" />
+        <div
+          className={cn(
+            'flex items-center gap-2 border-b border-border/60 px-3 py-1.5 text-xs text-foreground/90',
+            grab.state === 'error'
+              ? 'bg-destructive/10'
+              : grab.state === 'confirming'
+                ? 'bg-green-500/10'
+                : 'bg-blue-500/10'
+          )}
+        >
+          <Crosshair
+            className={cn(
+              'size-3 shrink-0',
+              grab.state === 'error'
+                ? 'text-destructive'
+                : grab.state === 'confirming'
+                  ? 'text-green-500'
+                  : 'text-blue-500'
+            )}
+          />
           <span>
             {grab.state === 'error'
               ? `Grab failed: ${grab.error ?? 'Unknown error'}`
@@ -983,7 +1092,7 @@ export default function BrowserPane({
                 : 'Click to copy, or hover and press C. S for screenshot.'}
           </span>
           <button
-            className="ml-auto text-muted-foreground hover:text-foreground"
+            className="ml-auto shrink-0 rounded px-2 py-0.5 text-muted-foreground transition-colors hover:text-foreground"
             onClick={grab.cancel}
           >
             Cancel

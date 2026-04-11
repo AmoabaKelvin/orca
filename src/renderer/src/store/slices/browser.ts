@@ -22,6 +22,7 @@ export type BrowserSlice = {
   browserTabsByWorktree: Record<string, BrowserTab[]>
   activeBrowserTabId: string | null
   activeBrowserTabIdByWorktree: Record<string, string | null>
+  pendingAddressBarFocusByTabId: Record<string, true>
   createBrowserTab: (
     worktreeId: string,
     url: string,
@@ -29,6 +30,7 @@ export type BrowserSlice = {
   ) => BrowserTab
   closeBrowserTab: (tabId: string) => void
   setActiveBrowserTab: (tabId: string) => void
+  consumeAddressBarFocusRequest: (tabId: string) => boolean
   updateBrowserTabPageState: (tabId: string, updates: BrowserTabPageState) => void
   setBrowserTabUrl: (tabId: string, url: string) => void
   hydrateBrowserSession: (session: WorkspaceSessionState) => void
@@ -60,10 +62,11 @@ function getFallbackTabTypeForWorktree(
   return 'terminal'
 }
 
-export const createBrowserSlice: StateCreator<AppState, [], [], BrowserSlice> = (set) => ({
+export const createBrowserSlice: StateCreator<AppState, [], [], BrowserSlice> = (set, get) => ({
   browserTabsByWorktree: {},
   activeBrowserTabId: null,
   activeBrowserTabIdByWorktree: {},
+  pendingAddressBarFocusByTabId: {},
 
   createBrowserTab: (worktreeId, url, options) => {
     const id = globalThis.crypto.randomUUID()
@@ -111,6 +114,9 @@ export const createBrowserSlice: StateCreator<AppState, [], [], BrowserSlice> = 
 
       const shouldActivate = options?.activate ?? true
       const shouldUpdateGlobalActiveSurface = shouldActivate && s.activeWorktreeId === worktreeId
+      const shouldFocusAddressBar =
+        shouldUpdateGlobalActiveSurface &&
+        (normalizedUrl === 'about:blank' || normalizedUrl === ORCA_BROWSER_BLANK_URL)
       return {
         browserTabsByWorktree: {
           ...s.browserTabsByWorktree,
@@ -133,7 +139,17 @@ export const createBrowserSlice: StateCreator<AppState, [], [], BrowserSlice> = 
         activeTabType: shouldUpdateGlobalActiveSurface ? 'browser' : s.activeTabType,
         activeTabTypeByWorktree: shouldActivate
           ? { ...s.activeTabTypeByWorktree, [worktreeId]: 'browser' }
-          : s.activeTabTypeByWorktree
+          : s.activeTabTypeByWorktree,
+        // Why: the active BrowserPane remounts on every browser-tab switch, so
+        // a plain autoFocus would keep stealing focus whenever the user
+        // revisits an existing tab. Queue a one-shot focus request only for a
+        // freshly created blank tab, then let BrowserPane consume it once.
+        pendingAddressBarFocusByTabId: shouldFocusAddressBar
+          ? {
+              ...s.pendingAddressBarFocusByTabId,
+              [id]: true
+            }
+          : s.pendingAddressBarFocusByTabId
       }
     })
     return browserTab
@@ -199,6 +215,11 @@ export const createBrowserSlice: StateCreator<AppState, [], [], BrowserSlice> = 
         activeBrowserTabIdByWorktree: nextActiveBrowserTabIdByWorktree,
         tabBarOrderByWorktree: nextTabBarOrder,
         activeTabType: nextActiveTabType,
+        pendingAddressBarFocusByTabId: Object.fromEntries(
+          Object.entries(s.pendingAddressBarFocusByTabId).filter(
+            ([pendingTabId]) => pendingTabId !== tabId
+          )
+        ),
         activeTabTypeByWorktree: nextActiveTabTypeByWorktree
       }
     }),
@@ -224,6 +245,20 @@ export const createBrowserSlice: StateCreator<AppState, [], [], BrowserSlice> = 
         }
       }
     }),
+
+  consumeAddressBarFocusRequest: (tabId) => {
+    if (!get().pendingAddressBarFocusByTabId[tabId]) {
+      return false
+    }
+
+    set((s) => {
+      const next = { ...s.pendingAddressBarFocusByTabId }
+      delete next[tabId]
+      return { pendingAddressBarFocusByTabId: next }
+    })
+
+    return true
+  },
 
   updateBrowserTabPageState: (tabId, updates) =>
     set((s) => ({

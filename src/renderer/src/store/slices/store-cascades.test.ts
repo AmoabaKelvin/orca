@@ -473,6 +473,82 @@ describe('setActiveWorktree', () => {
     expect(s.activeBrowserTabIdByWorktree[backgroundWt]).toBe(browserTab.id)
   })
 
+  it('queues and consumes a one-shot address-bar focus request for a fresh blank browser tab', () => {
+    const store = createTestStore()
+    const wt = 'repo1::/path/wt1'
+
+    seedStore(store, {
+      worktreesByRepo: {
+        repo1: [makeWorktree({ id: wt, repoId: 'repo1', path: '/path/wt1' })]
+      },
+      activeWorktreeId: wt,
+      activeTabType: 'terminal',
+      tabsByWorktree: {
+        [wt]: [makeTab({ id: 'terminal-1', worktreeId: wt })]
+      }
+    })
+
+    const browserTab = store.getState().createBrowserTab(wt, 'about:blank', { activate: true })
+
+    expect(store.getState().pendingAddressBarFocusByTabId[browserTab.id]).toBe(true)
+    expect(store.getState().consumeAddressBarFocusRequest(browserTab.id)).toBe(true)
+    expect(store.getState().consumeAddressBarFocusRequest(browserTab.id)).toBe(false)
+  })
+
+  it('does not queue address-bar focus for background or already-navigated browser tabs', () => {
+    const store = createTestStore()
+    const activeWt = 'repo1::/path/wt1'
+    const backgroundWt = 'repo1::/path/wt2'
+
+    seedStore(store, {
+      worktreesByRepo: {
+        repo1: [
+          makeWorktree({ id: activeWt, repoId: 'repo1', path: '/path/wt1' }),
+          makeWorktree({ id: backgroundWt, repoId: 'repo1', path: '/path/wt2' })
+        ]
+      },
+      activeWorktreeId: activeWt,
+      activeTabType: 'terminal',
+      tabsByWorktree: {
+        [activeWt]: [makeTab({ id: 'terminal-1', worktreeId: activeWt })],
+        [backgroundWt]: [makeTab({ id: 'terminal-2', worktreeId: backgroundWt })]
+      }
+    })
+
+    const backgroundBlankTab = store
+      .getState()
+      .createBrowserTab(backgroundWt, 'about:blank', { activate: true })
+    const activeNavigatedTab = store
+      .getState()
+      .createBrowserTab(activeWt, 'https://example.com', { activate: true })
+
+    expect(store.getState().pendingAddressBarFocusByTabId[backgroundBlankTab.id]).toBeUndefined()
+    expect(store.getState().pendingAddressBarFocusByTabId[activeNavigatedTab.id]).toBeUndefined()
+  })
+
+  it('drops a pending address-bar focus request when the new browser tab closes before mount', () => {
+    const store = createTestStore()
+    const wt = 'repo1::/path/wt1'
+
+    seedStore(store, {
+      worktreesByRepo: {
+        repo1: [makeWorktree({ id: wt, repoId: 'repo1', path: '/path/wt1' })]
+      },
+      activeWorktreeId: wt,
+      activeTabType: 'terminal',
+      tabsByWorktree: {
+        [wt]: [makeTab({ id: 'terminal-1', worktreeId: wt })]
+      }
+    })
+
+    const browserTab = store.getState().createBrowserTab(wt, 'about:blank', { activate: true })
+    expect(store.getState().pendingAddressBarFocusByTabId[browserTab.id]).toBe(true)
+
+    store.getState().closeBrowserTab(browserTab.id)
+
+    expect(store.getState().pendingAddressBarFocusByTabId[browserTab.id]).toBeUndefined()
+  })
+
   it('restores terminal surface when switching to a worktree that was last on a terminal tab with open files', () => {
     const store = createTestStore()
     const wt = 'repo1::/path/wt1'

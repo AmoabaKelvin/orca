@@ -76,6 +76,7 @@ export type BrowserApi = {
     args: BrowserCaptureSelectionScreenshotArgs
   ) => Promise<BrowserCaptureSelectionScreenshotResult>
   extractHoverPayload: (args: BrowserExtractHoverArgs) => Promise<BrowserExtractHoverResult>
+  onGrabModeToggle: (callback: (browserTabId: string) => void) => () => void
 }
 
 export type PreflightStatus = {

@@ -222,6 +222,7 @@ class BrowserManager {
   private readonly webContentsIdByTabId = new Map<string, number>()
   private readonly rendererWebContentsIdByTabId = new Map<string, number>()
   private readonly contextMenuCleanupByTabId = new Map<string, () => void>()
+  private readonly grabShortcutCleanupByTabId = new Map<string, () => void>()
   private readonly policyAttachedGuestIds = new Set<number>()
   private readonly pendingLoadFailuresByGuestId = new Map<
     number,
@@ -317,6 +318,7 @@ class BrowserManager {
     this.rendererWebContentsIdByTabId.set(browserTabId, rendererWebContentsId)
 
     this.setupContextMenu(browserTabId, guest)
+    this.setupGrabShortcut(browserTabId, guest)
     this.flushPendingLoadFailure(browserTabId, webContentsId)
   }
 
@@ -330,6 +332,11 @@ class BrowserManager {
     if (cleanup) {
       cleanup()
       this.contextMenuCleanupByTabId.delete(browserTabId)
+    }
+    const shortcutCleanup = this.grabShortcutCleanupByTabId.get(browserTabId)
+    if (shortcutCleanup) {
+      shortcutCleanup()
+      this.grabShortcutCleanupByTabId.delete(browserTabId)
     }
     this.webContentsIdByTabId.delete(browserTabId)
     this.rendererWebContentsIdByTabId.delete(browserTabId)
@@ -790,6 +797,78 @@ class BrowserManager {
         // Why: browser tabs can outlive the guest webContents briefly during
         // teardown. Cleanup should be best-effort instead of throwing while the
         // IDE is closing a tab.
+      }
+    })
+  }
+
+  // Why: browser grab mode intentionally uses Cmd/Ctrl+C as its entry
+  // gesture, but a focused webview guest is a separate Chromium process so
+  // the renderer's window-level keydown handler never sees that shortcut.
+  // Only forward the chord when Chromium would not perform a normal copy:
+  // no editable element is focused and there is no selected text. That keeps
+  // native page copy working while still making the grab shortcut reachable
+  // from focused web content.
+  private setupGrabShortcut(browserTabId: string, guest: Electron.WebContents): void {
+    const previousCleanup = this.grabShortcutCleanupByTabId.get(browserTabId)
+    if (previousCleanup) {
+      previousCleanup()
+      this.grabShortcutCleanupByTabId.delete(browserTabId)
+    }
+
+    const handler = (event: Electron.Event, input: Electron.Input): void => {
+      if (input.type !== 'keyDown') {
+        return
+      }
+      const isMod = process.platform === 'darwin' ? input.meta : input.control
+      if (!isMod || input.shift || input.alt || input.key.toLowerCase() !== 'c') {
+        return
+      }
+
+      void guest
+        .executeJavaScript(`(() => {
+          const active = document.activeElement
+          const tag = active?.tagName
+          const isEditable =
+            active instanceof HTMLInputElement ||
+            active instanceof HTMLTextAreaElement ||
+            active?.isContentEditable === true ||
+            tag === 'SELECT'
+          if (isEditable) {
+            return false
+          }
+          const selection = window.getSelection()
+          return Boolean(selection && selection.type === 'Range' && selection.toString().trim().length > 0)
+            ? false
+            : true
+        })()`)
+        .then((shouldToggle) => {
+          if (!shouldToggle) {
+            return
+          }
+          event.preventDefault()
+          const rendererWcId = this.rendererWebContentsIdByTabId.get(browserTabId)
+          if (!rendererWcId) {
+            return
+          }
+          const rendererWc = webContents.fromId(rendererWcId)
+          if (!rendererWc || rendererWc.isDestroyed()) {
+            return
+          }
+          rendererWc.send('browser:grabModeToggle', browserTabId)
+        })
+        .catch(() => {
+          // Why: shortcut forwarding is best-effort. Guest teardown or a
+          // transient executeJavaScript failure should not break normal copy.
+        })
+    }
+
+    guest.on('before-input-event', handler)
+    this.grabShortcutCleanupByTabId.set(browserTabId, () => {
+      try {
+        guest.off('before-input-event', handler)
+      } catch {
+        // Why: browser tabs can outlive the guest webContents briefly during
+        // teardown. Cleanup should be best-effort.
       }
     })
   }

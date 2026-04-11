@@ -14,7 +14,9 @@ const {
   guestIsDestroyedMock,
   guestGetZoomFactorMock,
   guestCapturePageMock,
-  menuBuildFromTemplateMock
+  menuBuildFromTemplateMock,
+  rendererSendMock,
+  rendererIsDestroyedMock
 } = vi.hoisted(() => ({
   webContentsFromIdMock: vi.fn(),
   guestOnMock: vi.fn(),
@@ -25,7 +27,9 @@ const {
   guestIsDestroyedMock: vi.fn(() => false),
   guestGetZoomFactorMock: vi.fn(() => 1),
   guestCapturePageMock: vi.fn(),
-  menuBuildFromTemplateMock: vi.fn()
+  menuBuildFromTemplateMock: vi.fn(),
+  rendererSendMock: vi.fn(),
+  rendererIsDestroyedMock: vi.fn(() => false)
 }))
 
 vi.mock('electron', () => ({
@@ -65,7 +69,18 @@ describe('browserManager grab operations', () => {
     browserManager.unregisterAll()
 
     guest = makeGuest(101)
-    webContentsFromIdMock.mockReturnValue(guest)
+    webContentsFromIdMock.mockImplementation((id: number) => {
+      if (id === 101) {
+        return guest
+      }
+      if (id === rendererWebContentsId) {
+        return {
+          isDestroyed: rendererIsDestroyedMock,
+          send: rendererSendMock
+        }
+      }
+      return null
+    })
 
     browserManager.attachGuestPolicies(guest)
     browserManager.registerGuest({
@@ -124,6 +139,48 @@ describe('browserManager grab operations', () => {
       guestExecuteJavaScriptMock.mockRejectedValue(new Error('Injection failed'))
       const result = await browserManager.setGrabMode('tab-1', true, guest)
       expect(result).toBe(false)
+    })
+  })
+
+  describe('grab shortcut forwarding', () => {
+    it('forwards cmd/ctrl+c from the guest when the page is not using copy', async () => {
+      const handler = guestOnMock.mock.calls.find(
+        ([eventName]) => eventName === 'before-input-event'
+      )?.[1]
+      expect(handler).toBeTypeOf('function')
+
+      guestExecuteJavaScriptMock.mockResolvedValueOnce(true)
+      const preventDefault = vi.fn()
+      handler?.(
+        { preventDefault } as never,
+        { type: 'keyDown', meta: true, control: true, shift: false, alt: false, key: 'c' } as never
+      )
+
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(preventDefault).toHaveBeenCalledTimes(1)
+      expect(rendererSendMock).toHaveBeenCalledWith('browser:grabModeToggle', 'tab-1')
+    })
+
+    it('does not forward cmd/ctrl+c when the guest reports native copy should win', async () => {
+      const handler = guestOnMock.mock.calls.find(
+        ([eventName]) => eventName === 'before-input-event'
+      )?.[1]
+      expect(handler).toBeTypeOf('function')
+
+      guestExecuteJavaScriptMock.mockResolvedValueOnce(false)
+      const preventDefault = vi.fn()
+      handler?.(
+        { preventDefault } as never,
+        { type: 'keyDown', meta: true, control: true, shift: false, alt: false, key: 'c' } as never
+      )
+
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(preventDefault).not.toHaveBeenCalled()
+      expect(rendererSendMock).not.toHaveBeenCalled()
     })
   })
 

@@ -355,7 +355,14 @@ const api = {
     extractHoverPayload: (args: {
       browserTabId: string
     }): Promise<{ ok: true; payload: unknown } | { ok: false; reason: string }> =>
-      ipcRenderer.invoke('browser:extractHoverPayload', args)
+      ipcRenderer.invoke('browser:extractHoverPayload', args),
+
+    onGrabModeToggle: (callback: (browserTabId: string) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, browserTabId: string) =>
+        callback(browserTabId)
+      ipcRenderer.on('browser:grabModeToggle', listener)
+      return () => ipcRenderer.removeListener('browser:grabModeToggle', listener)
+    }
   },
 
   hooks: {
