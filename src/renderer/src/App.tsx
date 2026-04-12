@@ -391,6 +391,13 @@ function App(): React.JSX.Element {
       if (e.repeat) {
         return
       }
+      // Why: child-component handlers (e.g. terminal search Cmd+G / Cmd+Shift+G)
+      // register on the same window capture phase and fire first. If they already
+      // called preventDefault, this handler must not also act on the event —
+      // otherwise both actions execute (e.g. search navigation AND sidebar open).
+      if (e.defaultPrevented) {
+        return
+      }
       // Accept Cmd on macOS, Ctrl on other platforms
       const mod = isMac ? e.metaKey : e.ctrlKey
 
@@ -447,8 +454,15 @@ function App(): React.JSX.Element {
         return
       }
 
-      // Cmd/Ctrl+Shift+G — toggle right sidebar / source control tab
+      // Cmd/Ctrl+Shift+G — toggle right sidebar / source control tab.
+      // Skip when terminal search is open — Cmd+Shift+G means "find previous"
+      // in that context (handled by keyboard-handlers.ts). Both listeners share
+      // the window capture phase and registration order can vary with React
+      // effect re-runs, so a DOM check is the reliable coordination mechanism.
       if (e.shiftKey && !e.altKey && e.key.toLowerCase() === 'g') {
+        if (document.querySelector('[data-terminal-search-root]')) {
+          return
+        }
         e.preventDefault()
         setRightSidebarTab('source-control')
         setRightSidebarOpen(true)

@@ -107,13 +107,14 @@ export function useTerminalKeyboardShortcuts({
       // Cmd+G / Cmd+Shift+G navigates terminal search matches even when focus
       // is inside the search input itself, so this check must run before the
       // editable-target guard would otherwise bypass all terminal shortcuts.
+      // stopImmediatePropagation prevents App.tsx's Cmd+Shift+G (source-control sidebar) from also firing.
       const direction = matchSearchNavigate(e, isMac, searchOpenRef.current, searchStateRef.current)
       if (direction !== null) {
         if (e.repeat) {
           return
         }
         e.preventDefault()
-        e.stopPropagation()
+        e.stopImmediatePropagation()
         const pane = manager.getActivePane() ?? manager.getPanes()[0]
         if (!pane) {
           return
