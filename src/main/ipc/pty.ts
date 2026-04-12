@@ -22,7 +22,7 @@ const ptyShellName = new Map<string, string>()
 // to invoke/clean them up on a destroyed environment, triggering a SIGABRT
 // via Napi::Error::ThrowAsJavaScriptException. Storing and calling the
 // disposables before proc.kill() prevents the use-after-free crash.
-const ptyDisposables = new Map<string, Array<{ dispose: () => void }>>()
+const ptyDisposables = new Map<string, { dispose: () => void }[]>()
 
 // Track which "page load generation" each PTY belongs to.
 // When the renderer reloads, we only kill PTYs from previous generations,
@@ -48,6 +48,22 @@ function clearPtyState(id: string): void {
   ptyProcesses.delete(id)
   ptyShellName.delete(id)
   ptyLoadGeneration.delete(id)
+}
+
+function killPtyProcess(id: string, proc: pty.IPty): boolean {
+  // Why: node-pty's listener disposables must be torn down before proc.kill()
+  // on every explicit teardown path, not just app quit. Some kills happen
+  // during reload/manual-close flows where waiting for later state cleanup is
+  // too late to stop the stale NAPI callbacks from surviving into shutdown.
+  disposePtyListeners(id)
+  try {
+    proc.kill()
+  } catch {
+    return false
+  }
+  clearPtyState(id)
+  clearProviderPtyState(id)
+  return true
 }
 
 function clearProviderPtyState(id: string): void {
@@ -138,13 +154,7 @@ export function registerPtyHandlers(
     for (const [id, proc] of ptyProcesses) {
       const gen = ptyLoadGeneration.get(id) ?? -1
       if (gen < loadGeneration) {
-        try {
-          proc.kill()
-        } catch {
-          // Process may already be dead
-        }
-        clearPtyState(id)
-        clearProviderPtyState(id)
+        killPtyProcess(id, proc)
         // Why: notify runtime so the agent detector can close out any live
         // agent sessions. Without this, killed PTYs would remain in the
         // detector's liveAgents map and accumulate inflated durations.
@@ -169,13 +179,9 @@ export function registerPtyHandlers(
       if (!proc) {
         return false
       }
-      try {
-        proc.kill()
-      } catch {
+      if (!killPtyProcess(ptyId, proc)) {
         return false
       }
-      clearPtyState(ptyId)
-      clearProviderPtyState(ptyId)
       runtime?.onPtyExit(ptyId, -1)
       return true
     }
@@ -414,13 +420,7 @@ export function registerPtyHandlers(
   ipcMain.handle('pty:kill', (_event, args: { id: string }) => {
     const proc = ptyProcesses.get(args.id)
     if (proc) {
-      try {
-        proc.kill()
-      } catch {
-        // Process may already be dead
-      }
-      clearPtyState(args.id)
-      clearProviderPtyState(args.id)
+      killPtyProcess(args.id, proc)
       runtime?.onPtyExit(args.id, -1)
     }
   })
@@ -471,13 +471,6 @@ export function registerPtyHandlers(
  */
 export function killAllPty(): void {
   for (const [id, proc] of ptyProcesses) {
-    disposePtyListeners(id)
-    try {
-      proc.kill()
-    } catch {
-      // Process may already be dead
-    }
-    clearPtyState(id)
-    clearProviderPtyState(id)
+    killPtyProcess(id, proc)
   }
 }
