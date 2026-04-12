@@ -63,9 +63,8 @@ describe('useIpcEvents updater integration', () => {
     vi.unstubAllGlobals()
   })
 
-  it('routes updater status events into store state and update toasts', async () => {
+  it('routes updater status events into store state', async () => {
     const setUpdateStatus = vi.fn()
-    const handleStatus = vi.fn()
     const updaterStatusListenerRef: { current: ((status: unknown) => void) | null } = {
       current: null
     }
@@ -104,12 +103,6 @@ describe('useIpcEvents updater integration', () => {
           settings: { terminalFontSize: 13 }
         })
       }
-    }))
-
-    vi.doMock('./update-toast-controller', () => ({
-      createUpdateToastController: () => ({
-        handleStatus
-      })
     }))
 
     vi.doMock('@/lib/ui-zoom', () => ({
@@ -186,6 +179,5 @@ describe('useIpcEvents updater integration', () => {
     updaterStatusListenerRef.current(availableStatus)
 
     expect(setUpdateStatus).toHaveBeenCalledWith(availableStatus)
-    expect(handleStatus).toHaveBeenCalledWith(availableStatus)
   })
 })
