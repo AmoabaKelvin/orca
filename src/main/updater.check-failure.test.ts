@@ -69,7 +69,8 @@ const { appMock, browserWindowMock, nativeUpdaterMock, autoUpdaterMock, isMock, 
 vi.mock('electron', () => ({
   app: appMock,
   BrowserWindow: browserWindowMock,
-  autoUpdater: nativeUpdaterMock
+  autoUpdater: nativeUpdaterMock,
+  net: { fetch: vi.fn() }
 }))
 
 vi.mock('electron-updater', () => ({

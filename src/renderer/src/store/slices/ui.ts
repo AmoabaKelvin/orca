@@ -1,6 +1,7 @@
 import type { StateCreator } from 'zustand'
 import type { AppState } from '../types'
 import type {
+  ChangelogData,
   PersistedUIState,
   StatusBarItem,
   UpdateStatus,
@@ -78,8 +79,14 @@ export type UISlice = {
   hydratePersistedUI: (ui: PersistedUIState) => void
   updateStatus: UpdateStatus
   setUpdateStatus: (status: UpdateStatus) => void
+  // Why: cached changelog from the last 'available' status so the card still has
+  // rich content (title/media/description) during downloading, error, and downloaded
+  // states. Cleared on idle/checking/not-available to prevent stale leakage.
+  updateChangelog: ChangelogData | null
   dismissedUpdateVersion: string | null
-  dismissUpdate: () => void
+  dismissUpdate: (versionOverride?: string) => void
+  updateReassuranceSeen: boolean
+  markUpdateReassuranceSeen: () => void
   isFullScreen: boolean
   setIsFullScreen: (v: boolean) => void
 }
@@ -178,23 +185,54 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => (
         statusBarItems: ui.statusBarItems ?? [...DEFAULT_STATUS_BAR_ITEMS],
         statusBarVisible: ui.statusBarVisible ?? true,
         dismissedUpdateVersion: ui.dismissedUpdateVersion ?? null,
+        updateReassuranceSeen: ui.updateReassuranceSeen ?? false,
         persistedUIReady: true
       }
     }),
 
   updateStatus: { state: 'idle' },
-  setUpdateStatus: (status) => set({ updateStatus: status }),
+  setUpdateStatus: (status) => {
+    const update: Partial<Pick<UISlice, 'updateStatus' | 'updateChangelog'>> = {
+      updateStatus: status
+    }
+    if (status.state === 'available') {
+      // Why: cache changelog from each 'available' payload so the card retains
+      // rich content across downloading/error/downloaded transitions. Always
+      // overwrite (even with null) to prevent a previous rich changelog from
+      // leaking into a later simple-mode update for a different version.
+      update.updateChangelog = status.changelog ?? null
+    } else if (
+      status.state === 'idle' ||
+      status.state === 'checking' ||
+      status.state === 'not-available'
+    ) {
+      // Why: reset on cycle-boundary states so stale rich content from a
+      // previous update cycle cannot resurface.
+      update.updateChangelog = null
+    }
+    // For 'downloading', 'downloaded', 'error': leave updateChangelog untouched
+    // so the card can keep showing rich content from the original 'available'.
+    set(update)
+  },
+  updateChangelog: null,
   dismissedUpdateVersion: null,
-  dismissUpdate: () =>
+  dismissUpdate: (versionOverride?: string) =>
     set((s) => {
+      // Why: the 'error' variant has no version field, so the card passes
+      // the cached version explicitly via versionOverride.
       const dismissedUpdateVersion =
-        'version' in s.updateStatus ? (s.updateStatus.version ?? null) : null
+        versionOverride ?? ('version' in s.updateStatus ? (s.updateStatus.version ?? null) : null)
       // Why: dismissing an update is user intent, not transient view state. Persist
       // the dismissed version so relaunching the app does not immediately re-show
       // the same reminder card until a newer release appears.
       void window.api.ui.set({ dismissedUpdateVersion }).catch(console.error)
       return { dismissedUpdateVersion }
     }),
+  updateReassuranceSeen: false,
+  markUpdateReassuranceSeen: () => {
+    void window.api.ui.set({ updateReassuranceSeen: true }).catch(console.error)
+    set({ updateReassuranceSeen: true })
+  },
   isFullScreen: false,
   setIsFullScreen: (v) => set({ isFullScreen: v })
 })

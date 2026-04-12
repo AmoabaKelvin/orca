@@ -299,13 +299,38 @@ export type CreateWorktreeResult = {
 }
 
 // ─── Updater ─────────────────────────────────────────────────────────
+
+// Why: the release object sent to the renderer omits `version` (redundant
+// with the top-level UpdateStatus.version) to keep one source of truth.
+export type ChangelogRelease = {
+  title: string
+  description: string
+  mediaUrl?: string
+  releaseNotesUrl: string
+}
+
+export type ChangelogData = {
+  release: ChangelogRelease
+  releasesBehind: number | null
+}
+
 export type UpdateStatus =
   | { state: 'idle' }
   | { state: 'checking'; userInitiated?: boolean }
   | {
       state: 'available'
       version: string
+      // Why: releaseUrl is not currently populated by the update-available handler
+      // (it always sends undefined). Kept on the type for the Settings page's
+      // release-notes link fallback and for potential future use if the main
+      // process starts extracting release URLs from electron-updater metadata.
       releaseUrl?: string
+      // Why: changelog is always explicitly set by the main process — null means
+      // the fetch failed or the version wasn't in the JSON (simple mode), and a
+      // populated object means rich mode. Using `| null` (not `?`) avoids a
+      // three-state ambiguity (undefined vs null vs present) and makes exhaustive
+      // checks straightforward.
+      changelog: ChangelogData | null
     }
   | { state: 'not-available'; userInitiated?: boolean }
   | { state: 'downloading'; percent: number; version: string }
@@ -437,6 +462,9 @@ export type PersistedUIState = {
    *  permission dialog via a startup notification. Prevents re-firing on
    *  every launch. */
   notificationPermissionRequested?: boolean
+  /** Once the user has seen the "your sessions won't be interrupted"
+   *  reassurance card, we never show it again. */
+  updateReassuranceSeen?: boolean
 }
 
 // ─── Persistence shape ──────────────────────────────────────────────

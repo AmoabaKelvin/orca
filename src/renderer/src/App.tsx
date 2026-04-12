@@ -19,6 +19,7 @@ import RightSidebar from './components/right-sidebar'
 import QuickOpen from './components/QuickOpen'
 import WorktreeJumpPalette from './components/WorktreeJumpPalette'
 import { StatusBar } from './components/status-bar/StatusBar'
+import { UpdateCard } from './components/UpdateCard'
 import { ZoomOverlay } from './components/ZoomOverlay'
 import { useGitStatusPolling } from './components/right-sidebar/useGitStatusPolling'
 import {
@@ -581,6 +582,7 @@ function App(): React.JSX.Element {
       </TooltipProvider>
       <QuickOpen />
       <WorktreeJumpPalette />
+      <UpdateCard />
       <ZoomOverlay />
       <Toaster closeButton toastOptions={{ className: 'font-sans text-sm' }} />
     </div>

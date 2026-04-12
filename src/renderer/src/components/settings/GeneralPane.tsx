@@ -171,11 +171,11 @@ export function GeneralPane({ settings, updateSettings }: GeneralPaneProps): Rea
   }
 
   const handleRestartToUpdate = (): void => {
-    void window.api.updater.quitAndInstall().catch((error) => {
-      toast.error('Could not restart to install the update.', {
-        description: String((error as Error)?.message ?? error)
-      })
-    })
+    // Why: quitAndInstall resolves immediately (the actual quit happens in a
+    // deferred timer in the main process), so rejection here is only possible
+    // if the IPC channel itself breaks. Log defensively; the user will notice
+    // the app didn't restart and can retry.
+    void window.api.updater.quitAndInstall().catch(console.error)
   }
 
   const syncCodexAccounts = async (next: CodexRateLimitAccountsState): Promise<void> => {
@@ -729,7 +729,13 @@ export function GeneralPane({ settings, updateSettings }: GeneralPaneProps): Rea
               <Button
                 variant="default"
                 size="sm"
-                onClick={() => window.api.updater.download()}
+                onClick={() => {
+                  void window.api.updater.download().catch((error) => {
+                    toast.error('Could not start the update download.', {
+                      description: String((error as Error)?.message ?? error)
+                    })
+                  })
+                }}
                 className="gap-2"
               >
                 <Download className="size-3.5" />

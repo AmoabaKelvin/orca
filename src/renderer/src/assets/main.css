@@ -662,3 +662,33 @@
   width: 100% !important;
   height: 100% !important;
 }
+
+/* ── Update card animations ───────────────────────────────────────── */
+
+@keyframes update-card-enter {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes update-card-exit {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.animate-update-card-enter {
+  animation: update-card-enter 200ms ease-out both;
+}
+
+.animate-update-card-exit {
+  animation: update-card-exit 150ms ease-in both;
+}

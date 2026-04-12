@@ -9,7 +9,6 @@ import { getVisibleWorktreeIds } from '@/components/sidebar/visible-worktrees'
 import { nextEditorFontZoomLevel, computeEditorFontSize } from '@/lib/editor-font-zoom'
 import type { UpdateStatus } from '../../../shared/types'
 import type { RateLimitState } from '../../../shared/rate-limit-types'
-import { createUpdateToastController } from './update-toast-controller'
 import { zoomLevelToPercent, ZOOM_MIN, ZOOM_MAX } from '@/components/settings/SettingsConstants'
 import { dispatchZoomLevelChanged } from '@/lib/zoom-events'
 import { reconcileTabOrder } from '@/components/tab-bar/reconcile-order'
@@ -65,7 +64,6 @@ export function resolveZoomTarget(args: {
 export function useIpcEvents(): void {
   useEffect(() => {
     const unsubs: (() => void)[] = []
-    const updateToastController = createUpdateToastController()
 
     unsubs.push(
       window.api.repos.onChanged(() => {
@@ -155,7 +153,6 @@ export function useIpcEvents(): void {
       window.api.updater.onStatus((raw) => {
         const status = raw as UpdateStatus
         useAppStore.getState().setUpdateStatus(status)
-        updateToastController.handleStatus(status)
       })
     )
 

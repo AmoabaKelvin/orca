@@ -87,7 +87,8 @@ vi.mock('electron', () => ({
   app: appMock,
   BrowserWindow: browserWindowMock,
   autoUpdater: nativeUpdaterMock,
-  shell: shellMock
+  shell: shellMock,
+  net: { fetch: vi.fn() }
 }))
 
 vi.mock('electron-updater', () => ({
@@ -100,6 +101,10 @@ vi.mock('@electron-toolkit/utils', () => ({
 
 vi.mock('./ipc/pty', () => ({
   killAllPty: killAllPtyMock
+}))
+
+vi.mock('./updater-changelog', () => ({
+  fetchChangelog: vi.fn().mockResolvedValue(null)
 }))
 
 describe('updater mac install handoff', () => {
@@ -131,6 +136,9 @@ describe('updater mac install handoff', () => {
 
       setupAutoUpdater(mainWindow as never)
       autoUpdaterMock.emit('update-available', { version: '1.0.61' })
+      // Why: the update-available handler is now async (it awaits fetchChangelog).
+      // Flush microtasks so setAvailableVersion runs before update-downloaded fires.
+      await new Promise((r) => setTimeout(r, 0))
       autoUpdaterMock.emit('update-downloaded', { version: '1.0.61' })
 
       const preventDefault = vi.fn()
@@ -168,6 +176,9 @@ describe('updater mac install handoff', () => {
 
       setupAutoUpdater(mainWindow as never)
       autoUpdaterMock.emit('update-available', { version: '1.0.61' })
+      // Why: the update-available handler is now async (it awaits fetchChangelog).
+      // Flush microtasks so setAvailableVersion runs before update-downloaded fires.
+      await vi.advanceTimersByTimeAsync(0)
       autoUpdaterMock.emit('update-downloaded', { version: '1.0.61' })
 
       const preventDefault = vi.fn()

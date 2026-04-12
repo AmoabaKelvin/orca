@@ -32,6 +32,10 @@ let pendingCheckFailurePromise: Promise<void> | null = null
 let autoUpdateCheckTimer: ReturnType<typeof setTimeout> | null = null
 let pendingQuitAndInstallTimer: ReturnType<typeof setTimeout> | null = null
 let persistLastUpdateCheckAt: ((timestamp: number) => void) | null = null
+// Why: guards against duplicate download() calls when both the card and
+// Settings trigger a download before the first download-progress event
+// flips the status to 'downloading'.
+let downloadInFlight = false
 /** Guards against the macOS `activate` handler re-opening the old version
  *  while Squirrel's ShipIt is replacing the .app bundle. */
 let quittingForUpdate = false
@@ -42,6 +46,11 @@ function clearAvailableUpdateContext(): void {
 }
 
 function sendStatus(status: UpdateStatus): void {
+  // Why: reset the in-flight guard when the status moves past the
+  // window where duplicate download() calls are possible.
+  if (status.state === 'downloading' || status.state === 'error' || status.state === 'idle') {
+    downloadInFlight = false
+  }
   if (statusesEqual(currentStatus, status)) {
     return
   }
@@ -307,11 +316,13 @@ export function setupAutoUpdater(
 }
 
 export function downloadUpdate(): void {
-  if (currentStatus.state !== 'available') {
+  if (currentStatus.state !== 'available' || downloadInFlight) {
     return
   }
+  downloadInFlight = true
   beginMacUpdateDownload()
   autoUpdater.downloadUpdate().catch((err) => {
+    downloadInFlight = false
     sendErrorStatus(String(err?.message ?? err))
   })
 }

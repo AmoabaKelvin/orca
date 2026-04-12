@@ -21,6 +21,17 @@ function isAnimatedGif(url: string | undefined): boolean {
   return typeof url === 'string' && url.toLowerCase().endsWith('.gif')
 }
 
+type ErrorCardModel = {
+  title: string
+  summary: string
+  message: string
+  releaseUrl: string
+  primaryAction?: {
+    label: string
+    onClick: () => void
+  }
+}
+
 // ── Compact card (transient check feedback) ─────────────────────────
 
 function CompactCardContent({
@@ -239,6 +250,33 @@ export function UpdateCard() {
     })
   }
 
+  const errorCard: ErrorCardModel | null =
+    status.state === 'error'
+      ? {
+          title: 'Update Error',
+          summary: cachedVersion ? 'Could not complete the update.' : 'Could not check for updates.',
+          message: status.message,
+          releaseUrl: releaseUrlForVersion(cachedVersion),
+          primaryAction: cachedVersion
+            ? {
+                label: 'Retry Download',
+                onClick: handleUpdate
+              }
+            : undefined
+        }
+      : installError
+        ? {
+            title: 'Update Error',
+            summary: 'Could not restart to install the update.',
+            message: installError,
+            releaseUrl: releaseUrlForVersion(cachedVersion),
+            primaryAction: {
+              label: 'Try Again',
+              onClick: handleInstallRetry
+            }
+          }
+        : null
+
   const handleDismissWithAnimation = () => {
     if (prefersReducedMotion) {
       handleClose()
@@ -294,32 +332,14 @@ export function UpdateCard() {
 
     // ── Error states ─────────────────────────────────────────────────
 
-    if (status.state === 'error') {
-      // Why: user-initiated check failures have no cached version because a
-      // new checking cycle clears versionRef. Any error with a cached version
-      // is tied to a concrete available update and should use the full card.
-      if (!shouldShowDetailedErrorCard) {
-        return (
-          <CompactCardContent
-            icon="error"
-            text={`Could not check for updates. ${status.message}`}
-            onClose={handleDismissWithAnimation}
-            action={{
-              label: 'Download manually',
-              url: releaseUrlForVersion(cachedVersion)
-            }}
-          />
-        )
-      }
-      // Full error card: download failure
+    if (errorCard) {
       return (
         <ErrorCardContent
-          title="Download Failed"
-          summary="Download failed."
-          message={status.message}
-          releaseUrl={releaseUrlForVersion(cachedVersion)}
-          primaryActionLabel="Retry"
-          onPrimaryAction={handleUpdate}
+          title={errorCard.title}
+          summary={errorCard.summary}
+          message={errorCard.message}
+          releaseUrl={errorCard.releaseUrl}
+          primaryAction={errorCard.primaryAction}
           onClose={handleDismissWithAnimation}
         />
       )
@@ -328,19 +348,6 @@ export function UpdateCard() {
     // ── Downloaded state ─────────────────────────────────────────────
 
     if (status.state === 'downloaded') {
-      if (installError) {
-        return (
-          <ErrorCardContent
-            title="Install Failed"
-            summary="Could not restart to install the update."
-            message={installError}
-            releaseUrl={releaseUrlForVersion(cachedVersion)}
-            primaryActionLabel="Try Again"
-            onPrimaryAction={handleInstallRetry}
-            onClose={handleDismissWithAnimation}
-          />
-        )
-      }
       if (hasStartedDownload.current) {
         return (
           <div className="p-4">
@@ -376,6 +383,10 @@ export function UpdateCard() {
     }
 
     // ── Available state ──────────────────────────────────────────────
+
+    if (status.state !== 'available') {
+      return null
+    }
 
     const releaseUrl =
       ('releaseUrl' in status ? status.releaseUrl : undefined) ??
@@ -486,7 +497,7 @@ function RichCardContent({
   return (
     <div className="flex flex-col gap-3 p-4">
       <div className="flex items-start justify-between gap-2">
-        <h3 className="text-sm font-semibold">New in Orca: {release.title}</h3>
+        <h3 className="text-sm font-semibold">New: {release.title}</h3>
         <Button
           variant="ghost"
           size="icon"
@@ -576,11 +587,11 @@ function SimpleCardContent({
       </div>
 
       <p className="text-sm text-muted-foreground">
-        A new version of Orca (v{version}) is ready to download.
+        Orca v{version} is ready.
       </p>
 
       <p className="text-xs leading-relaxed text-muted-foreground">
-        Your terminal sessions won&apos;t be interrupted.
+        Sessions won&apos;t be interrupted.
       </p>
 
       <button
@@ -628,7 +639,7 @@ function DownloadingContent({
     <div className="flex flex-col gap-3 p-4">
       <div className="flex items-start justify-between gap-2">
         {release ? (
-          <h3 className="text-sm font-semibold">New in Orca: {release.title}</h3>
+          <h3 className="text-sm font-semibold">New: {release.title}</h3>
         ) : (
           <h3 className="text-sm font-semibold">Downloading Update</h3>
         )}
@@ -655,9 +666,7 @@ function DownloadingContent({
       )}
 
       <p className="text-sm text-muted-foreground">
-        {release
-          ? release.description
-          : `A new version of Orca (v${version}) is downloading.`}
+        {release ? release.description : `Orca v${version} is downloading.`}
       </p>
 
       <button
@@ -686,16 +695,17 @@ function ErrorCardContent({
   summary,
   message,
   releaseUrl,
-  primaryActionLabel,
-  onPrimaryAction,
+  primaryAction,
   onClose
 }: {
   title: string
   summary: string
   message: string
   releaseUrl: string
-  primaryActionLabel: string
-  onPrimaryAction: () => void
+  primaryAction?: {
+    label: string
+    onClick: () => void
+  }
   onClose: () => void
 }) {
   return (
@@ -718,14 +728,16 @@ function ErrorCardContent({
       </p>
 
       <div className="flex gap-2">
-        <Button variant="default" size="sm" onClick={onPrimaryAction} className="flex-1">
-          {primaryActionLabel}
-        </Button>
+        {primaryAction && (
+          <Button variant="default" size="sm" onClick={primaryAction.onClick} className="flex-1">
+            {primaryAction.label}
+          </Button>
+        )}
         <Button
           variant="outline"
           size="sm"
           onClick={() => void window.api.shell.openUrl(releaseUrl)}
-          className="flex-1"
+          className={primaryAction ? 'flex-1' : 'w-full'}
         >
           Download Manually
         </Button>
@@ -761,11 +773,7 @@ function ReadyToInstallContent({
       </div>
 
       <p className="text-sm text-muted-foreground">
-        Version {version} is ready to install. Restart to apply the update.
-      </p>
-
-      <p className="text-xs text-muted-foreground">
-        Your terminal sessions won&apos;t be interrupted.
+        Orca v{version} is downloaded. Restart when you&apos;re ready.
       </p>
 
       <Button variant="default" size="sm" onClick={onRestart} className="w-full">

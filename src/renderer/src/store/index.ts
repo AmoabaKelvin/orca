@@ -31,3 +31,8 @@ export const useAppStore = create<AppState>()((...a) => ({
 }))
 
 export type { AppState } from './types'
+
+// DEV ONLY — exposes the store for console testing.
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  ;(window as unknown as Record<string, unknown>).__store = useAppStore
+}

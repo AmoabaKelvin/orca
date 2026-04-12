@@ -12,7 +12,11 @@ export function statusesEqual(left: UpdateStatus, right: UpdateStatus): boolean 
       return (
         right.state === 'available' &&
         left.version === right.version &&
-        left.releaseUrl === right.releaseUrl
+        left.releaseUrl === right.releaseUrl &&
+        // Why: fetchChangelog creates a fresh object each time, so reference
+        // equality is always false. Compare by presence — since update-available
+        // fires at most once per check cycle, this is sufficient.
+        Boolean(left.changelog) === Boolean(right.changelog)
       )
     case 'downloading':
       return (
