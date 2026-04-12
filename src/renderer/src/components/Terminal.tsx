@@ -57,6 +57,8 @@ export default function Terminal(): React.JSX.Element | null {
   const pinFile = useAppStore((s) => s.pinFile)
   const browserTabsByWorktree = useAppStore((s) => s.browserTabsByWorktree)
   const createBrowserTab = useAppStore((s) => s.createBrowserTab)
+  const createBrowserPage = useAppStore((s) => s.createBrowserPage)
+  const closeBrowserPage = useAppStore((s) => s.closeBrowserPage)
   const closeBrowserTab = useAppStore((s) => s.closeBrowserTab)
   const setActiveBrowserTab = useAppStore((s) => s.setActiveBrowserTab)
   const updateBrowserTabPageState = useAppStore((s) => s.updateBrowserTabPageState)
@@ -243,8 +245,17 @@ export default function Terminal(): React.JSX.Element | null {
     if (!activeWorktreeId) {
       return
     }
-    createBrowserTab(activeWorktreeId, 'about:blank', { title: 'New Browser Tab' })
-  }, [activeWorktreeId, createBrowserTab])
+    const state = useAppStore.getState()
+    const defaultUrl = state.browserDefaultUrl ?? 'about:blank'
+    if (state.activeTabType === 'browser' && state.activeBrowserTabId) {
+      createBrowserPage(state.activeBrowserTabId, defaultUrl, {
+        title: 'New Browser Tab',
+        activate: true
+      })
+      return
+    }
+    createBrowserTab(activeWorktreeId, defaultUrl, { title: 'New Browser Tab' })
+  }, [activeWorktreeId, createBrowserPage, createBrowserTab])
 
   const handleCloseTab = useCallback(
     (tabId: string) => {
@@ -480,10 +491,18 @@ export default function Terminal(): React.JSX.Element | null {
     const isMac = navigator.userAgent.includes('Mac')
     const onKeyDown = (e: KeyboardEvent): void => {
       const mod = isMac ? e.metaKey : e.ctrlKey
-      // Cmd/Ctrl+T - new terminal tab
+      // Why: when the browser workspace is the active surface, standard
+      // browser tab creation should stay inside that workspace. Reusing the
+      // same shortcut keeps Orca's embedded browser aligned with user
+      // expectations instead of unexpectedly mutating the outer tab strip.
       if (mod && e.key === 't' && !e.shiftKey && !e.repeat) {
         e.preventDefault()
-        handleNewTab()
+        const state = useAppStore.getState()
+        if (state.activeTabType === 'browser') {
+          handleNewBrowserTab()
+        } else {
+          handleNewTab()
+        }
         return
       }
 
@@ -505,7 +524,13 @@ export default function Terminal(): React.JSX.Element | null {
         if (state.activeTabType === 'editor' && state.activeFileId) {
           handleCloseFile(state.activeFileId)
         } else if (state.activeTabType === 'browser' && state.activeBrowserTabId) {
-          handleCloseBrowserTab(state.activeBrowserTabId)
+          const activeWorkspace = Object.values(state.browserTabsByWorktree)
+            .flat()
+            .find((workspace) => workspace.id === state.activeBrowserTabId)
+          if (activeWorkspace?.activePageId) {
+            destroyPersistentWebview(activeWorkspace.activePageId)
+            closeBrowserPage(activeWorkspace.activePageId)
+          }
         }
         return
       }
@@ -582,6 +607,7 @@ export default function Terminal(): React.JSX.Element | null {
     handleNewTab,
     handleCloseTab,
     handleCloseBrowserTab,
+    closeBrowserPage,
     handleCloseFile,
     setActiveTab
   ])

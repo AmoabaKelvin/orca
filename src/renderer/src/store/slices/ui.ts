@@ -90,6 +90,9 @@ export type UISlice = {
   markUpdateReassuranceSeen: () => void
   isFullScreen: boolean
   setIsFullScreen: (v: boolean) => void
+  /** URL opened when a new browser tab is created. Null = blank tab (default). */
+  browserDefaultUrl: string | null
+  setBrowserDefaultUrl: (url: string | null) => void
 }
 
 export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => ({
@@ -187,6 +190,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => (
         statusBarVisible: ui.statusBarVisible ?? true,
         dismissedUpdateVersion: ui.dismissedUpdateVersion ?? null,
         updateReassuranceSeen: ui.updateReassuranceSeen ?? false,
+        browserDefaultUrl: ui.browserDefaultUrl ?? null,
         persistedUIReady: true
       }
     }),
@@ -246,5 +250,10 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => (
     set({ updateReassuranceSeen: true })
   },
   isFullScreen: false,
-  setIsFullScreen: (v) => set({ isFullScreen: v })
+  setIsFullScreen: (v) => set({ isFullScreen: v }),
+  browserDefaultUrl: null,
+  setBrowserDefaultUrl: (url) => {
+    void window.api.ui.set({ browserDefaultUrl: url }).catch(console.error)
+    set({ browserDefaultUrl: url })
+  }
 })

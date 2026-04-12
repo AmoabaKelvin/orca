@@ -2,11 +2,20 @@
 single privileged facade for guest registration, authorization, and lifecycle
 cleanup even after extracting the grab/session helpers. Keeping that ownership
 in one file avoids scattering the browser security boundary across modules. */
+import { randomUUID } from 'node:crypto'
+
 import { shell, webContents } from 'electron'
 import {
   normalizeBrowserNavigationUrl,
   normalizeExternalBrowserUrl
 } from '../../shared/browser-url'
+import type {
+  BrowserDownloadFinishedEvent,
+  BrowserDownloadProgressEvent,
+  BrowserDownloadRequestedEvent,
+  BrowserPermissionDeniedEvent,
+  BrowserPopupEvent
+} from '../../shared/browser-guest-events'
 import type {
   BrowserGrabCancelReason,
   BrowserGrabPayload,
@@ -26,9 +35,40 @@ import {
 } from './browser-guest-ui'
 
 export type BrowserGuestRegistration = {
-  browserTabId: string
+  browserPageId?: string
+  browserTabId?: string
+  workspaceId?: string
   webContentsId: number
   rendererWebContentsId: number
+}
+
+type PendingPermissionEvent = Omit<BrowserPermissionDeniedEvent, 'browserPageId'>
+type PendingPopupEvent = Omit<BrowserPopupEvent, 'browserPageId'>
+
+type ActiveDownload = {
+  downloadId: string
+  guestWebContentsId: number
+  browserTabId: string | null
+  rendererWebContentsId: number | null
+  origin: string
+  filename: string
+  totalBytes: number | null
+  mimeType: string | null
+  item: Electron.DownloadItem
+  state: 'requested' | 'downloading'
+  savePath: string | null
+  pendingCancelTimer: ReturnType<typeof setTimeout> | null
+  cleanup: (() => void) | null
+}
+
+function safeOrigin(rawUrl: string): string {
+  const external = normalizeExternalBrowserUrl(rawUrl)
+  const urlToParse = external ?? rawUrl
+  try {
+    return new URL(urlToParse).origin
+  } catch {
+    return external ?? 'unknown'
+  }
 }
 
 class BrowserManager {
@@ -42,13 +82,29 @@ class BrowserManager {
     number,
     { code: number; description: string; validatedUrl: string }
   >()
+  private readonly pendingPermissionEventsByGuestId = new Map<number, PendingPermissionEvent[]>()
+  private readonly pendingPopupEventsByGuestId = new Map<number, PendingPopupEvent[]>()
+  private readonly pendingDownloadIdsByGuestId = new Map<number, string[]>()
+  private readonly downloadsById = new Map<string, ActiveDownload>()
   private readonly grabSessionController = new BrowserGrabSessionController()
 
-  private openValidatedExternal(rawUrl: string): void {
-    const externalUrl = normalizeExternalBrowserUrl(rawUrl)
-    if (externalUrl) {
-      void shell.openExternal(externalUrl)
+  private resolveBrowserTabIdForGuestWebContentsId(guestWebContentsId: number): string | null {
+    return (
+      [...this.webContentsIdByTabId.entries()].find(([, id]) => id === guestWebContentsId)?.[0] ??
+      null
+    )
+  }
+
+  private resolveRendererForBrowserTab(browserTabId: string): Electron.WebContents | null {
+    const rendererWebContentsId = this.rendererWebContentsIdByTabId.get(browserTabId)
+    if (!rendererWebContentsId) {
+      return null
     }
+    const renderer = webContents.fromId(rendererWebContentsId)
+    if (!renderer || renderer.isDestroyed()) {
+      return null
+    }
+    return renderer
   }
 
   attachGuestPolicies(guest: Electron.WebContents): void {
@@ -58,11 +114,36 @@ class BrowserManager {
     this.policyAttachedGuestIds.add(guest.id)
     guest.setBackgroundThrottling(true)
     guest.setWindowOpenHandler(({ url }) => {
+      const browserTabId = this.resolveBrowserTabIdForGuestWebContentsId(guest.id)
+      const browserUrl = normalizeBrowserNavigationUrl(url)
+      const externalUrl = normalizeExternalBrowserUrl(url)
+
       // Why: popup-capable guests are required for OAuth and target=_blank
-      // flows, but Orca still does not host child windows itself. Convert those
-      // attempts into a controlled external-open path instead of letting them
-      // silently fail or spawn unmanaged windows.
-      this.openValidatedExternal(url)
+      // flows, but Orca still does not host child windows itself. For normal
+      // web URLs, route the request into Orca's own browser-tab model first so
+      // the user stays in the IDE. Only fall back to the system browser when
+      // Orca cannot safely host the destination or when the guest is not yet
+      // associated with a trusted browser tab/renderer.
+      if (browserTabId && browserUrl && this.openLinkInOrcaTab(browserTabId, browserUrl)) {
+        this.forwardOrQueuePopupEvent(guest.id, {
+          origin: safeOrigin(browserUrl),
+          action: 'opened-in-orca'
+        })
+      } else if (externalUrl) {
+        void shell.openExternal(externalUrl)
+        this.forwardOrQueuePopupEvent(guest.id, {
+          origin: safeOrigin(externalUrl),
+          action: 'opened-external'
+        })
+      } else {
+        // Why: popup attempts can carry auth redirects and one-time tokens.
+        // Surface only sanitized origin metadata so the renderer can explain
+        // the blocked action without persisting sensitive URL details.
+        this.forwardOrQueuePopupEvent(guest.id, {
+          origin: safeOrigin(url),
+          action: 'blocked'
+        })
+      }
       return { action: 'deny' }
     })
 
@@ -98,10 +179,15 @@ class BrowserManager {
   }
 
   registerGuest({
-    browserTabId,
+    browserPageId,
+    browserTabId: legacyBrowserTabId,
     webContentsId,
     rendererWebContentsId
   }: BrowserGuestRegistration): void {
+    const browserTabId = browserPageId ?? legacyBrowserTabId
+    if (!browserTabId) {
+      return
+    }
     // Why: re-registering the same browser tab can happen when Chromium swaps
     // or recreates the underlying guest surface. Any active grab is bound to
     // the old guest's listeners and teardown path, so keeping it alive would
@@ -141,6 +227,9 @@ class BrowserManager {
     this.setupGrabShortcut(browserTabId, guest)
     this.setupShortcutForwarding(browserTabId, guest)
     this.flushPendingLoadFailure(browserTabId, webContentsId)
+    this.flushPendingPermissionEvents(browserTabId, webContentsId)
+    this.flushPendingPopupEvents(browserTabId, webContentsId)
+    this.flushPendingDownloadRequests(browserTabId, webContentsId)
   }
 
   unregisterGuest(browserTabId: string): void {
@@ -164,6 +253,14 @@ class BrowserManager {
       fwdCleanup()
       this.shortcutForwardingCleanupByTabId.delete(browserTabId)
     }
+    // Why: paused downloads wait for explicit product approval. If the owning
+    // browser tab disappears first, cancel the request so the app does not
+    // retain orphaned download items or write files after context is gone.
+    for (const [downloadId, download] of this.downloadsById.entries()) {
+      if (download.browserTabId === browserTabId && download.state === 'requested') {
+        this.cancelDownloadInternal(downloadId, 'Tab closed before download was accepted.')
+      }
+    }
     this.webContentsIdByTabId.delete(browserTabId)
     this.rendererWebContentsIdByTabId.delete(browserTabId)
   }
@@ -171,15 +268,202 @@ class BrowserManager {
   unregisterAll(): void {
     // Cancel all active grab ops before tearing down registrations
     this.grabSessionController.cancelAll('evicted')
+    for (const downloadId of this.downloadsById.keys()) {
+      this.cancelDownloadInternal(downloadId, 'Orca is shutting down.')
+    }
     for (const browserTabId of this.webContentsIdByTabId.keys()) {
       this.unregisterGuest(browserTabId)
     }
     this.policyAttachedGuestIds.clear()
     this.pendingLoadFailuresByGuestId.clear()
+    this.pendingPermissionEventsByGuestId.clear()
+    this.pendingPopupEventsByGuestId.clear()
+    this.pendingDownloadIdsByGuestId.clear()
   }
 
   getGuestWebContentsId(browserTabId: string): number | null {
     return this.webContentsIdByTabId.get(browserTabId) ?? null
+  }
+
+  notifyPermissionDenied(args: {
+    guestWebContentsId: number
+    permission: string
+    rawUrl: string
+  }): void {
+    this.forwardOrQueuePermissionDenied(args.guestWebContentsId, {
+      permission: args.permission,
+      origin: safeOrigin(args.rawUrl)
+    })
+  }
+
+  handleGuestWillDownload(args: { guestWebContentsId: number; item: Electron.DownloadItem }): void {
+    const { guestWebContentsId, item } = args
+    const downloadId = randomUUID()
+    const filename = (() => {
+      try {
+        return item.getFilename() || 'download'
+      } catch {
+        return 'download'
+      }
+    })()
+    const totalBytes = (() => {
+      try {
+        const total = item.getTotalBytes()
+        return total > 0 ? total : null
+      } catch {
+        return null
+      }
+    })()
+    const mimeType = (() => {
+      try {
+        const mime = item.getMimeType()
+        return mime || null
+      } catch {
+        return null
+      }
+    })()
+    const origin = (() => {
+      try {
+        return safeOrigin(item.getURL())
+      } catch {
+        return 'unknown'
+      }
+    })()
+
+    try {
+      item.pause()
+    } catch {
+      // Why: some interrupted downloads throw if paused immediately. Keep
+      // tracking the item anyway so Orca can still explain the failure path.
+    }
+
+    const download: ActiveDownload = {
+      downloadId,
+      guestWebContentsId,
+      browserTabId: null,
+      rendererWebContentsId: null,
+      origin,
+      filename,
+      totalBytes,
+      mimeType,
+      item,
+      state: 'requested',
+      savePath: null,
+      pendingCancelTimer: null,
+      cleanup: null
+    }
+    this.downloadsById.set(downloadId, download)
+
+    const browserTabId = this.resolveBrowserTabIdForGuestWebContentsId(guestWebContentsId)
+    if (browserTabId) {
+      this.bindDownloadToTab(downloadId, browserTabId)
+      this.sendDownloadRequested(downloadId)
+    } else {
+      const pending = this.pendingDownloadIdsByGuestId.get(guestWebContentsId) ?? []
+      pending.push(downloadId)
+      this.pendingDownloadIdsByGuestId.set(guestWebContentsId, pending)
+    }
+
+    // Why: fail closed if the user never explicitly accepts or cancels. This
+    // prevents a compromised or crashed renderer from leaving paused downloads
+    // alive until app shutdown and later resuming them without context.
+    download.pendingCancelTimer = setTimeout(() => {
+      this.cancelDownloadInternal(downloadId, 'Timed out waiting for user approval.')
+    }, 60_000)
+  }
+
+  getDownloadPrompt(downloadId: string, senderWebContentsId: number): { filename: string } | null {
+    const download = this.downloadsById.get(downloadId)
+    if (!download || download.rendererWebContentsId !== senderWebContentsId) {
+      return null
+    }
+    return { filename: download.filename }
+  }
+
+  acceptDownload(args: {
+    downloadId: string
+    senderWebContentsId: number
+    savePath: string
+  }): { ok: true } | { ok: false; reason: string } {
+    const download = this.downloadsById.get(args.downloadId)
+    if (!download || download.rendererWebContentsId !== args.senderWebContentsId) {
+      return { ok: false, reason: 'not-authorized' }
+    }
+    if (download.state !== 'requested' || !download.browserTabId) {
+      return { ok: false, reason: 'not-ready' }
+    }
+
+    if (download.pendingCancelTimer) {
+      clearTimeout(download.pendingCancelTimer)
+      download.pendingCancelTimer = null
+    }
+
+    try {
+      download.item.setSavePath(args.savePath)
+      download.savePath = args.savePath
+    } catch {
+      this.cancelDownloadInternal(args.downloadId, 'Failed to set download destination.')
+      return { ok: false, reason: 'not-ready' }
+    }
+
+    download.state = 'downloading'
+    const cleanup = (): void => {
+      try {
+        download.item.removeAllListeners('updated')
+        download.item.removeAllListeners('done')
+      } catch {
+        // Why: completed DownloadItems can already be finalized when cleanup
+        // runs. Cleanup must stay best-effort so UI teardown never crashes main.
+      }
+    }
+    download.cleanup = cleanup
+
+    download.item.on('updated', (_event, state) => {
+      if (state !== 'progressing') {
+        return
+      }
+      this.sendDownloadProgress(download.browserTabId, {
+        downloadId: download.downloadId,
+        receivedBytes: download.item.getReceivedBytes(),
+        totalBytes: download.totalBytes
+      })
+    })
+
+    download.item.once('done', (_event, state) => {
+      const status: BrowserDownloadFinishedEvent['status'] =
+        state === 'completed' ? 'completed' : state === 'cancelled' ? 'canceled' : 'failed'
+      this.sendDownloadFinished(download.browserTabId, {
+        downloadId: download.downloadId,
+        status,
+        savePath: download.savePath,
+        error:
+          status === 'failed'
+            ? state === 'interrupted'
+              ? 'Download was interrupted.'
+              : 'Download failed.'
+            : null
+      })
+      cleanup()
+      this.downloadsById.delete(download.downloadId)
+    })
+
+    try {
+      download.item.resume()
+    } catch {
+      this.cancelDownloadInternal(args.downloadId, 'Failed to start download.')
+      return { ok: false, reason: 'not-ready' }
+    }
+
+    return { ok: true }
+  }
+
+  cancelDownload(args: { downloadId: string; senderWebContentsId: number }): boolean {
+    const download = this.downloadsById.get(args.downloadId)
+    if (!download || download.rendererWebContentsId !== args.senderWebContentsId) {
+      return false
+    }
+    this.cancelDownloadInternal(args.downloadId, 'Canceled.')
+    return true
   }
 
   // Why: guest browser surfaces are intentionally isolated from Orca's preload
@@ -324,10 +608,7 @@ class BrowserManager {
       setupGuestContextMenu({
         browserTabId,
         guest,
-        openValidatedExternal: (rawUrl) => {
-          this.openValidatedExternal(rawUrl)
-        },
-        openDevTools: async (tabId) => this.openDevTools(tabId)
+        resolveRenderer: (tabId) => this.resolveRendererForBrowserTab(tabId)
       })
     )
   }
@@ -398,6 +679,184 @@ class BrowserManager {
     this.sendGuestLoadFailure(browserTabId, loadError)
   }
 
+  private forwardOrQueuePermissionDenied(
+    guestWebContentsId: number,
+    event: PendingPermissionEvent
+  ): void {
+    const browserTabId = this.resolveBrowserTabIdForGuestWebContentsId(guestWebContentsId)
+    if (!browserTabId) {
+      const pending = this.pendingPermissionEventsByGuestId.get(guestWebContentsId) ?? []
+      pending.push(event)
+      if (pending.length > 5) {
+        pending.shift()
+      }
+      this.pendingPermissionEventsByGuestId.set(guestWebContentsId, pending)
+      return
+    }
+    this.sendPermissionDenied(browserTabId, event)
+  }
+
+  private flushPendingPermissionEvents(browserTabId: string, guestWebContentsId: number): void {
+    const pending = this.pendingPermissionEventsByGuestId.get(guestWebContentsId)
+    if (!pending?.length) {
+      return
+    }
+    this.pendingPermissionEventsByGuestId.delete(guestWebContentsId)
+    for (const event of pending) {
+      this.sendPermissionDenied(browserTabId, event)
+    }
+  }
+
+  private sendPermissionDenied(browserTabId: string, event: PendingPermissionEvent): void {
+    const renderer = this.resolveRendererForBrowserTab(browserTabId)
+    if (!renderer) {
+      return
+    }
+    renderer.send('browser:permission-denied', {
+      browserPageId: browserTabId,
+      ...event
+    } satisfies BrowserPermissionDeniedEvent)
+  }
+
+  private forwardOrQueuePopupEvent(guestWebContentsId: number, event: PendingPopupEvent): void {
+    const browserTabId = this.resolveBrowserTabIdForGuestWebContentsId(guestWebContentsId)
+    if (!browserTabId) {
+      const pending = this.pendingPopupEventsByGuestId.get(guestWebContentsId) ?? []
+      pending.push(event)
+      if (pending.length > 5) {
+        pending.shift()
+      }
+      this.pendingPopupEventsByGuestId.set(guestWebContentsId, pending)
+      return
+    }
+    this.sendPopupEvent(browserTabId, event)
+  }
+
+  private flushPendingPopupEvents(browserTabId: string, guestWebContentsId: number): void {
+    const pending = this.pendingPopupEventsByGuestId.get(guestWebContentsId)
+    if (!pending?.length) {
+      return
+    }
+    this.pendingPopupEventsByGuestId.delete(guestWebContentsId)
+    for (const event of pending) {
+      this.sendPopupEvent(browserTabId, event)
+    }
+  }
+
+  private sendPopupEvent(browserTabId: string, event: PendingPopupEvent): void {
+    const renderer = this.resolveRendererForBrowserTab(browserTabId)
+    if (!renderer) {
+      return
+    }
+    renderer.send('browser:popup', {
+      browserPageId: browserTabId,
+      ...event
+    } satisfies BrowserPopupEvent)
+  }
+
+  private bindDownloadToTab(downloadId: string, browserTabId: string): void {
+    const download = this.downloadsById.get(downloadId)
+    if (!download) {
+      return
+    }
+    download.browserTabId = browserTabId
+    download.rendererWebContentsId = this.rendererWebContentsIdByTabId.get(browserTabId) ?? null
+  }
+
+  private flushPendingDownloadRequests(browserTabId: string, guestWebContentsId: number): void {
+    const pending = this.pendingDownloadIdsByGuestId.get(guestWebContentsId)
+    if (!pending?.length) {
+      return
+    }
+    this.pendingDownloadIdsByGuestId.delete(guestWebContentsId)
+    for (const downloadId of pending) {
+      this.bindDownloadToTab(downloadId, browserTabId)
+      this.sendDownloadRequested(downloadId)
+    }
+  }
+
+  private sendDownloadRequested(downloadId: string): void {
+    const download = this.downloadsById.get(downloadId)
+    if (!download?.browserTabId) {
+      return
+    }
+    const renderer = this.resolveRendererForBrowserTab(download.browserTabId)
+    if (!renderer) {
+      return
+    }
+    renderer.send('browser:download-requested', {
+      browserPageId: download.browserTabId,
+      downloadId: download.downloadId,
+      origin: download.origin,
+      filename: download.filename,
+      totalBytes: download.totalBytes,
+      mimeType: download.mimeType
+    } satisfies BrowserDownloadRequestedEvent)
+  }
+
+  private sendDownloadProgress(
+    browserTabId: string | null,
+    payload: BrowserDownloadProgressEvent
+  ): void {
+    if (!browserTabId) {
+      return
+    }
+    const renderer = this.resolveRendererForBrowserTab(browserTabId)
+    if (!renderer) {
+      return
+    }
+    renderer.send('browser:download-progress', payload)
+  }
+
+  private sendDownloadFinished(
+    browserTabId: string | null,
+    payload: BrowserDownloadFinishedEvent
+  ): void {
+    if (!browserTabId) {
+      return
+    }
+    const renderer = this.resolveRendererForBrowserTab(browserTabId)
+    if (!renderer) {
+      return
+    }
+    renderer.send('browser:download-finished', payload)
+  }
+
+  private cancelDownloadInternal(downloadId: string, reason: string): void {
+    const download = this.downloadsById.get(downloadId)
+    if (!download) {
+      return
+    }
+
+    if (download.pendingCancelTimer) {
+      clearTimeout(download.pendingCancelTimer)
+      download.pendingCancelTimer = null
+    }
+    if (download.cleanup) {
+      download.cleanup()
+      download.cleanup = null
+    }
+
+    try {
+      download.item.cancel()
+    } catch {
+      // Why: DownloadItem.cancel can throw after the item has already
+      // finalized. Cleanup here is best-effort because the UI state is the
+      // source of truth for whether Orca still considers the request active.
+    }
+
+    if (download.browserTabId) {
+      this.sendDownloadFinished(download.browserTabId, {
+        downloadId: download.downloadId,
+        status: 'canceled',
+        savePath: download.savePath,
+        error: reason || null
+      })
+    }
+
+    this.downloadsById.delete(downloadId)
+  }
+
   private flushPendingLoadFailure(browserTabId: string, guestWebContentsId: number): void {
     const pending = this.pendingLoadFailuresByGuestId.get(guestWebContentsId)
     if (!pending) {
@@ -411,20 +870,35 @@ class BrowserManager {
     browserTabId: string,
     loadError: { code: number; description: string; validatedUrl: string }
   ): void {
-    const rendererWebContentsId = this.rendererWebContentsIdByTabId.get(browserTabId)
-    if (!rendererWebContentsId) {
-      return
-    }
-
-    const renderer = webContents.fromId(rendererWebContentsId)
-    if (!renderer || renderer.isDestroyed()) {
+    const renderer = this.resolveRendererForBrowserTab(browserTabId)
+    if (!renderer) {
       return
     }
 
     renderer.send('browser:guest-load-failed', {
-      browserTabId,
+      browserPageId: browserTabId,
       loadError
     })
+  }
+
+  private openLinkInOrcaTab(browserTabId: string, rawUrl: string): boolean {
+    const renderer = this.resolveRendererForBrowserTab(browserTabId)
+    if (!renderer) {
+      return false
+    }
+    const normalizedUrl = normalizeBrowserNavigationUrl(rawUrl)
+    if (!normalizedUrl || normalizedUrl === 'about:blank') {
+      return false
+    }
+    // Why: the guest context menu knows which browser tab the click came from,
+    // but only the renderer owns the worktree/tab model. Forward the validated
+    // URL back to that renderer so it can open a sibling Orca browser tab in
+    // the same worktree without letting the guest process mutate app state.
+    renderer.send('browser:open-link-in-orca-tab', {
+      browserPageId: browserTabId,
+      url: normalizedUrl
+    })
+    return true
   }
 }
 

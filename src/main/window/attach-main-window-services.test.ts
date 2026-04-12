@@ -11,7 +11,9 @@ const {
   registerPtyHandlersMock,
   setupAutoUpdaterMock,
   sessionFromPartitionMock,
-  browserManagerUnregisterAllMock
+  browserManagerUnregisterAllMock,
+  browserManagerNotifyPermissionDeniedMock,
+  browserManagerHandleGuestWillDownloadMock
 } = vi.hoisted(() => ({
   onMock: vi.fn(),
   removeAllListenersMock: vi.fn(),
@@ -23,7 +25,9 @@ const {
   registerPtyHandlersMock: vi.fn(),
   setupAutoUpdaterMock: vi.fn(),
   sessionFromPartitionMock: vi.fn(),
-  browserManagerUnregisterAllMock: vi.fn()
+  browserManagerUnregisterAllMock: vi.fn(),
+  browserManagerNotifyPermissionDeniedMock: vi.fn(),
+  browserManagerHandleGuestWillDownloadMock: vi.fn()
 }))
 
 vi.mock('electron', () => ({
@@ -54,6 +58,8 @@ vi.mock('../ipc/pty', () => ({
 
 vi.mock('../browser/browser-manager', () => ({
   browserManager: {
+    notifyPermissionDenied: browserManagerNotifyPermissionDeniedMock,
+    handleGuestWillDownload: browserManagerHandleGuestWillDownloadMock,
     unregisterAll: browserManagerUnregisterAllMock
   }
 }))
@@ -81,6 +87,8 @@ describe('attachMainWindowServices', () => {
     setupAutoUpdaterMock.mockReset()
     sessionFromPartitionMock.mockReset()
     browserManagerUnregisterAllMock.mockReset()
+    browserManagerNotifyPermissionDeniedMock.mockReset()
+    browserManagerHandleGuestWillDownloadMock.mockReset()
     sessionFromPartitionMock.mockReturnValue({
       setPermissionRequestHandler: setPermissionRequestHandlerMock,
       setPermissionCheckHandler: setPermissionCheckHandlerMock,
@@ -156,10 +164,17 @@ describe('attachMainWindowServices', () => {
       callback: (allowed: boolean) => void
     ) => void
     const permissionCallback = vi.fn()
-    browserPermissionHandler(null, 'fullscreen', permissionCallback)
-    browserPermissionHandler(null, 'media', permissionCallback)
+    const guestWebContents = { id: 401, getURL: vi.fn(() => 'https://example.com/account') }
+    browserPermissionHandler(guestWebContents, 'fullscreen', permissionCallback)
+    browserPermissionHandler(guestWebContents, 'media', permissionCallback)
 
     expect(permissionCallback.mock.calls).toEqual([[true], [false]])
+    expect(browserManagerNotifyPermissionDeniedMock).toHaveBeenCalledTimes(1)
+    expect(browserManagerNotifyPermissionDeniedMock).toHaveBeenCalledWith({
+      guestWebContentsId: 401,
+      permission: 'media',
+      rawUrl: 'https://example.com/account'
+    })
 
     const browserPermissionCheckHandler = setPermissionCheckHandlerMock.mock.calls[0][0] as (
       wc: unknown,
@@ -178,10 +193,18 @@ describe('attachMainWindowServices', () => {
 
     const willDownloadHandler = browserSessionOnMock.mock.calls.find(
       ([eventName]) => eventName === 'will-download'
-    )?.[1] as (event: { preventDefault: () => void }) => void
-    const preventDefault = vi.fn()
-    willDownloadHandler({ preventDefault })
-    expect(preventDefault).toHaveBeenCalledTimes(1)
+    )?.[1] as (
+      event: unknown,
+      item: { getFilename: () => string },
+      webContents: { id: number }
+    ) => void
+    const item = { getFilename: vi.fn(() => 'report.pdf') }
+    willDownloadHandler({}, item, { id: 402 })
+    expect(browserManagerHandleGuestWillDownloadMock).toHaveBeenCalledTimes(1)
+    expect(browserManagerHandleGuestWillDownloadMock).toHaveBeenCalledWith({
+      guestWebContentsId: 402,
+      item
+    })
   })
 
   it('clears browser guest registrations when the main window closes', () => {

@@ -62,6 +62,11 @@ export const GENERAL_CACHE_TIMER_SEARCH_ENTRIES: SettingsSearchEntry[] = [
 
 export const GENERAL_BROWSER_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   {
+    title: 'Default Home Page',
+    description: 'URL opened when creating a new browser tab. Leave empty to open a blank tab.',
+    keywords: ['browser', 'home', 'homepage', 'default', 'url', 'new tab', 'blank', 'landing']
+  },
+  {
     title: 'Terminal Link Routing',
     description:
       'Cmd/Ctrl+click opens terminal http(s) links in Orca. Shift+Cmd/Ctrl+click uses the system browser.',

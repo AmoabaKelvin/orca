@@ -65,11 +65,19 @@ export function attachMainWindowServices(
   )
 
   const browserSession = session.fromPartition(ORCA_BROWSER_PARTITION)
-  browserSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+  browserSession.setPermissionRequestHandler((webContents, permission, callback) => {
     // Why: the in-app browser is for dev previews and lightweight browsing, not
     // trusted desktop-app privileges. Denying by default keeps arbitrary sites
     // from silently escalating into camera/mic/notification prompts inside Orca.
-    callback(permission === 'fullscreen')
+    const allowed = permission === 'fullscreen'
+    if (!allowed) {
+      browserManager.notifyPermissionDenied({
+        guestWebContentsId: webContents.id,
+        permission,
+        rawUrl: webContents.getURL()
+      })
+    }
+    callback(allowed)
   })
   browserSession.setPermissionCheckHandler((_webContents, permission) => {
     return permission === 'fullscreen'
@@ -82,11 +90,11 @@ export function attachMainWindowServices(
     // signature while still denying the request.
     callback({ video: undefined, audio: undefined })
   })
-  browserSession.on('will-download', (event) => {
+  browserSession.on('will-download', (_event, item, webContents) => {
     // Why: browser-tab downloads need explicit product UX before arbitrary sites
-    // can write files through Orca. Until that exists, cancel downloads instead
-    // of inheriting Electron's default save behavior invisibly.
-    event.preventDefault()
+    // can write files through Orca. Pause the item and route it through
+    // BrowserManager so the user must explicitly accept the save path first.
+    browserManager.handleGuestWillDownload({ guestWebContentsId: webContents.id, item })
   })
 
   mainWindow.on('closed', () => {

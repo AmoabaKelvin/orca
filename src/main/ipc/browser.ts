@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { browserManager } from '../browser/browser-manager'
 import type {
   BrowserSetGrabModeArgs,
@@ -42,6 +42,8 @@ export function registerBrowserHandlers(): void {
   ipcMain.removeHandler('browser:registerGuest')
   ipcMain.removeHandler('browser:unregisterGuest')
   ipcMain.removeHandler('browser:openDevTools')
+  ipcMain.removeHandler('browser:acceptDownload')
+  ipcMain.removeHandler('browser:cancelDownload')
   ipcMain.removeHandler('browser:setGrabMode')
   ipcMain.removeHandler('browser:awaitGrabSelection')
   ipcMain.removeHandler('browser:cancelGrab')
@@ -50,7 +52,7 @@ export function registerBrowserHandlers(): void {
 
   ipcMain.handle(
     'browser:registerGuest',
-    (event, args: { browserTabId: string; webContentsId: number }) => {
+    (event, args: { browserPageId: string; workspaceId: string; webContentsId: number }) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
         return false
       }
@@ -62,19 +64,57 @@ export function registerBrowserHandlers(): void {
     }
   )
 
-  ipcMain.handle('browser:unregisterGuest', (event, args: { browserTabId: string }) => {
+  ipcMain.handle('browser:unregisterGuest', (event, args: { browserPageId: string }) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return false
     }
-    browserManager.unregisterGuest(args.browserTabId)
+    browserManager.unregisterGuest(args.browserPageId)
     return true
   })
 
-  ipcMain.handle('browser:openDevTools', (event, args: { browserTabId: string }) => {
+  ipcMain.handle('browser:openDevTools', (event, args: { browserPageId: string }) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return false
     }
-    return browserManager.openDevTools(args.browserTabId)
+    return browserManager.openDevTools(args.browserPageId)
+  })
+
+  ipcMain.handle('browser:acceptDownload', async (event, args: { downloadId: string }) => {
+    if (!isTrustedBrowserRenderer(event.sender)) {
+      return { ok: false, reason: 'not-authorized' as const }
+    }
+    const prompt = browserManager.getDownloadPrompt(args.downloadId, event.sender.id)
+    if (!prompt) {
+      return { ok: false, reason: 'not-ready' as const }
+    }
+
+    const parent = BrowserWindow.fromWebContents(event.sender)
+    const result = parent
+      ? await dialog.showSaveDialog(parent, { defaultPath: prompt.filename })
+      : await dialog.showSaveDialog({ defaultPath: prompt.filename })
+    if (result.canceled || !result.filePath) {
+      browserManager.cancelDownload({
+        downloadId: args.downloadId,
+        senderWebContentsId: event.sender.id
+      })
+      return { ok: false, reason: 'canceled' as const }
+    }
+
+    return browserManager.acceptDownload({
+      downloadId: args.downloadId,
+      senderWebContentsId: event.sender.id,
+      savePath: result.filePath
+    })
+  })
+
+  ipcMain.handle('browser:cancelDownload', (event, args: { downloadId: string }) => {
+    if (!isTrustedBrowserRenderer(event.sender)) {
+      return false
+    }
+    return browserManager.cancelDownload({
+      downloadId: args.downloadId,
+      senderWebContentsId: event.sender.id
+    })
   })
 
   // --- Browser Context Grab IPC ---
@@ -85,11 +125,11 @@ export function registerBrowserHandlers(): void {
       if (!isTrustedBrowserRenderer(event.sender)) {
         return { ok: false, reason: 'not-authorized' }
       }
-      const guest = browserManager.getAuthorizedGuest(args.browserTabId, event.sender.id)
+      const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id)
       if (!guest) {
         return { ok: false, reason: 'not-ready' }
       }
-      const success = await browserManager.setGrabMode(args.browserTabId, args.enabled, guest)
+      const success = await browserManager.setGrabMode(args.browserPageId, args.enabled, guest)
       return success ? { ok: true } : { ok: false, reason: 'not-ready' }
     }
   )
@@ -100,7 +140,7 @@ export function registerBrowserHandlers(): void {
       if (!isTrustedBrowserRenderer(event.sender)) {
         return { opId: args.opId, kind: 'error', reason: 'Not authorized' }
       }
-      const guest = browserManager.getAuthorizedGuest(args.browserTabId, event.sender.id)
+      const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id)
       if (!guest) {
         return { opId: args.opId, kind: 'error', reason: 'Guest not ready' }
       }
@@ -108,7 +148,7 @@ export function registerBrowserHandlers(): void {
       // the conflict by cancelling the previous op. Blocking at the IPC layer
       // would create a race window where rearm() fails if the previous IPC call
       // hasn't fully resolved yet.
-      return browserManager.awaitGrabSelection(args.browserTabId, args.opId, guest)
+      return browserManager.awaitGrabSelection(args.browserPageId, args.opId, guest)
     }
   )
 
@@ -118,11 +158,11 @@ export function registerBrowserHandlers(): void {
     }
     // Why: verify the sender actually owns this tab, consistent with the
     // authorization check in setGrabMode/awaitGrabSelection/captureScreenshot.
-    const guest = browserManager.getAuthorizedGuest(args.browserTabId, event.sender.id)
+    const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id)
     if (!guest) {
       return false
     }
-    browserManager.cancelGrabOp(args.browserTabId, 'user')
+    browserManager.cancelGrabOp(args.browserPageId, 'user')
     return true
   })
 
@@ -135,12 +175,12 @@ export function registerBrowserHandlers(): void {
       if (!isTrustedBrowserRenderer(event.sender)) {
         return { ok: false, reason: 'Not authorized' }
       }
-      const guest = browserManager.getAuthorizedGuest(args.browserTabId, event.sender.id)
+      const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id)
       if (!guest) {
         return { ok: false, reason: 'Guest not ready' }
       }
       const screenshot = await browserManager.captureSelectionScreenshot(
-        args.browserTabId,
+        args.browserPageId,
         args.rect,
         guest
       )
@@ -157,11 +197,11 @@ export function registerBrowserHandlers(): void {
       if (!isTrustedBrowserRenderer(event.sender)) {
         return { ok: false, reason: 'Not authorized' }
       }
-      const guest = browserManager.getAuthorizedGuest(args.browserTabId, event.sender.id)
+      const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id)
       if (!guest) {
         return { ok: false, reason: 'Guest not ready' }
       }
-      const payload = await browserManager.extractHoverPayload(args.browserTabId, guest)
+      const payload = await browserManager.extractHoverPayload(args.browserPageId, guest)
       if (!payload) {
         return { ok: false, reason: 'No element hovered' }
       }

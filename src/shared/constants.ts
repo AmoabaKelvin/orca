@@ -168,6 +168,7 @@ export function getDefaultWorkspaceSession(): WorkspaceSessionState {
     terminalLayoutsByTabId: {},
     openFilesByWorktree: {},
     browserTabsByWorktree: {},
+    browserPagesByWorkspace: {},
     activeBrowserTabIdByWorktree: {},
     activeFileIdByWorktree: {},
     activeTabTypeByWorktree: {}

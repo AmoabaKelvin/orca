@@ -197,10 +197,13 @@ export function handleOscLink(
 
   if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
     const store = useAppStore.getState()
-    // Why: terminal URL clicks are now always worktree-scoped by default so
-    // Cmd/Ctrl+click reliably stays inside Orca's browser. Shift is the only
-    // escape hatch for opening the same URL in the system browser instead.
-    if (deps.worktreeId && !event?.shiftKey) {
+    // Why: openLinksInApp controls whether Cmd/Ctrl+click routes http(s) URLs
+    // into Orca's embedded browser or passes them to the system browser.
+    // Shift is always the explicit override to the system browser regardless of
+    // the setting. Default is true so new installs get in-app routing.
+    const routeToOrca =
+      deps.worktreeId && !event?.shiftKey && store.settings?.openLinksInApp !== false
+    if (routeToOrca) {
       store.setActiveWorktree(deps.worktreeId)
       store.createBrowserTab(deps.worktreeId, parsed.toString())
       return

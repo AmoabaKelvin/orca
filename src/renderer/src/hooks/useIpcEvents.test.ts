@@ -157,7 +157,8 @@ describe('useIpcEvents updater integration', () => {
           onClearDismissal: () => () => {}
         },
         browser: {
-          onGuestLoadFailed: () => () => {}
+          onGuestLoadFailed: () => () => {},
+          onOpenLinkInOrcaTab: () => () => {}
         },
         rateLimits: {
           get: () => Promise.resolve({ limits: {}, lastUpdatedAt: Date.now() }),

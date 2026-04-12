@@ -1,5 +1,8 @@
-import { clipboard, Menu, webContents } from 'electron'
-import { normalizeExternalBrowserUrl } from '../../shared/browser-url'
+import { webContents } from 'electron'
+import {
+  normalizeBrowserNavigationUrl,
+  normalizeExternalBrowserUrl
+} from '../../shared/browser-url'
 import {
   isWindowShortcutModifierChord,
   resolveWindowShortcutAction
@@ -10,84 +13,76 @@ type ResolveRenderer = (browserTabId: string) => Electron.WebContents | null
 export function setupGuestContextMenu(args: {
   browserTabId: string
   guest: Electron.WebContents
-  openValidatedExternal: (rawUrl: string) => void
-  openDevTools: (browserTabId: string) => Promise<boolean>
+  resolveRenderer: ResolveRenderer
 }): () => void {
-  const { browserTabId, guest, openValidatedExternal, openDevTools } = args
+  const { browserTabId, guest, resolveRenderer } = args
   const handler = (_event: Electron.Event, params: Electron.ContextMenuParams): void => {
+    const renderer = resolveRenderer(browserTabId)
+    if (!renderer) {
+      return
+    }
     const pageUrl = guest.getURL()
     const linkUrl = params.linkURL || ''
-
-    const template: Electron.MenuItemConstructorOptions[] = []
-
-    if (linkUrl) {
-      const externalLinkUrl = normalizeExternalBrowserUrl(linkUrl)
-      template.push(
-        {
-          label: 'Open Link In Default Browser',
-          enabled: Boolean(externalLinkUrl && externalLinkUrl !== 'about:blank'),
-          click: () => {
-            openValidatedExternal(linkUrl)
-          }
-        },
-        {
-          label: 'Copy Link Address',
-          click: () => {
-            clipboard.writeText(linkUrl)
-          }
-        },
-        { type: 'separator' }
-      )
+    const sendContextMenu = (viewportX: number, viewportY: number): void => {
+      renderer.send('browser:context-menu-requested', {
+        browserPageId: browserTabId,
+        x: viewportX,
+        y: viewportY,
+        pageUrl,
+        linkUrl:
+          normalizeBrowserNavigationUrl(linkUrl) ?? normalizeExternalBrowserUrl(linkUrl) ?? null,
+        canGoBack: guest.canGoBack(),
+        canGoForward: guest.canGoForward()
+      })
     }
 
-    const externalPageUrl = normalizeExternalBrowserUrl(pageUrl)
+    // Why: Electron reports guest context-menu coordinates in page space.
+    // Orca's renderer-owned menu needs viewport-relative coordinates so the
+    // menu appears under the cursor even after the page has scrolled.
+    if (typeof guest.executeJavaScript !== 'function') {
+      // Why: some tests and rare teardown edges only expose a minimal
+      // WebContents shape. Falling back to raw coordinates keeps the menu
+      // request best-effort instead of hard-failing on missing helpers.
+      sendContextMenu(params.x, params.y)
+      return
+    }
 
-    template.push(
-      {
-        label: 'Back',
-        enabled: guest.canGoBack(),
-        click: () => guest.goBack()
-      },
-      {
-        label: 'Forward',
-        enabled: guest.canGoForward(),
-        click: () => guest.goForward()
-      },
-      {
-        label: 'Reload',
-        click: () => guest.reload()
-      },
-      { type: 'separator' },
-      {
-        label: 'Open Page In Default Browser',
-        enabled: Boolean(externalPageUrl && externalPageUrl !== 'about:blank'),
-        click: () => {
-          openValidatedExternal(pageUrl)
-        }
-      },
-      {
-        label: 'Copy Page URL',
-        enabled: Boolean(pageUrl),
-        click: () => {
-          clipboard.writeText(pageUrl)
-        }
-      },
-      { type: 'separator' },
-      {
-        label: 'Inspect Page',
-        click: () => {
-          void openDevTools(browserTabId)
-        }
-      }
-    )
-
-    Menu.buildFromTemplate(template).popup()
+    void guest
+      .executeJavaScript('({ scrollX: window.scrollX, scrollY: window.scrollY })', true)
+      .then((scroll) => {
+        const scrollX =
+          typeof scroll === 'object' && scroll && 'scrollX' in scroll
+            ? Number((scroll as { scrollX: unknown }).scrollX) || 0
+            : 0
+        const scrollY =
+          typeof scroll === 'object' && scroll && 'scrollY' in scroll
+            ? Number((scroll as { scrollY: unknown }).scrollY) || 0
+            : 0
+        sendContextMenu(params.x - scrollX, params.y - scrollY)
+      })
+      .catch(() => {
+        // Why: if the guest is tearing down, best-effort fallback to the raw
+        // coordinates is better than dropping the Orca menu entirely.
+        sendContextMenu(params.x, params.y)
+      })
   }
 
   guest.on('context-menu', handler)
+  const dismissHandler = (_event: Electron.Event, mouse: Electron.MouseInputEvent): void => {
+    if (mouse.type !== 'mouseDown') {
+      return
+    }
+    const renderer = resolveRenderer(browserTabId)
+    if (!renderer) {
+      return
+    }
+    renderer.send('browser:context-menu-dismissed', { browserPageId: browserTabId })
+  }
+  guest.on('before-mouse-event', dismissHandler)
   return () => {
     try {
       guest.off('context-menu', handler)
+      guest.off('before-mouse-event', dismissHandler)
     } catch {
       // Why: browser tabs can outlive the guest webContents briefly during
       // teardown. Cleanup should be best-effort instead of throwing while the
@@ -131,7 +126,7 @@ export function setupGrabShortcutForwarding(args: {
       // While grab mode is actively awaiting a pick, plain C/S belong to Orca's
       // copy/screenshot shortcuts rather than the page's typing behavior.
       event.preventDefault()
-      renderer.send('browser:grabActionShortcut', { browserTabId, key: bareKey })
+      renderer.send('browser:grabActionShortcut', { browserPageId: browserTabId, key: bareKey })
       return
     }
 
@@ -222,7 +217,29 @@ export function setupGuestShortcutForwarding(args: {
     if (input.code === 'KeyB' && input.shift) {
       renderer.send('ui:newBrowserTab')
     } else if (input.code === 'KeyT' && !input.shift) {
-      renderer.send('ui:newTerminalTab')
+      // Why: once focus is inside a browser guest, Cmd/Ctrl+T should extend
+      // the current browser workspace with another internal page instead of
+      // creating a sibling Orca terminal tab. The renderer still decides
+      // whether that means "new page in this workspace" or "new workspace"
+      // based on the current active surface.
+      renderer.send('ui:newBrowserTab')
+    } else if (input.code === 'KeyL' && !input.shift) {
+      // Why: the address bar lives in the renderer chrome, not the guest
+      // page. Forward Cmd/Ctrl+L out of the guest so the active BrowserPane
+      // can focus its own input just like a standalone browser would.
+      renderer.send('ui:focusBrowserAddressBar')
+    } else if (input.code === 'KeyR' && input.shift) {
+      // Why: Cmd/Ctrl+Shift+R is the browser convention for hard reload
+      // (bypass cache). The guest would handle it natively, but Orca's webview
+      // reloadIgnoringCache() call must come from the renderer side so it goes
+      // through the same parked-webview ref that owns the guest surface.
+      renderer.send('ui:hardReloadBrowserPage')
+    } else if (input.code === 'KeyR' && !input.shift) {
+      // Why: same as above for soft reload — Cmd/Ctrl+R must be forwarded so
+      // the renderer can call reload() on its own webview ref rather than
+      // relying on the guest's built-in shortcut, which may not reach the
+      // parked-webview eviction logic.
+      renderer.send('ui:reloadBrowserPage')
     } else if (input.code === 'KeyW' && !input.shift) {
       renderer.send('ui:closeActiveTab')
     } else if (input.shift && (input.code === 'BracketRight' || input.code === 'BracketLeft')) {

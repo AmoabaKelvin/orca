@@ -74,6 +74,126 @@ describe('browserManager', () => {
     expect(shellOpenExternalMock).toHaveBeenCalledWith('http://localhost:3000/')
   })
 
+  it('routes safe popup URLs into a new Orca browser tab for the owning renderer', () => {
+    const rendererSendMock = vi.fn()
+    const guest = {
+      id: 103,
+      isDestroyed: vi.fn(() => false),
+      getType: vi.fn(() => 'webview'),
+      setBackgroundThrottling: guestSetBackgroundThrottlingMock,
+      setWindowOpenHandler: guestSetWindowOpenHandlerMock,
+      on: guestOnMock,
+      off: guestOffMock,
+      openDevTools: guestOpenDevToolsMock
+    }
+    webContentsFromIdMock.mockImplementation((id: number) => {
+      if (id === guest.id) {
+        return guest
+      }
+      if (id === rendererWebContentsId) {
+        return { isDestroyed: vi.fn(() => false), send: rendererSendMock }
+      }
+      return null
+    })
+
+    browserManager.attachGuestPolicies(guest as never)
+    browserManager.registerGuest({
+      browserPageId: 'browser-1',
+      webContentsId: guest.id,
+      rendererWebContentsId
+    })
+
+    const handler = guestSetWindowOpenHandlerMock.mock.calls[0][0] as (details: {
+      url: string
+    }) => { action: 'deny' }
+    expect(handler({ url: 'https://example.com/login' })).toEqual({ action: 'deny' })
+
+    expect(shellOpenExternalMock).not.toHaveBeenCalled()
+    expect(rendererSendMock).toHaveBeenCalledWith('browser:open-link-in-orca-tab', {
+      browserPageId: 'browser-1',
+      url: 'https://example.com/login'
+    })
+    expect(rendererSendMock).toHaveBeenCalledWith('browser:popup', {
+      browserPageId: 'browser-1',
+      origin: 'https://example.com',
+      action: 'opened-in-orca'
+    })
+  })
+
+  it('falls back to opening popup URLs externally before a guest is registered', () => {
+    const guest = {
+      id: 105,
+      isDestroyed: vi.fn(() => false),
+      getType: vi.fn(() => 'webview'),
+      setBackgroundThrottling: guestSetBackgroundThrottlingMock,
+      setWindowOpenHandler: guestSetWindowOpenHandlerMock,
+      on: guestOnMock,
+      off: guestOffMock,
+      openDevTools: guestOpenDevToolsMock
+    }
+    webContentsFromIdMock.mockReturnValue(guest)
+
+    browserManager.attachGuestPolicies(guest as never)
+
+    const handler = guestSetWindowOpenHandlerMock.mock.calls[0][0] as (details: {
+      url: string
+    }) => { action: 'deny' }
+    expect(handler({ url: 'https://example.com/login' })).toEqual({ action: 'deny' })
+
+    expect(shellOpenExternalMock).toHaveBeenCalledWith('https://example.com/login')
+  })
+
+  it('offers opening a link in another Orca browser tab from the guest context menu', () => {
+    const rendererSendMock = vi.fn()
+    const guest = {
+      id: 104,
+      isDestroyed: vi.fn(() => false),
+      getType: vi.fn(() => 'webview'),
+      setBackgroundThrottling: guestSetBackgroundThrottlingMock,
+      setWindowOpenHandler: guestSetWindowOpenHandlerMock,
+      on: guestOnMock,
+      off: guestOffMock,
+      openDevTools: guestOpenDevToolsMock,
+      getURL: vi.fn(() => 'https://example.com'),
+      canGoBack: vi.fn(() => false),
+      canGoForward: vi.fn(() => false),
+      reload: vi.fn()
+    }
+    webContentsFromIdMock.mockImplementation((id: number) => {
+      if (id === guest.id) {
+        return guest
+      }
+      if (id === rendererWebContentsId) {
+        return { isDestroyed: vi.fn(() => false), send: rendererSendMock }
+      }
+      return null
+    })
+
+    browserManager.attachGuestPolicies(guest as never)
+    browserManager.registerGuest({
+      browserPageId: 'browser-1',
+      webContentsId: guest.id,
+      rendererWebContentsId
+    })
+
+    const contextMenuHandler = guestOnMock.mock.calls.find(
+      ([event]) => event === 'context-menu'
+    )?.[1] as ((event: unknown, params: Electron.ContextMenuParams) => void) | undefined
+
+    contextMenuHandler?.({}, { linkURL: 'https://example.com/docs' } as Electron.ContextMenuParams)
+
+    expect(rendererSendMock).toHaveBeenCalledWith(
+      'browser:context-menu-requested',
+      expect.objectContaining({
+        browserPageId: 'browser-1',
+        pageUrl: 'https://example.com',
+        linkUrl: 'https://example.com/docs',
+        canGoBack: false,
+        canGoForward: false
+      })
+    )
+  })
+
   it('blocks non-web guest navigations after attach', () => {
     const guest = {
       isDestroyed: vi.fn(() => false),
@@ -113,7 +233,7 @@ describe('browserManager', () => {
 
     browserManager.attachGuestPolicies(guest as never)
     browserManager.registerGuest({
-      browserTabId: 'browser-1',
+      browserPageId: 'browser-1',
       webContentsId: 101,
       // Why: registrations now record which renderer owns each guest so main
       // can route load failures back to the correct window instead of dropping
@@ -122,7 +242,7 @@ describe('browserManager', () => {
     })
     browserManager.attachGuestPolicies({ ...guest, id: 102 } as never)
     browserManager.registerGuest({
-      browserTabId: 'browser-2',
+      browserPageId: 'browser-2',
       webContentsId: 102,
       rendererWebContentsId
     })
@@ -150,7 +270,7 @@ describe('browserManager', () => {
     webContentsFromIdMock.mockReturnValue(mainWindowContents)
 
     browserManager.registerGuest({
-      browserTabId: 'browser-evil',
+      browserPageId: 'browser-evil',
       webContentsId: 1,
       rendererWebContentsId
     })
@@ -175,7 +295,7 @@ describe('browserManager', () => {
     webContentsFromIdMock.mockReturnValue(guest)
 
     browserManager.registerGuest({
-      browserTabId: 'browser-1',
+      browserPageId: 'browser-1',
       webContentsId: 777,
       rendererWebContentsId
     })
@@ -252,20 +372,82 @@ describe('browserManager', () => {
     expect(rendererSendMock).not.toHaveBeenCalled()
 
     browserManager.registerGuest({
-      browserTabId: 'browser-1',
+      browserPageId: 'browser-1',
       webContentsId: 404,
       rendererWebContentsId
     })
 
     expect(rendererSendMock).toHaveBeenCalledTimes(1)
     expect(rendererSendMock).toHaveBeenCalledWith('browser:guest-load-failed', {
-      browserTabId: 'browser-1',
+      browserPageId: 'browser-1',
       loadError: {
         code: -105,
         description: 'Name not resolved',
         validatedUrl: 'http://localhost:3000/'
       }
     })
+  })
+
+  it('queues permission denials and download requests until the guest registers', () => {
+    const rendererSendMock = vi.fn()
+    const guest = {
+      id: 407,
+      isDestroyed: vi.fn(() => false),
+      getType: vi.fn(() => 'webview'),
+      setBackgroundThrottling: guestSetBackgroundThrottlingMock,
+      setWindowOpenHandler: guestSetWindowOpenHandlerMock,
+      on: guestOnMock,
+      off: guestOffMock,
+      openDevTools: guestOpenDevToolsMock
+    }
+    const item = {
+      pause: vi.fn(),
+      getFilename: vi.fn(() => 'report.csv'),
+      getTotalBytes: vi.fn(() => 2048),
+      getMimeType: vi.fn(() => 'text/csv'),
+      getURL: vi.fn(() => 'https://example.com/report.csv')
+    }
+    webContentsFromIdMock.mockImplementation((id: number) => {
+      if (id === guest.id) {
+        return guest
+      }
+      if (id === rendererWebContentsId) {
+        return { isDestroyed: vi.fn(() => false), send: rendererSendMock }
+      }
+      return null
+    })
+
+    browserManager.attachGuestPolicies(guest as never)
+    browserManager.notifyPermissionDenied({
+      guestWebContentsId: guest.id,
+      permission: 'media',
+      rawUrl: 'https://example.com/account'
+    })
+    browserManager.handleGuestWillDownload({ guestWebContentsId: guest.id, item: item as never })
+
+    expect(rendererSendMock).not.toHaveBeenCalled()
+
+    browserManager.registerGuest({
+      browserPageId: 'browser-1',
+      webContentsId: guest.id,
+      rendererWebContentsId
+    })
+
+    expect(rendererSendMock).toHaveBeenCalledWith('browser:permission-denied', {
+      browserPageId: 'browser-1',
+      permission: 'media',
+      origin: 'https://example.com'
+    })
+    expect(rendererSendMock).toHaveBeenCalledWith(
+      'browser:download-requested',
+      expect.objectContaining({
+        browserPageId: 'browser-1',
+        filename: 'report.csv',
+        origin: 'https://example.com',
+        totalBytes: 2048,
+        mimeType: 'text/csv'
+      })
+    )
   })
 
   it('does not forward ctrl/cmd+r or readline chords from browser guests', () => {
@@ -293,7 +475,7 @@ describe('browserManager', () => {
 
     browserManager.attachGuestPolicies(guest as never)
     browserManager.registerGuest({
-      browserTabId: 'browser-1',
+      browserPageId: 'browser-1',
       webContentsId: guest.id,
       rendererWebContentsId
     })
@@ -378,7 +560,7 @@ describe('browserManager', () => {
 
     browserManager.attachGuestPolicies(guest as never)
     browserManager.registerGuest({
-      browserTabId: 'browser-1',
+      browserPageId: 'browser-1',
       webContentsId: guest.id,
       rendererWebContentsId
     })
@@ -436,6 +618,33 @@ describe('browserManager', () => {
         control: !isDarwin,
         alt: false,
         shift: false
+      },
+      {
+        type: 'keyDown',
+        code: 'KeyL',
+        key: 'l',
+        meta: isDarwin,
+        control: !isDarwin,
+        alt: false,
+        shift: false
+      },
+      {
+        type: 'keyDown',
+        code: 'KeyR',
+        key: 'r',
+        meta: isDarwin,
+        control: !isDarwin,
+        alt: false,
+        shift: false
+      },
+      {
+        type: 'keyDown',
+        code: 'KeyR',
+        key: 'r',
+        meta: isDarwin,
+        control: !isDarwin,
+        alt: false,
+        shift: true
       }
     ]
 
@@ -446,10 +655,13 @@ describe('browserManager', () => {
     }
 
     expect(rendererSendMock).toHaveBeenNthCalledWith(1, 'ui:newBrowserTab')
-    expect(rendererSendMock).toHaveBeenNthCalledWith(2, 'ui:newTerminalTab')
+    expect(rendererSendMock).toHaveBeenNthCalledWith(2, 'ui:newBrowserTab')
     expect(rendererSendMock).toHaveBeenNthCalledWith(3, 'ui:closeActiveTab')
     expect(rendererSendMock).toHaveBeenNthCalledWith(4, 'ui:switchTab', 1)
     expect(rendererSendMock).toHaveBeenNthCalledWith(5, 'ui:openQuickOpen')
+    expect(rendererSendMock).toHaveBeenNthCalledWith(6, 'ui:focusBrowserAddressBar')
+    expect(rendererSendMock).toHaveBeenNthCalledWith(7, 'ui:reloadBrowserPage')
+    expect(rendererSendMock).toHaveBeenNthCalledWith(8, 'ui:hardReloadBrowserPage')
   })
 
   it('cleans up prior guest listeners before re-registering the same tab', () => {
@@ -474,7 +686,7 @@ describe('browserManager', () => {
 
     browserManager.attachGuestPolicies(guest as never)
     browserManager.registerGuest({
-      browserTabId: 'browser-1',
+      browserPageId: 'browser-1',
       webContentsId: 808,
       rendererWebContentsId
     })
@@ -482,7 +694,7 @@ describe('browserManager', () => {
     guestOffMock.mockClear()
 
     browserManager.registerGuest({
-      browserTabId: 'browser-1',
+      browserPageId: 'browser-1',
       webContentsId: 808,
       rendererWebContentsId
     })

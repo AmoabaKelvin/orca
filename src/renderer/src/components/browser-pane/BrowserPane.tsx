@@ -7,13 +7,17 @@ import {
   CircleCheck,
   Copy,
   Crosshair,
+  Ellipsis,
   ExternalLink,
   Globe,
   Image,
   Loader2,
   OctagonX,
+  Plus,
   RefreshCw,
-  SquareCode
+  Settings,
+  SquareCode,
+  X
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,8 +30,20 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { useAppStore } from '@/store'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import { ORCA_BROWSER_BLANK_URL, ORCA_BROWSER_PARTITION } from '../../../../shared/constants'
-import type { BrowserLoadError, BrowserTab as BrowserTabState } from '../../../../shared/types'
+import type {
+  BrowserLoadError,
+  BrowserPage as BrowserPageState,
+  BrowserWorkspace as BrowserWorkspaceState
+} from '../../../../shared/types'
 import {
   normalizeBrowserNavigationUrl,
   normalizeExternalBrowserUrl
@@ -39,19 +55,37 @@ import {
   rememberLiveBrowserUrl
 } from './browser-runtime'
 import type {
+  BrowserDownloadRequestedEvent,
+  BrowserDownloadProgressEvent,
+  BrowserDownloadFinishedEvent
+} from '../../../../shared/browser-guest-events'
+import type {
   BrowserGrabPayload,
   BrowserGrabScreenshot
 } from '../../../../shared/browser-grab-types'
 import { useGrabMode } from './useGrabMode'
 import { formatGrabPayloadAsText } from './GrabConfirmationSheet'
 import { isEditableKeyboardTarget } from './browser-keyboard'
+import {
+  formatByteCount,
+  formatDownloadFinishedNotice,
+  formatLoadFailureDescription,
+  formatLoadFailureRecoveryHint,
+  formatPermissionNotice,
+  formatPopupNotice
+} from './browser-notices'
 
 type BrowserTabPageState = Partial<
   Pick<
-    BrowserTabState,
+    BrowserPageState,
     'title' | 'loading' | 'faviconUrl' | 'canGoBack' | 'canGoForward' | 'loadError'
   >
 >
+
+type BrowserDownloadState = BrowserDownloadRequestedEvent & {
+  receivedBytes: number
+  status: 'requested' | 'downloading'
+}
 
 const webviewRegistry = new Map<string, Electron.WebviewTag>()
 const registeredWebContentsIds = new Map<string, number>()
@@ -59,6 +93,140 @@ const parkedAtByTabId = new Map<string, number>()
 let hiddenContainer: HTMLDivElement | null = null
 const DRAG_LISTENER_KEY = '__orcaBrowserPaneDragListeners'
 const MAX_PARKED_WEBVIEWS = 6
+const EMPTY_BROWSER_PAGES: BrowserPageState[] = []
+const ORCA_BROWSER_CONTEXT_MENU_PREFIX = '__ORCA_BROWSER_CONTEXT_MENU__'
+
+function buildGuestContextMenuScript(): string {
+  return `(function() {
+    if (window.__orcaBrowserContextMenu) {
+      return;
+    }
+
+    var state = {
+      host: null,
+      pageUrl: '',
+      linkUrl: null
+    };
+
+    function emit(action, payload) {
+      try {
+        console.log('${ORCA_BROWSER_CONTEXT_MENU_PREFIX}' + JSON.stringify({ action: action, payload: payload || null }));
+      } catch {}
+    }
+
+    function hide() {
+      if (state.host) {
+        state.host.style.display = 'none';
+      }
+    }
+
+    function makeItem(label, action, enabled) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      button.dataset.orcaAction = action;
+      button.disabled = enabled === false;
+      button.style.cssText = 'display:flex;width:100%;cursor:default;align-items:center;border:0;background:transparent;border-radius:7px;padding:4px 8px;text-align:left;font:450 12px/20px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:inherit;';
+      button.addEventListener('mouseenter', function() {
+        if (!button.disabled) button.style.background = 'rgba(255,255,255,0.12)';
+      });
+      button.addEventListener('mouseleave', function() {
+        button.style.background = 'transparent';
+      });
+      return button;
+    }
+
+    function makeSeparator() {
+      var sep = document.createElement('div');
+      sep.style.cssText = 'height:1px;margin:4px 0;background:rgba(255,255,255,0.12);';
+      return sep;
+    }
+
+    function ensureHost() {
+      if (state.host && document.body.contains(state.host)) {
+        return state.host;
+      }
+      var host = document.createElement('div');
+      host.id = '__orca-browser-context-menu';
+      host.style.cssText = 'position:fixed;display:none;min-width:224px;max-width:320px;overflow:hidden;z-index:2147483647;border:1px solid rgba(255,255,255,0.14);border-radius:11px;background:rgba(12,12,12,0.88);box-shadow:0 20px 44px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.04);backdrop-filter:blur(20px);padding:4px;color:white;';
+      host.addEventListener('click', function(event) {
+        var target = event.target instanceof Element ? event.target.closest('button[data-orca-action]') : null;
+        if (!target) return;
+        event.preventDefault();
+        event.stopPropagation();
+        emit(target.dataset.orcaAction || '', { pageUrl: state.pageUrl, linkUrl: state.linkUrl });
+        hide();
+      }, true);
+      document.documentElement.appendChild(host);
+      state.host = host;
+      return host;
+    }
+
+    function renderMenu() {
+      var host = ensureHost();
+      host.replaceChildren();
+      if (state.linkUrl) {
+        host.appendChild(makeItem('Open Link In Orca Browser', 'open-link-in-orca-browser', true));
+        host.appendChild(makeItem('Open Link In Default Browser', 'open-link-in-default-browser', true));
+        host.appendChild(makeItem('Copy Link Address', 'copy-link-address', true));
+        host.appendChild(makeSeparator());
+      }
+      host.appendChild(makeItem('Back', 'back', true));
+      host.appendChild(makeItem('Forward', 'forward', true));
+      host.appendChild(makeItem('Reload', 'reload', true));
+      host.appendChild(makeSeparator());
+      host.appendChild(makeItem('Open Page In Default Browser', 'open-page-in-default-browser', true));
+      host.appendChild(makeItem('Copy Page URL', 'copy-page-url', true));
+      host.appendChild(makeSeparator());
+      host.appendChild(makeItem('Inspect Page', 'inspect-page', true));
+      return host;
+    }
+
+    function show(x, y, pageUrl, linkUrl) {
+      state.pageUrl = pageUrl;
+      state.linkUrl = linkUrl;
+      var host = renderMenu();
+      host.style.display = 'block';
+      host.style.left = '0px';
+      host.style.top = '0px';
+      var rect = host.getBoundingClientRect();
+      var left = Math.min(Math.max(8, x), Math.max(8, window.innerWidth - rect.width - 8));
+      var top = Math.min(Math.max(8, y), Math.max(8, window.innerHeight - rect.height - 8));
+      host.style.left = left + 'px';
+      host.style.top = top + 'px';
+    }
+
+    function onContextMenu(event) {
+      var target = event.target instanceof Element ? event.target : null;
+      var anchor = target ? target.closest('a[href]') : null;
+      event.preventDefault();
+      event.stopPropagation();
+      show(event.clientX, event.clientY, window.location.href, anchor ? anchor.href : null);
+    }
+
+    function onPointerDown(event) {
+      if (state.host && state.host.style.display !== 'none' && !state.host.contains(event.target)) {
+        hide();
+      }
+    }
+
+    function onKeyDown(event) {
+      if (event.key === 'Escape') {
+        hide();
+      }
+    }
+
+    document.addEventListener('contextmenu', onContextMenu, true);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('scroll', hide, true);
+    window.addEventListener('blur', hide, true);
+
+    window.__orcaBrowserContextMenu = {
+      hide: hide
+    };
+  })()`
+}
 
 function getHiddenContainer(): HTMLDivElement {
   if (!hiddenContainer) {
@@ -116,7 +284,7 @@ export function destroyPersistentWebview(browserTabId: string): void {
     clearLiveBrowserUrl(browserTabId)
     return
   }
-  void window.api.browser.unregisterGuest({ browserTabId })
+  void window.api.browser.unregisterGuest({ browserPageId: browserTabId })
   webview.remove()
   webviewRegistry.delete(browserTabId)
   registeredWebContentsIds.delete(browserTabId)
@@ -138,6 +306,19 @@ function buildLoadError(event: {
 
 function toDisplayUrl(url: string): string {
   return url === ORCA_BROWSER_BLANK_URL ? 'about:blank' : url
+}
+
+function getBrowserDisplayTitle(title: string | null | undefined, url: string): string {
+  if (
+    url === 'about:blank' ||
+    url === ORCA_BROWSER_BLANK_URL ||
+    title === 'about:blank' ||
+    title === ORCA_BROWSER_BLANK_URL ||
+    !title
+  ) {
+    return 'New Tab'
+  }
+  return title
 }
 
 function isChromiumErrorPage(url: string): boolean {
@@ -166,16 +347,6 @@ function getLoadErrorMetadata(loadError: BrowserLoadError | null): {
   }
 }
 
-function getFriendlyLoadErrorDescription(loadError: BrowserLoadError | null): string {
-  if (!loadError) {
-    return 'The page did not respond.'
-  }
-  if (loadError.code === 0) {
-    return loadError.description
-  }
-  return "We couldn't connect to this page."
-}
-
 function getOpenableExternalUrl(
   webview: Electron.WebviewTag | null,
   fallbackUrl: string
@@ -195,9 +366,24 @@ function getOpenableExternalUrl(
   return normalizeExternalBrowserUrl(currentUrl)
 }
 
+function getCurrentBrowserUrl(webview: Electron.WebviewTag | null, fallbackUrl: string): string {
+  let currentUrl = fallbackUrl
+  if (webview) {
+    try {
+      currentUrl = webview.getURL() || fallbackUrl
+    } catch {
+      // Why: toolbar actions still need a stable URL during early guest attach
+      // and restore. Fall back to the persisted tab URL instead of throwing
+      // and dropping browser actions on freshly restored tabs.
+      currentUrl = fallbackUrl
+    }
+  }
+  return toDisplayUrl(currentUrl)
+}
+
 function retryBrowserTabLoad(
   webview: Electron.WebviewTag | null,
-  browserTab: BrowserTabState,
+  browserTab: BrowserPageState,
   onUpdatePageState: (tabId: string, updates: BrowserTabPageState) => void
 ): void {
   if (!webview) {
@@ -253,13 +439,184 @@ function evictParkedWebviews(excludedTabId: string | null = null): void {
 }
 
 export default function BrowserPane({
-  browserTab,
-  onUpdatePageState,
-  onSetUrl
+  browserTab
 }: {
-  browserTab: BrowserTabState
+  browserTab: BrowserWorkspaceState
+}): React.JSX.Element {
+  const browserPagesByWorkspace = useAppStore((s) => s.browserPagesByWorkspace)
+  const recentlyClosedBrowserPagesByWorkspace = useAppStore(
+    (s) => s.recentlyClosedBrowserPagesByWorkspace
+  )
+  const browserPages = browserPagesByWorkspace[browserTab.id] ?? EMPTY_BROWSER_PAGES
+  const activeBrowserPage =
+    browserPages.find((page) => page.id === browserTab.activePageId) ?? browserPages[0] ?? null
+  const createBrowserPage = useAppStore((s) => s.createBrowserPage)
+  const closeBrowserPage = useAppStore((s) => s.closeBrowserPage)
+  const setActiveBrowserPage = useAppStore((s) => s.setActiveBrowserPage)
+  const reopenClosedBrowserPage = useAppStore((s) => s.reopenClosedBrowserPage)
+  const recentlyClosedBrowserPages =
+    recentlyClosedBrowserPagesByWorkspace[browserTab.id] ?? EMPTY_BROWSER_PAGES
+  const updateBrowserPageState = useAppStore((s) => s.updateBrowserPageState)
+  const setBrowserPageUrl = useAppStore((s) => s.setBrowserPageUrl)
+  const browserDefaultUrl = useAppStore((s) => s.browserDefaultUrl)
+  const isMac = navigator.userAgent.includes('Mac')
+  // Why: always show the inner page strip so there is a consistent place to
+  // create, switch, and close pages — including the single-page case where
+  // the + button lives. This also makes keyboard shortcuts (Cmd+T) produce a
+  // visible new tab immediately rather than appearing to do nothing.
+  const showPageStrip = browserPages.length >= 1
+
+  const handleNewPage = useCallback(() => {
+    // Why: when the user has configured a home page, new tabs navigate there
+    // instead of opening a blank page. Fall back to 'about:blank' if unset so
+    // the existing address-bar-focus behavior for blank tabs is preserved.
+    return createBrowserPage(browserTab.id, browserDefaultUrl ?? 'about:blank', {
+      title: 'New Tab',
+      activate: true
+    })
+  }, [browserTab.id, createBrowserPage, browserDefaultUrl])
+
+  const handleClosePage = useCallback(
+    (pageId: string) => {
+      destroyPersistentWebview(pageId)
+      closeBrowserPage(pageId)
+    },
+    [closeBrowserPage]
+  )
+
+  return (
+    <div className="relative flex h-full min-h-0 flex-1 flex-col">
+      {showPageStrip ? (
+        <div className="flex items-center gap-1 border-b border-border/70 bg-muted/30 px-2 py-1">
+          <div
+            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto pr-1"
+            onDoubleClick={(event) => {
+              // Why: double-click on the strip background (not on a tab or the +
+              // button) opens a new page, matching the standard browser convention.
+              // Checking target === currentTarget ensures clicks that originate
+              // on a child element (tab button, close icon, + button) are ignored.
+              if (event.target !== event.currentTarget) {
+                return
+              }
+              handleNewPage()
+            }}
+          >
+            {browserPages.map((page) => {
+              const isActive = page.id === activeBrowserPage?.id
+              return (
+                <button
+                  key={page.id}
+                  type="button"
+                  onClick={() => setActiveBrowserPage(browserTab.id, page.id)}
+                  onMouseDown={(event) => {
+                    if (event.button !== 1) {
+                      return
+                    }
+                    // Why: middle-click close should not also activate the
+                    // page button or trigger the browser's autoscroll gesture.
+                    // Standard browsers treat it as a direct close affordance.
+                    event.preventDefault()
+                    event.stopPropagation()
+                  }}
+                  onAuxClick={(event) => {
+                    if (event.button !== 1) {
+                      return
+                    }
+                    event.preventDefault()
+                    event.stopPropagation()
+                    handleClosePage(page.id)
+                  }}
+                  className={cn(
+                    'group/page flex max-w-52 min-w-0 items-center gap-2 rounded-md border px-2 py-0.5 text-xs transition-colors',
+                    isActive
+                      ? 'border-border bg-background text-foreground shadow-sm'
+                      : 'border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground'
+                  )}
+                >
+                  <span className="truncate">
+                    {getBrowserDisplayTitle(page.title, page.url) || page.url || 'New Page'}
+                  </span>
+                  <span
+                    className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      handleClosePage(page.id)
+                    }}
+                  >
+                    <X className="size-3" />
+                  </span>
+                </button>
+              )
+            })}
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6 shrink-0"
+              onClick={handleNewPage}
+              title={`New tab (${isMac ? '⌘T' : 'Ctrl+T'})`}
+            >
+              <Plus className="size-3.5" />
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {activeBrowserPage ? (
+        <div className="relative flex min-h-0 flex-1">
+          {browserPages.map((page) => (
+            <BrowserPagePane
+              key={page.id}
+              browserTab={page}
+              workspaceId={browserTab.id}
+              isActive={page.id === activeBrowserPage.id}
+              onUpdatePageState={updateBrowserPageState}
+              onSetUrl={setBrowserPageUrl}
+              onCreatePage={handleNewPage}
+              onReopenClosedPage={() => reopenClosedBrowserPage(browserTab.id)}
+              recentlyClosedPageCount={recentlyClosedBrowserPages.length}
+              showPageStrip={showPageStrip}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-1 items-center justify-center bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.02),transparent_58%)] px-6">
+          <div className="flex max-w-sm flex-col items-center text-center opacity-75">
+            <div className="mb-4 rounded-full border border-border/70 bg-muted/30 p-3">
+              <Globe className="size-5 text-muted-foreground" />
+            </div>
+            <p className="text-base font-semibold text-foreground/85">Browser Workspace</p>
+            <p className="mt-2 text-sm text-muted-foreground">This workspace has no open pages.</p>
+            <Button className="mt-4 gap-2" onClick={handleNewPage}>
+              <Plus className="size-4" />
+              <span>New Page</span>
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BrowserPagePane({
+  browserTab,
+  workspaceId,
+  isActive,
+  onUpdatePageState,
+  onSetUrl,
+  onCreatePage,
+  onReopenClosedPage,
+  recentlyClosedPageCount,
+  showPageStrip
+}: {
+  browserTab: BrowserPageState
+  workspaceId: string
+  isActive: boolean
   onUpdatePageState: (tabId: string, updates: BrowserTabPageState) => void
   onSetUrl: (tabId: string, url: string) => void
+  onCreatePage: () => BrowserPageState | null
+  onReopenClosedPage: () => BrowserPageState | null
+  recentlyClosedPageCount: number
+  showPageStrip: boolean
 }): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const addressBarInputRef = useRef<HTMLInputElement | null>(null)
@@ -276,9 +633,38 @@ export default function BrowserPane({
   const [addressBarValue, setAddressBarValue] = useState(browserTab.url)
   const addressBarValueRef = useRef(browserTab.url)
   const [resourceNotice, setResourceNotice] = useState<string | null>(null)
+  const [downloadState, setDownloadState] = useState<BrowserDownloadState | null>(null)
+  const downloadStateRef = useRef<BrowserDownloadState | null>(null)
   const grab = useGrabMode(browserTab.id)
+  const createBrowserPage = useAppStore((s) => s.createBrowserPage)
+  const closeBrowserPage = useAppStore((s) => s.closeBrowserPage)
   const consumeAddressBarFocusRequest = useAppStore((s) => s.consumeAddressBarFocusRequest)
+  const browserDefaultUrl = useAppStore((s) => s.browserDefaultUrl)
+  const setBrowserDefaultUrl = useAppStore((s) => s.setBrowserDefaultUrl)
   const keepAddressBarFocusRef = useRef(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [homePageDraft, setHomePageDraft] = useState('')
+
+  const saveHomePage = useCallback(() => {
+    const trimmed = homePageDraft.trim()
+    if (!trimmed) {
+      // Why: empty input treated as "clear" so the user can remove a home page
+      // without having to click the separate Clear button.
+      setBrowserDefaultUrl(null)
+    } else {
+      const normalized = normalizeBrowserNavigationUrl(trimmed)
+      if (normalized && normalized !== ORCA_BROWSER_BLANK_URL) {
+        setBrowserDefaultUrl(normalized)
+      }
+      // Why: if the URL is not navigable (e.g. plain text with no scheme),
+      // leave the draft as-is so the user can correct it rather than silently
+      // discarding their input.
+      if (!normalized || normalized === ORCA_BROWSER_BLANK_URL) {
+        return
+      }
+    }
+    setSettingsOpen(false)
+  }, [homePageDraft, setBrowserDefaultUrl])
 
   // Inline toast that appears near the grabbed element instead of the global
   // bottom-right toaster, so feedback feels spatially connected to the action.
@@ -299,6 +685,15 @@ export default function BrowserPane({
   useEffect(() => {
     return () => clearTimeout(grabToastTimerRef.current)
   }, [])
+
+  // Why: populate the home-page draft from the stored value each time the
+  // settings dialog opens so the user sees the current setting pre-filled
+  // rather than an empty field or a stale in-memory edit.
+  useEffect(() => {
+    if (settingsOpen) {
+      setHomePageDraft(browserDefaultUrl ?? '')
+    }
+  }, [settingsOpen, browserDefaultUrl])
   const grabRef = useRef(grab)
   grabRef.current = grab
 
@@ -357,6 +752,10 @@ export default function BrowserPane({
   }, [grab.state, grab.payload, grab.contextMenu, showGrabToast])
 
   useEffect(() => {
+    initialBrowserUrlRef.current = browserTab.url
+  }, [browserTab.id, browserTab.url])
+
+  useEffect(() => {
     setAddressBarValue(toDisplayUrl(browserTab.url))
   }, [browserTab.url])
 
@@ -373,12 +772,84 @@ export default function BrowserPane({
   }, [addressBarValue])
 
   useEffect(() => {
+    downloadStateRef.current = downloadState
+  }, [downloadState])
+
+  useEffect(() => {
     setResourceNotice(
       consumeEvictedBrowserTab(browserTab.id)
         ? 'This tab reloaded to free browser resources.'
         : null
     )
+    setDownloadState(null)
   }, [browserTab.id])
+
+  useEffect(() => {
+    return window.api.browser.onPermissionDenied((event) => {
+      if (event.browserPageId !== browserTab.id) {
+        return
+      }
+      setResourceNotice(formatPermissionNotice(event))
+    })
+  }, [browserTab.id])
+
+  useEffect(() => {
+    return window.api.browser.onPopup((event) => {
+      if (event.browserPageId !== browserTab.id) {
+        return
+      }
+      setResourceNotice(formatPopupNotice(event))
+    })
+  }, [browserTab.id])
+
+  useEffect(() => {
+    return window.api.browser.onDownloadRequested((event) => {
+      if (event.browserPageId !== browserTab.id) {
+        return
+      }
+      // Why: downloads are approved per browser tab, not globally. Keep the
+      // request local to the owning BrowserPane so the user can see which page
+      // triggered the save prompt before Orca asks main to choose a path.
+      setDownloadState({
+        ...event,
+        receivedBytes: 0,
+        status: 'requested'
+      })
+      setResourceNotice(null)
+    })
+  }, [browserTab.id])
+
+  useEffect(() => {
+    return window.api.browser.onDownloadProgress((event: BrowserDownloadProgressEvent) => {
+      setDownloadState((current) => {
+        if (!current || current.downloadId !== event.downloadId) {
+          return current
+        }
+        return {
+          ...current,
+          receivedBytes: event.receivedBytes,
+          totalBytes: event.totalBytes,
+          status: 'downloading'
+        }
+      })
+    })
+  }, [])
+
+  useEffect(() => {
+    return window.api.browser.onDownloadFinished((event: BrowserDownloadFinishedEvent) => {
+      const current = downloadStateRef.current
+      if (!current || current.downloadId !== event.downloadId) {
+        return
+      }
+      setDownloadState((current) => {
+        if (!current || current.downloadId !== event.downloadId) {
+          return current
+        }
+        return null
+      })
+      setResourceNotice(formatDownloadFinishedNotice(event))
+    })
+  }, [])
 
   const focusAddressBarNow = useCallback(() => {
     const input = addressBarInputRef.current
@@ -435,6 +906,142 @@ export default function BrowserPane({
   }, [browserTab.id, consumeAddressBarFocusRequest, focusAddressBarNow])
 
   useEffect(() => {
+    if (!isActive) {
+      return
+    }
+    return window.api.ui.onFocusBrowserAddressBar(() => {
+      focusAddressBarNow()
+    })
+  }, [focusAddressBarNow, isActive])
+
+  // Cmd/Ctrl+T — new browser page (renderer path)
+  // Why: there are two paths for this shortcut — the IPC guest path (when the
+  // webview has focus, forwarded by browser-guest-ui.ts → useIpcEvents.ts) and
+  // this direct renderer path. The IPC path gates on store.activeTabType which
+  // may not be in sync during early activation. Handling it here directly on the
+  // active BrowserPagePane is the most reliable approach and mirrors Cmd+L/Cmd+R.
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      const isMod = navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey
+      if (!isMod || e.shiftKey || e.altKey || e.key.toLowerCase() !== 't') {
+        return
+      }
+      e.preventDefault()
+      e.stopPropagation()
+      onCreatePage()
+    }
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [isActive, onCreatePage])
+
+  // Cmd/Ctrl+R — reload (renderer path: focus on browser chrome, not in guest)
+  // Why: when focus is inside the renderer chrome (address bar, toolbar buttons)
+  // rather than the webview guest, the guest shortcut forwarding in main never
+  // fires. Handle the chord directly here so reload works regardless of where
+  // focus sits within the browser pane.
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      const isMod = navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey
+      if (!isMod || e.altKey || e.key.toLowerCase() !== 'r') {
+        return
+      }
+      if (isEditableKeyboardTarget(e.target)) {
+        return
+      }
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.shiftKey) {
+        webviewRef.current?.reloadIgnoringCache()
+      } else {
+        webviewRef.current?.reload()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [isActive])
+
+  // Cmd/Ctrl+R — reload (IPC path: focus inside webview guest)
+  // Why: a focused webview guest is a separate Chromium process so the renderer
+  // keydown handler above never fires. Main intercepts the chord and sends it
+  // back here so reload works whether focus is on the toolbar or the page.
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+    return window.api.ui.onReloadBrowserPage(() => {
+      webviewRef.current?.reload()
+    })
+  }, [isActive])
+
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+    return window.api.ui.onHardReloadBrowserPage(() => {
+      webviewRef.current?.reloadIgnoringCache()
+    })
+  }, [isActive])
+
+  // Cmd/Ctrl+T — new browser page (IPC path: focus inside webview guest)
+  // Why: when the webview guest has focus, main forwards Cmd+T as ui:newBrowserTab
+  // to the renderer. useIpcEvents.ts also handles this event, but it gates on
+  // store.activeTabType which can be stale. Subscribing here on the active page
+  // directly avoids that dependency and ensures the shortcut always targets the
+  // correct workspace regardless of store synchronisation timing.
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+    return window.api.ui.onNewBrowserTab(() => {
+      onCreatePage()
+    })
+  }, [isActive, onCreatePage])
+
+  const closePage = useCallback(() => {
+    destroyPersistentWebview(browserTab.id)
+    closeBrowserPage(browserTab.id)
+  }, [browserTab.id, closeBrowserPage])
+
+  // Cmd/Ctrl+W — close active browser page (renderer path)
+  // Why: Terminal.tsx also handles Cmd+W but gates on store.activeTabType which
+  // can be stale during early activation — the same issue that required a direct
+  // Cmd+T handler above. Handling it here on the active pane is reliable.
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      const isMod = navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey
+      if (!isMod || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'w') {
+        return
+      }
+      e.preventDefault()
+      e.stopPropagation()
+      closePage()
+    }
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [isActive, closePage])
+
+  // Cmd/Ctrl+W — close active browser page (IPC path: focus inside webview guest)
+  // Why: when the webview guest has focus, main forwards Cmd+W as ui:closeActiveTab.
+  // useIpcEvents.ts also handles this but gates on store.activeTabType.
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+    return window.api.ui.onCloseActiveTab(() => {
+      closePage()
+    })
+  }, [isActive, closePage])
+
+  useEffect(() => {
     onUpdatePageStateRef.current = onUpdatePageState
     onSetUrlRef.current = onSetUrl
   }, [onSetUrl, onUpdatePageState])
@@ -443,7 +1050,7 @@ export default function BrowserPane({
     (webview: Electron.WebviewTag): void => {
       try {
         onUpdatePageStateRef.current(browserTab.id, {
-          title: webview.getTitle() || webview.getURL() || 'Browser',
+          title: getBrowserDisplayTitle(webview.getTitle(), webview.getURL() || browserTab.url),
           // Why: webview reclaim/attach can transiently report isLoading() even
           // when no user-visible navigation happened. If we sync that into the
           // tab model on every activation, switching tabs flashes the blue
@@ -458,7 +1065,7 @@ export default function BrowserPane({
         // the parked webview is being reclaimed into the visible tab body.
       }
     },
-    [browserTab.id]
+    [browserTab.id, browserTab.url]
   )
 
   useEffect(() => {
@@ -495,10 +1102,12 @@ export default function BrowserPane({
       if (registeredWebContentsIds.get(browserTab.id) !== webContentsId) {
         registeredWebContentsIds.set(browserTab.id, webContentsId)
         void window.api.browser.registerGuest({
-          browserTabId: browserTab.id,
+          browserPageId: browserTab.id,
+          workspaceId,
           webContentsId
         })
       }
+      void webview.executeJavaScript(buildGuestContextMenuScript())
       syncNavigationState(webview)
       if (keepAddressBarFocusRef.current) {
         focusAddressBarNow()
@@ -546,7 +1155,7 @@ export default function BrowserPane({
           // already knows this exact load failed.
           onUpdatePageStateRef.current(browserTab.id, {
             loading: false,
-            title: webview.getTitle() || currentUrl,
+            title: getBrowserDisplayTitle(webview.getTitle(), currentUrl),
             faviconUrl: faviconUrlRef.current,
             canGoBack: webview.canGoBack(),
             canGoForward: webview.canGoForward(),
@@ -567,7 +1176,7 @@ export default function BrowserPane({
       }
       onUpdatePageStateRef.current(browserTab.id, {
         loading: false,
-        title: webview.getTitle() || currentUrl,
+        title: getBrowserDisplayTitle(webview.getTitle(), currentUrl),
         faviconUrl: faviconUrlRef.current,
         canGoBack: webview.canGoBack(),
         canGoForward: webview.canGoForward(),
@@ -595,7 +1204,7 @@ export default function BrowserPane({
 
     const handleTitleUpdate = (event: { title?: string }): void => {
       onUpdatePageStateRef.current(browserTab.id, {
-        title: event.title ?? webview.getURL() ?? 'Browser'
+        title: getBrowserDisplayTitle(event.title, webview.getURL() || browserTab.url)
       })
     }
 
@@ -635,6 +1244,69 @@ export default function BrowserPane({
       })
     }
 
+    const handleConsoleMessage = (event: { message?: string }): void => {
+      const message = event.message ?? ''
+      if (!message.startsWith(ORCA_BROWSER_CONTEXT_MENU_PREFIX)) {
+        return
+      }
+      try {
+        const parsed = JSON.parse(message.slice(ORCA_BROWSER_CONTEXT_MENU_PREFIX.length)) as {
+          action?: string
+          payload?: { pageUrl?: string; linkUrl?: string | null } | null
+        }
+        const payload = parsed.payload ?? {}
+        switch (parsed.action) {
+          case 'open-link-in-orca-browser': {
+            const targetUrl = payload.linkUrl
+              ? normalizeBrowserNavigationUrl(payload.linkUrl)
+              : null
+            if (targetUrl) {
+              createBrowserPage(workspaceId, targetUrl, { title: targetUrl, activate: true })
+            }
+            return
+          }
+          case 'open-link-in-default-browser': {
+            const targetUrl = payload.linkUrl ? normalizeExternalBrowserUrl(payload.linkUrl) : null
+            if (targetUrl) {
+              void window.api.shell.openUrl(targetUrl)
+            }
+            return
+          }
+          case 'copy-link-address':
+            void window.api.ui.writeClipboardText(payload.linkUrl ?? '')
+            return
+          case 'back':
+            webview.goBack()
+            return
+          case 'forward':
+            webview.goForward()
+            return
+          case 'reload':
+            webview.reload()
+            return
+          case 'open-page-in-default-browser': {
+            const targetUrl = payload.pageUrl ? normalizeExternalBrowserUrl(payload.pageUrl) : null
+            if (targetUrl) {
+              void window.api.shell.openUrl(targetUrl)
+            }
+            return
+          }
+          case 'copy-page-url':
+            void window.api.ui.writeClipboardText(payload.pageUrl ?? '')
+            return
+          case 'inspect-page':
+            void window.api.browser.openDevTools({ browserPageId: browserTab.id })
+            return
+          default:
+            break
+        }
+      } catch {
+        // Why: context-menu actions are best-effort UI affordances. Ignore
+        // malformed guest messages instead of letting page console output break
+        // the browser shell.
+      }
+    }
+
     webview.addEventListener('dom-ready', handleDomReady)
     webview.addEventListener('did-start-loading', handleDidStartLoading)
     webview.addEventListener('did-stop-loading', handleDidStopLoading)
@@ -643,6 +1315,7 @@ export default function BrowserPane({
     webview.addEventListener('page-title-updated', handleTitleUpdate)
     webview.addEventListener('page-favicon-updated', handleFaviconUpdate)
     webview.addEventListener('did-fail-load', handleFailLoad)
+    webview.addEventListener('console-message', handleConsoleMessage)
 
     if (needsInitialNavigation) {
       // Why: connection-refused localhost tabs can fail before Electron wires up
@@ -667,6 +1340,7 @@ export default function BrowserPane({
       webview.removeEventListener('page-title-updated', handleTitleUpdate)
       webview.removeEventListener('page-favicon-updated', handleFaviconUpdate)
       webview.removeEventListener('did-fail-load', handleFailLoad)
+      webview.removeEventListener('console-message', handleConsoleMessage)
 
       if (webviewRef.current === webview) {
         webviewRef.current = null
@@ -678,7 +1352,15 @@ export default function BrowserPane({
         evictParkedWebviews(browserTab.id)
       }
     }
-  }, [browserTab.id, focusAddressBarNow, focusWebviewNow, syncNavigationState])
+  }, [
+    browserTab.id,
+    browserTab.url,
+    workspaceId,
+    createBrowserPage,
+    focusAddressBarNow,
+    focusWebviewNow,
+    syncNavigationState
+  ])
 
   useEffect(() => {
     const webview = webviewRef.current
@@ -689,7 +1371,22 @@ export default function BrowserPane({
     if (!normalizedUrl) {
       return
     }
-    if (webview.src !== normalizedUrl && webview.getAttribute('src') !== normalizedUrl) {
+    let liveUrl: string | null = null
+    try {
+      liveUrl = webview.getURL() || null
+    } catch {
+      // Why: reattached parked guests can briefly reject getURL() before the
+      // underlying guest is fully ready again. Fall through to the attribute
+      // checks in that short window.
+      liveUrl = null
+    }
+    const normalizedLiveUrl = liveUrl ? (normalizeBrowserNavigationUrl(liveUrl) ?? liveUrl) : null
+    const declaredSrc = webview.getAttribute('src')
+    if (
+      normalizedLiveUrl !== normalizedUrl &&
+      webview.src !== normalizedUrl &&
+      declaredSrc !== normalizedUrl
+    ) {
       // Why: browserTab.url changes are Orca-driven navigations (address bar,
       // terminal link open, retry target update). Gate the next did-start-loading
       // event so only real navigations, not tab activation churn, show loading UI.
@@ -769,6 +1466,26 @@ export default function BrowserPane({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [grab])
 
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      const isMod = navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey
+      if (!isMod || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'l') {
+        return
+      }
+      // Why: Cmd/Ctrl+L is a browser-local focus command. Capture it before
+      // the surrounding workspace or any embedded editor surface can treat the
+      // same chord as something else.
+      e.preventDefault()
+      e.stopPropagation()
+      focusAddressBarNow()
+    }
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [focusAddressBarNow, isActive])
+
   // Why: a focused webview guest receives Cmd/Ctrl+C inside Chromium, not the
   // host renderer window. Main forwards the chord back only when the page
   // would not use it for native copy, so grab mode still toggles from web
@@ -827,7 +1544,7 @@ export default function BrowserPane({
         // armed/awaiting — extract hovered element via IPC without clicking
         void (async () => {
           const result = await window.api.browser.extractHoverPayload({
-            browserTabId: browserTabIdRef.current
+            browserPageId: browserTabIdRef.current
           })
           if (!result.ok) {
             showGrabToast('No element hovered', 'error')
@@ -838,7 +1555,7 @@ export default function BrowserPane({
           if (key === 's') {
             try {
               const ssResult = await window.api.browser.captureSelectionScreenshot({
-                browserTabId: browserTabIdRef.current,
+                browserPageId: browserTabIdRef.current,
                 rect: payload.target.rectViewport
               })
               if (ssResult.ok) {
@@ -884,8 +1601,8 @@ export default function BrowserPane({
     if (grab.state === 'idle' || grab.state === 'error') {
       return
     }
-    return window.api.browser.onGrabActionShortcut(({ browserTabId, key }) => {
-      if (browserTabId !== browserTab.id) {
+    return window.api.browser.onGrabActionShortcut(({ browserPageId, key }) => {
+      if (browserPageId !== browserTab.id) {
         return
       }
       handleGrabActionShortcut(key)
@@ -941,7 +1658,11 @@ export default function BrowserPane({
 
     setAddressBarValue(toDisplayUrl(nextUrl))
     onSetUrlRef.current(browserTab.id, nextUrl)
-    onUpdatePageStateRef.current(browserTab.id, { loading: true, loadError: null, title: nextUrl })
+    onUpdatePageStateRef.current(browserTab.id, {
+      loading: true,
+      loadError: null,
+      title: getBrowserDisplayTitle(nextUrl, nextUrl)
+    })
     setResourceNotice(null)
 
     const webview = webviewRef.current
@@ -960,8 +1681,24 @@ export default function BrowserPane({
   // Match both so the "New Browser Tab" overlay stays visible for blank tabs.
   const isBlankTab = browserTab.url === 'about:blank' || browserTab.url === ORCA_BROWSER_BLANK_URL
   const externalUrl = getOpenableExternalUrl(webviewRef.current, browserTab.url)
+  const currentBrowserUrl = getCurrentBrowserUrl(webviewRef.current, browserTab.url)
   const loadErrorMeta = getLoadErrorMetadata(browserTab.loadError)
+  const loadErrorHint = formatLoadFailureRecoveryHint(loadErrorMeta)
   const showFailureOverlay = Boolean(browserTab.loadError) && !isBlankTab
+  const downloadProgressLabel = (() => {
+    if (!downloadState) {
+      return null
+    }
+    const received = formatByteCount(downloadState.receivedBytes)
+    const total = formatByteCount(downloadState.totalBytes)
+    if (received && total) {
+      return `${received} / ${total}`
+    }
+    if (total) {
+      return total
+    }
+    return received
+  })()
 
   useEffect(() => {
     const webview = webviewRef.current
@@ -976,12 +1713,58 @@ export default function BrowserPane({
   }, [showFailureOverlay])
 
   return (
-    <div className="relative flex h-full min-h-0 flex-1 flex-col">
-      <div className="relative z-10 flex items-center gap-2 border-b border-border/70 bg-background/95 px-3 py-2">
+    <div
+      className={cn(
+        'absolute inset-0 flex min-h-0 flex-1 flex-col',
+        isActive ? 'z-10' : 'pointer-events-none hidden'
+      )}
+    >
+      {/* Browser Settings dialog — uses Radix Portal so layout is unaffected */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Browser Settings</DialogTitle>
+          </DialogHeader>
+          <div className="py-1">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              General
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="browser-home-page">Home Page</Label>
+              <p className="text-xs text-muted-foreground">
+                URL to open when creating a new tab. Leave empty for a blank tab.
+              </p>
+              <Input
+                id="browser-home-page"
+                value={homePageDraft}
+                onChange={(e) => setHomePageDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    saveHomePage()
+                  }
+                }}
+                placeholder="https://google.com"
+                spellCheck={false}
+                autoCapitalize="none"
+                autoCorrect="off"
+                className="h-8 text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button size="sm" onClick={saveHomePage}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <div className="relative z-10 flex items-center gap-2 border-b border-border/70 bg-background/95 px-3 py-1.5">
         <Button
           size="icon"
           variant="ghost"
-          className="h-8 w-8"
+          className="h-7 w-7"
           onClick={() => webviewRef.current?.goBack()}
           disabled={!browserTab.canGoBack}
         >
@@ -990,7 +1773,7 @@ export default function BrowserPane({
         <Button
           size="icon"
           variant="ghost"
-          className="h-8 w-8"
+          className="h-7 w-7"
           onClick={() => webviewRef.current?.goForward()}
           disabled={!browserTab.canGoForward}
         >
@@ -999,7 +1782,7 @@ export default function BrowserPane({
         <Button
           size="icon"
           variant="ghost"
-          className="h-8 w-8"
+          className="h-7 w-7"
           onClick={() => {
             const webview = webviewRef.current
             if (!webview) {
@@ -1022,7 +1805,7 @@ export default function BrowserPane({
         </Button>
 
         <form
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-background px-3 py-1.5 shadow-sm"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-background px-3 py-1 shadow-sm"
           onSubmit={(event) => {
             event.preventDefault()
             submitAddressBar()
@@ -1040,6 +1823,20 @@ export default function BrowserPane({
           />
         </form>
 
+        {!showPageStrip ? (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7"
+            onClick={() => {
+              onCreatePage()
+            }}
+            title={`New tab (${navigator.userAgent.includes('Mac') ? '⌘T' : 'Ctrl+T'})`}
+          >
+            <Plus className="size-4" />
+          </Button>
+        ) : null}
+
         <Button
           size="icon"
           variant={grab.state !== 'idle' ? 'default' : 'ghost'}
@@ -1054,8 +1851,8 @@ export default function BrowserPane({
         <Button
           size="icon"
           variant="ghost"
-          className="h-8 w-8"
-          onClick={() => void window.api.browser.openDevTools({ browserTabId: browserTab.id })}
+          className="h-7 w-7"
+          onClick={() => void window.api.browser.openDevTools({ browserPageId: browserTab.id })}
           title="Open browser devtools"
         >
           <SquareCode className="size-4" />
@@ -1064,7 +1861,7 @@ export default function BrowserPane({
         <Button
           size="icon"
           variant="ghost"
-          className="h-8 w-8"
+          className="h-7 w-7"
           onClick={() => {
             if (!externalUrl) {
               return
@@ -1076,7 +1873,107 @@ export default function BrowserPane({
         >
           <ExternalLink className="size-4" />
         </Button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="icon" variant="ghost" className="h-8 w-8" title="Browser actions">
+              <Ellipsis className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onSelect={() => {
+                const duplicatedPage = onCreatePage()
+                if (!duplicatedPage) {
+                  return
+                }
+                onSetUrl(duplicatedPage.id, browserTab.url)
+                onUpdatePageState(duplicatedPage.id, { title: browserTab.title || 'Browser' })
+              }}
+            >
+              <Copy className="size-3.5" />
+              Duplicate Page
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={recentlyClosedPageCount === 0}
+              onSelect={() => {
+                onReopenClosedPage()
+              }}
+            >
+              <Copy className="size-3.5" />
+              Reopen Closed Page
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                void window.api.ui.writeClipboardText(currentBrowserUrl)
+                setResourceNotice('Copied the current page URL.')
+              }}
+            >
+              <Copy className="size-3.5" />
+              Copy Current URL
+            </DropdownMenuItem>
+            {!showPageStrip ? (
+              <DropdownMenuItem
+                onSelect={() => {
+                  onCreatePage()
+                }}
+              >
+                <Plus className="size-3.5" />
+                New Page
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
+              <Settings className="size-3.5" />
+              Browser Settings…
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
+      {downloadState ? (
+        <div className="flex items-center gap-3 border-b border-border/60 bg-amber-500/10 px-3 py-2 text-xs text-foreground/90">
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-medium text-foreground">{downloadState.filename}</div>
+            <div className="truncate text-muted-foreground">
+              {downloadState.status === 'requested'
+                ? `Download from ${downloadState.origin}`
+                : `Downloading from ${downloadState.origin}${downloadProgressLabel ? ` • ${downloadProgressLabel}` : ''}`}
+            </div>
+          </div>
+          {downloadState.status === 'requested' ? (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7"
+                onClick={() => {
+                  void window.api.browser.acceptDownload({
+                    downloadId: downloadState.downloadId
+                  })
+                }}
+              >
+                Save
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7"
+                onClick={() => {
+                  void window.api.browser.cancelDownload({
+                    downloadId: downloadState.downloadId
+                  })
+                }}
+              >
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <span className="shrink-0 text-muted-foreground">
+              {downloadProgressLabel ?? 'Downloading'}
+            </span>
+          )}
+        </div>
+      ) : null}
       {resourceNotice ? (
         <div className="border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground">
           {resourceNotice}
@@ -1132,8 +2029,11 @@ export default function BrowserPane({
                 {loadErrorMeta.host ? `Can't reach ${loadErrorMeta.host}` : "Can't load this page"}
               </h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                {getFriendlyLoadErrorDescription(browserTab.loadError)}
+                {formatLoadFailureDescription(browserTab.loadError, loadErrorMeta)}
               </p>
+              {loadErrorHint ? (
+                <p className="mt-2 text-xs text-muted-foreground/80">{loadErrorHint}</p>
+              ) : null}
               <div className="mt-5 flex items-center gap-2">
                 <Button
                   size="sm"
@@ -1154,6 +2054,43 @@ export default function BrowserPane({
                   <RefreshCw className="size-4" />
                   <span>Refresh</span>
                 </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-9 gap-2 px-3"
+                  title="Copy failed page URL"
+                  onClick={() => {
+                    // Why: failed guests often leave users stranded on a blank
+                    // error surface. Put the current URL on the clipboard from
+                    // the recovery UI itself so they can retry elsewhere
+                    // without having to discover the toolbar overflow first.
+                    void window.api.ui.writeClipboardText(currentBrowserUrl)
+                    setResourceNotice('Copied the current page URL.')
+                  }}
+                >
+                  <Copy className="size-4" />
+                  <span>Copy Address</span>
+                </Button>
+                {externalUrl ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-9 gap-2 px-3"
+                    title="Open failed page in default browser"
+                    onClick={() => {
+                      // Why: page failures inside Orca can still be recoverable
+                      // in the system browser, especially for OAuth, captive
+                      // portals, or enterprise auth flows that rely on a full
+                      // browser profile. Keep this action in the failed-state
+                      // overlay so recovery does not depend on toolbar affordance
+                      // discovery while the guest itself is unusable.
+                      void window.api.shell.openUrl(externalUrl)
+                    }}
+                  >
+                    <ExternalLink className="size-4" />
+                    <span>Open Externally</span>
+                  </Button>
+                ) : null}
               </div>
             </div>
           </div>
@@ -1165,7 +2102,7 @@ export default function BrowserPane({
                 <Globe className="size-5 text-muted-foreground" />
               </div>
               <div className="text-center">
-                <p className="text-base font-semibold text-foreground/85">New Browser Tab</p>
+                <p className="text-base font-semibold text-foreground/85">New Tab</p>
                 <p className="mt-2 text-sm text-muted-foreground">
                   Type a URL above to start browsing.
                 </p>

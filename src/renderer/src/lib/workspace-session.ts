@@ -1,5 +1,6 @@
 import type {
-  BrowserTab,
+  BrowserPage,
+  BrowserWorkspace,
   PersistedOpenFile,
   WorkspaceSessionState,
   WorkspaceVisibleTabType
@@ -19,6 +20,7 @@ type WorkspaceSessionSnapshot = Pick<
   | 'activeFileIdByWorktree'
   | 'activeTabTypeByWorktree'
   | 'browserTabsByWorktree'
+  | 'browserPagesByWorkspace'
   | 'activeBrowserTabIdByWorktree'
 >
 
@@ -52,9 +54,13 @@ export function buildEditorSessionData(
 }
 
 export function buildBrowserSessionData(
-  browserTabsByWorktree: Record<string, BrowserTab[]>,
+  browserTabsByWorktree: Record<string, BrowserWorkspace[]>,
+  browserPagesByWorkspace: Record<string, BrowserPage[]>,
   activeBrowserTabIdByWorktree: Record<string, string | null>
-): Pick<WorkspaceSessionState, 'browserTabsByWorktree' | 'activeBrowserTabIdByWorktree'> {
+): Pick<
+  WorkspaceSessionState,
+  'browserTabsByWorktree' | 'browserPagesByWorkspace' | 'activeBrowserTabIdByWorktree'
+> {
   return {
     // Why: browser tabs persist only lightweight chrome state. Live guest
     // webContents are recreated on restore, so loading is reset to false and
@@ -63,6 +69,12 @@ export function buildBrowserSessionData(
       Object.entries(browserTabsByWorktree).map(([worktreeId, tabs]) => [
         worktreeId,
         tabs.map((tab) => ({ ...tab, loading: false }))
+      ])
+    ),
+    browserPagesByWorkspace: Object.fromEntries(
+      Object.entries(browserPagesByWorkspace).map(([workspaceId, pages]) => [
+        workspaceId,
+        pages.map((page) => ({ ...page, loading: false }))
       ])
     ),
     activeBrowserTabIdByWorktree
@@ -94,6 +106,7 @@ export function buildWorkspaceSessionPayload(
     ),
     ...buildBrowserSessionData(
       snapshot.browserTabsByWorktree,
+      snapshot.browserPagesByWorkspace,
       snapshot.activeBrowserTabIdByWorktree
     )
   }

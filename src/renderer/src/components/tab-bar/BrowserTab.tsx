@@ -15,7 +15,7 @@ import { getLiveBrowserUrl } from '../browser-pane/browser-runtime'
 
 function formatBrowserTabUrlLabel(url: string): string {
   if (url === ORCA_BROWSER_BLANK_URL || url === 'about:blank') {
-    return 'New Browser Tab'
+    return 'New Tab'
   }
   try {
     const parsed = new URL(url)
@@ -26,6 +26,12 @@ function formatBrowserTabUrlLabel(url: string): string {
 }
 
 function getBrowserTabLabel(tab: BrowserTabState): string {
+  // Why: always use the stable creation-time label ("Browser N") when present
+  // so the outer Orca tab never reflects inner page titles. The inner strip
+  // always shows page titles, so the outer tab only needs workspace identity.
+  if (tab.label) {
+    return tab.label
+  }
   if (
     !tab.title ||
     tab.title === tab.url ||
@@ -34,7 +40,6 @@ function getBrowserTabLabel(tab: BrowserTabState): string {
   ) {
     return formatBrowserTabUrlLabel(tab.url)
   }
-
   return tab.title || tab.url
 }
 

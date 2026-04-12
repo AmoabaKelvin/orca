@@ -41,6 +41,15 @@ import type {
   BrowserExtractHoverArgs,
   BrowserExtractHoverResult
 } from '../../shared/browser-grab-types'
+import type {
+  BrowserContextMenuDismissedEvent,
+  BrowserContextMenuRequestedEvent,
+  BrowserDownloadFinishedEvent,
+  BrowserDownloadProgressEvent,
+  BrowserDownloadRequestedEvent,
+  BrowserPermissionDeniedEvent,
+  BrowserPopupEvent
+} from '../../shared/browser-guest-events'
 import type { CliInstallStatus } from '../../shared/cli-install-types'
 import type { RuntimeStatus, RuntimeSyncWindowGraph } from '../../shared/runtime-types'
 import type {
@@ -66,12 +75,34 @@ import type {
 } from '../../shared/codex-usage-types'
 
 export type BrowserApi = {
-  registerGuest: (args: { browserTabId: string; webContentsId: number }) => Promise<void>
-  unregisterGuest: (args: { browserTabId: string }) => Promise<void>
-  openDevTools: (args: { browserTabId: string }) => Promise<boolean>
+  registerGuest: (args: {
+    browserPageId: string
+    workspaceId: string
+    webContentsId: number
+  }) => Promise<void>
+  unregisterGuest: (args: { browserPageId: string }) => Promise<void>
+  openDevTools: (args: { browserPageId: string }) => Promise<boolean>
   onGuestLoadFailed: (
-    callback: (args: { browserTabId: string; loadError: BrowserLoadError }) => void
+    callback: (args: { browserPageId: string; loadError: BrowserLoadError }) => void
   ) => () => void
+  onPermissionDenied: (callback: (event: BrowserPermissionDeniedEvent) => void) => () => void
+  onPopup: (callback: (event: BrowserPopupEvent) => void) => () => void
+  onDownloadRequested: (callback: (event: BrowserDownloadRequestedEvent) => void) => () => void
+  onDownloadProgress: (callback: (event: BrowserDownloadProgressEvent) => void) => () => void
+  onDownloadFinished: (callback: (event: BrowserDownloadFinishedEvent) => void) => () => void
+  onContextMenuRequested: (
+    callback: (event: BrowserContextMenuRequestedEvent) => void
+  ) => () => void
+  onContextMenuDismissed: (
+    callback: (event: BrowserContextMenuDismissedEvent) => void
+  ) => () => void
+  onOpenLinkInOrcaTab: (
+    callback: (event: { browserPageId: string; url: string }) => void
+  ) => () => void
+  acceptDownload: (args: {
+    downloadId: string
+  }) => Promise<{ ok: true } | { ok: false; reason: string }>
+  cancelDownload: (args: { downloadId: string }) => Promise<boolean>
   setGrabMode: (args: BrowserSetGrabModeArgs) => Promise<BrowserSetGrabModeResult>
   awaitGrabSelection: (args: BrowserAwaitGrabSelectionArgs) => Promise<BrowserGrabResult>
   cancelGrab: (args: BrowserCancelGrabArgs) => Promise<boolean>
@@ -79,9 +110,9 @@ export type BrowserApi = {
     args: BrowserCaptureSelectionScreenshotArgs
   ) => Promise<BrowserCaptureSelectionScreenshotResult>
   extractHoverPayload: (args: BrowserExtractHoverArgs) => Promise<BrowserExtractHoverResult>
-  onGrabModeToggle: (callback: (browserTabId: string) => void) => () => void
+  onGrabModeToggle: (callback: (browserPageId: string) => void) => () => void
   onGrabActionShortcut: (
-    callback: (args: { browserTabId: string; key: 'c' | 's' }) => void
+    callback: (args: { browserPageId: string; key: 'c' | 's' }) => void
   ) => () => void
 }
 
@@ -365,6 +396,9 @@ export type PreloadApi = {
     onJumpToWorktreeIndex: (callback: (index: number) => void) => () => void
     onNewBrowserTab: (callback: () => void) => () => void
     onNewTerminalTab: (callback: () => void) => () => void
+    onFocusBrowserAddressBar: (callback: () => void) => () => void
+    onReloadBrowserPage: (callback: () => void) => () => void
+    onHardReloadBrowserPage: (callback: () => void) => () => void
     onCloseActiveTab: (callback: () => void) => () => void
     onSwitchTab: (callback: (direction: 1 | -1) => void) => () => void
     onToggleStatusBar: (callback: () => void) => () => void

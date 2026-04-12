@@ -78,7 +78,7 @@ describe('handleOscLink', () => {
     expect(openUrlMock).not.toHaveBeenCalled()
   })
 
-  it('uses Orca for cmd/ctrl+click even when the setting is off', () => {
+  it('routes to the system browser when openLinksInApp is off', () => {
     setPlatform('Macintosh')
     storeState.settings = { openLinksInApp: false }
     const preventDefault = vi.fn()
@@ -90,9 +90,8 @@ describe('handleOscLink', () => {
       deps
     )
 
-    expect(createBrowserTabMock).toHaveBeenCalledWith('wt-1', 'https://example.com/')
-    expect(setActiveWorktreeMock).toHaveBeenCalledWith('wt-1')
-    expect(openUrlMock).not.toHaveBeenCalled()
+    expect(openUrlMock).toHaveBeenCalledWith('https://example.com/')
+    expect(createBrowserTabMock).not.toHaveBeenCalled()
     expect(preventDefault).toHaveBeenCalled()
     expect(stopPropagation).toHaveBeenCalled()
   })

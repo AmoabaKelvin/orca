@@ -85,7 +85,7 @@ describe('browserManager grab operations', () => {
 
     browserManager.attachGuestPolicies(guest)
     browserManager.registerGuest({
-      browserTabId: 'tab-1',
+      browserPageId: 'tab-1',
       webContentsId: 101,
       rendererWebContentsId
     })
@@ -208,7 +208,7 @@ describe('browserManager grab operations', () => {
 
       expect(preventDefault).toHaveBeenCalledTimes(1)
       expect(rendererSendMock).toHaveBeenCalledWith('browser:grabActionShortcut', {
-        browserTabId: 'tab-1',
+        browserPageId: 'tab-1',
         key: 's'
       })
     })
@@ -659,7 +659,7 @@ describe('browserManager grab operations', () => {
       })
       browserManager.attachGuestPolicies(replacementGuest)
       browserManager.registerGuest({
-        browserTabId: 'tab-1',
+        browserPageId: 'tab-1',
         webContentsId: 202,
         rendererWebContentsId
       })

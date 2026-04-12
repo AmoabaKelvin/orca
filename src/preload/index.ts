@@ -335,25 +335,28 @@ const api = {
   },
 
   browser: {
-    registerGuest: (args: { browserTabId: string; webContentsId: number }): Promise<void> =>
-      ipcRenderer.invoke('browser:registerGuest', args),
+    registerGuest: (args: {
+      browserPageId: string
+      workspaceId: string
+      webContentsId: number
+    }): Promise<void> => ipcRenderer.invoke('browser:registerGuest', args),
 
-    unregisterGuest: (args: { browserTabId: string }): Promise<void> =>
+    unregisterGuest: (args: { browserPageId: string }): Promise<void> =>
       ipcRenderer.invoke('browser:unregisterGuest', args),
 
-    openDevTools: (args: { browserTabId: string }): Promise<boolean> =>
+    openDevTools: (args: { browserPageId: string }): Promise<boolean> =>
       ipcRenderer.invoke('browser:openDevTools', args),
 
     onGuestLoadFailed: (
       callback: (args: {
-        browserTabId: string
+        browserPageId: string
         loadError: { code: number; description: string; validatedUrl: string }
       }) => void
     ): (() => void) => {
       const listener = (
         _event: Electron.IpcRendererEvent,
         data: {
-          browserTabId: string
+          browserPageId: string
           loadError: { code: number; description: string; validatedUrl: string }
         }
       ) => callback(data)
@@ -361,42 +364,188 @@ const api = {
       return () => ipcRenderer.removeListener('browser:guest-load-failed', listener)
     },
 
+    onPermissionDenied: (
+      callback: (event: { browserPageId: string; permission: string; origin: string }) => void
+    ): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        data: { browserPageId: string; permission: string; origin: string }
+      ) => callback(data)
+      ipcRenderer.on('browser:permission-denied', listener)
+      return () => ipcRenderer.removeListener('browser:permission-denied', listener)
+    },
+
+    onPopup: (
+      callback: (event: {
+        browserPageId: string
+        origin: string
+        action: 'opened-external' | 'blocked'
+      }) => void
+    ): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        data: {
+          browserPageId: string
+          origin: string
+          action: 'opened-external' | 'blocked'
+        }
+      ) => callback(data)
+      ipcRenderer.on('browser:popup', listener)
+      return () => ipcRenderer.removeListener('browser:popup', listener)
+    },
+
+    onDownloadRequested: (
+      callback: (event: {
+        browserPageId: string
+        downloadId: string
+        origin: string
+        filename: string
+        totalBytes: number | null
+        mimeType: string | null
+      }) => void
+    ): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        data: {
+          browserPageId: string
+          downloadId: string
+          origin: string
+          filename: string
+          totalBytes: number | null
+          mimeType: string | null
+        }
+      ) => callback(data)
+      ipcRenderer.on('browser:download-requested', listener)
+      return () => ipcRenderer.removeListener('browser:download-requested', listener)
+    },
+
+    onDownloadProgress: (
+      callback: (event: {
+        downloadId: string
+        receivedBytes: number
+        totalBytes: number | null
+      }) => void
+    ): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        data: { downloadId: string; receivedBytes: number; totalBytes: number | null }
+      ) => callback(data)
+      ipcRenderer.on('browser:download-progress', listener)
+      return () => ipcRenderer.removeListener('browser:download-progress', listener)
+    },
+
+    onDownloadFinished: (
+      callback: (event: {
+        downloadId: string
+        status: 'completed' | 'canceled' | 'failed'
+        savePath: string | null
+        error: string | null
+      }) => void
+    ): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        data: {
+          downloadId: string
+          status: 'completed' | 'canceled' | 'failed'
+          savePath: string | null
+          error: string | null
+        }
+      ) => callback(data)
+      ipcRenderer.on('browser:download-finished', listener)
+      return () => ipcRenderer.removeListener('browser:download-finished', listener)
+    },
+
+    onContextMenuRequested: (
+      callback: (event: {
+        browserPageId: string
+        x: number
+        y: number
+        pageUrl: string
+        linkUrl: string | null
+        canGoBack: boolean
+        canGoForward: boolean
+      }) => void
+    ): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        data: {
+          browserPageId: string
+          x: number
+          y: number
+          pageUrl: string
+          linkUrl: string | null
+          canGoBack: boolean
+          canGoForward: boolean
+        }
+      ) => callback(data)
+      ipcRenderer.on('browser:context-menu-requested', listener)
+      return () => ipcRenderer.removeListener('browser:context-menu-requested', listener)
+    },
+
+    onContextMenuDismissed: (
+      callback: (event: { browserPageId: string }) => void
+    ): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, data: { browserPageId: string }) =>
+        callback(data)
+      ipcRenderer.on('browser:context-menu-dismissed', listener)
+      return () => ipcRenderer.removeListener('browser:context-menu-dismissed', listener)
+    },
+
+    onOpenLinkInOrcaTab: (
+      callback: (event: { browserPageId: string; url: string }) => void
+    ): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        data: { browserPageId: string; url: string }
+      ) => callback(data)
+      ipcRenderer.on('browser:open-link-in-orca-tab', listener)
+      return () => ipcRenderer.removeListener('browser:open-link-in-orca-tab', listener)
+    },
+
+    acceptDownload: (args: {
+      downloadId: string
+    }): Promise<{ ok: true } | { ok: false; reason: string }> =>
+      ipcRenderer.invoke('browser:acceptDownload', args),
+
+    cancelDownload: (args: { downloadId: string }): Promise<boolean> =>
+      ipcRenderer.invoke('browser:cancelDownload', args),
+
     setGrabMode: (args: {
-      browserTabId: string
+      browserPageId: string
       enabled: boolean
     }): Promise<{ ok: true } | { ok: false; reason: string }> =>
       ipcRenderer.invoke('browser:setGrabMode', args),
 
-    awaitGrabSelection: (args: { browserTabId: string; opId: string }): Promise<unknown> =>
+    awaitGrabSelection: (args: { browserPageId: string; opId: string }): Promise<unknown> =>
       ipcRenderer.invoke('browser:awaitGrabSelection', args),
 
-    cancelGrab: (args: { browserTabId: string }): Promise<boolean> =>
+    cancelGrab: (args: { browserPageId: string }): Promise<boolean> =>
       ipcRenderer.invoke('browser:cancelGrab', args),
 
     captureSelectionScreenshot: (args: {
-      browserTabId: string
+      browserPageId: string
       rect: { x: number; y: number; width: number; height: number }
     }): Promise<{ ok: true; screenshot: unknown } | { ok: false; reason: string }> =>
       ipcRenderer.invoke('browser:captureSelectionScreenshot', args),
 
     extractHoverPayload: (args: {
-      browserTabId: string
+      browserPageId: string
     }): Promise<{ ok: true; payload: unknown } | { ok: false; reason: string }> =>
       ipcRenderer.invoke('browser:extractHoverPayload', args),
 
-    onGrabModeToggle: (callback: (browserTabId: string) => void): (() => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, browserTabId: string) =>
-        callback(browserTabId)
+    onGrabModeToggle: (callback: (browserPageId: string) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, browserPageId: string) =>
+        callback(browserPageId)
       ipcRenderer.on('browser:grabModeToggle', listener)
       return () => ipcRenderer.removeListener('browser:grabModeToggle', listener)
     },
 
     onGrabActionShortcut: (
-      callback: (args: { browserTabId: string; key: 'c' | 's' }) => void
+      callback: (args: { browserPageId: string; key: 'c' | 's' }) => void
     ): (() => void) => {
       const listener = (
         _event: Electron.IpcRendererEvent,
-        data: { browserTabId: string; key: 'c' | 's' }
+        data: { browserPageId: string; key: 'c' | 's' }
       ) => callback(data)
       ipcRenderer.on('browser:grabActionShortcut', listener)
       return () => ipcRenderer.removeListener('browser:grabActionShortcut', listener)
@@ -631,6 +780,21 @@ const api = {
       const listener = (_event: Electron.IpcRendererEvent) => callback()
       ipcRenderer.on('ui:newTerminalTab', listener)
       return () => ipcRenderer.removeListener('ui:newTerminalTab', listener)
+    },
+    onFocusBrowserAddressBar: (callback: () => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent) => callback()
+      ipcRenderer.on('ui:focusBrowserAddressBar', listener)
+      return () => ipcRenderer.removeListener('ui:focusBrowserAddressBar', listener)
+    },
+    onReloadBrowserPage: (callback: () => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent) => callback()
+      ipcRenderer.on('ui:reloadBrowserPage', listener)
+      return () => ipcRenderer.removeListener('ui:reloadBrowserPage', listener)
+    },
+    onHardReloadBrowserPage: (callback: () => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent) => callback()
+      ipcRenderer.on('ui:hardReloadBrowserPage', listener)
+      return () => ipcRenderer.removeListener('ui:hardReloadBrowserPage', listener)
     },
     onCloseActiveTab: (callback: () => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent) => callback()
