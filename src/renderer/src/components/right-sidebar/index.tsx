@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react'
-import { Files, Search, GitBranch, ListChecks } from 'lucide-react'
+import { Files, Search, GitBranch, ListChecks, LayoutDashboard } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { useSidebarResize } from '@/hooks/useSidebarResize'
@@ -19,6 +19,7 @@ import FileExplorer from './FileExplorer'
 import SourceControl from './SourceControl'
 import SearchPanel from './Search'
 import ChecksPanel from './ChecksPanel'
+import AgentDashboard from '../dashboard/AgentDashboard'
 
 const MIN_WIDTH = 220
 const MAX_WIDTH = 500
@@ -105,6 +106,12 @@ const ACTIVITY_ITEMS: ActivityBarItem[] = [
     title: 'Checks',
     shortcut: `${isMac ? '\u21E7' : 'Shift+'}${mod}K`,
     gitOnly: true
+  },
+  {
+    id: 'dashboard',
+    icon: LayoutDashboard,
+    title: 'Agent Dashboard',
+    shortcut: `${isMac ? '\u21E7' : 'Shift+'}${mod}D`
   }
 ]
 
@@ -159,6 +166,7 @@ function RightSidebarInner(): React.JSX.Element {
       {effectiveTab === 'search' && <SearchPanel />}
       {effectiveTab === 'source-control' && <SourceControl />}
       {effectiveTab === 'checks' && <ChecksPanel />}
+      {effectiveTab === 'dashboard' && <AgentDashboard />}
     </div>
   )
 

@@ -3,7 +3,6 @@ import type { IDisposable } from '@xterm/xterm'
 import { isGeminiTerminalTitle, isClaudeAgent } from '@/lib/agent-status'
 import { scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
 import { useAppStore } from '@/store'
-import type { AgentStatusOscPayload } from '../../../../shared/agent-status-types'
 import type { PtyTransport } from './pty-transport'
 import { createIpcPtyTransport } from './pty-transport'
 import { shouldSeedCacheTimerOnInitialTitle } from './cache-timer-seeding'
@@ -162,14 +161,12 @@ export function connectPanePty(
     // Remove the entry so the hover UI does not show stale "working" for a dead agent.
     useAppStore.getState().removeAgentStatus(cacheKey)
   }
-  const onAgentStatus = (payload: AgentStatusOscPayload): void => {
-    // Why: the PTY stream already tells us which tab and pane produced the data,
-    // so we can write directly to the zustand slice without any env-var plumbing.
-    // cacheKey is the same `${tabId}:${paneId}` composite used for cache timers.
-    const currentTitle = useAppStore
-      .getState()
-      .tabsByWorktree[deps.worktreeId]?.find((t) => t.id === deps.tabId)?.title
-    useAppStore.getState().setAgentStatus(cacheKey, payload, currentTitle)
+  // Why: inject ORCA_PANE_KEY so the `orca status set` CLI can attribute status
+  // reports to the correct pane without needing to resolve worktrees from cwd.
+  // The key matches the `${tabId}:${paneId}` composite used for cacheTimerByKey.
+  const paneEnv = {
+    ...paneStartup?.env,
+    ORCA_PANE_KEY: cacheKey
   }
 
   // Why: remote repos route PTY spawn through the SSH provider. Resolve the
@@ -182,7 +179,7 @@ export function connectPanePty(
 
   const transport = createIpcPtyTransport({
     cwd: deps.cwd,
-    env: paneStartup?.env,
+    env: paneEnv,
     command: paneStartup?.command,
     connectionId,
     worktreeId: deps.worktreeId,
@@ -192,8 +189,7 @@ export function connectPanePty(
     onBell,
     onAgentBecameIdle,
     onAgentBecameWorking,
-    onAgentExited,
-    onAgentStatus
+    onAgentExited
   })
   const hasExistingPaneTransport = deps.paneTransportsRef.current.size > 0
   deps.paneTransportsRef.current.set(pane.id, transport)
