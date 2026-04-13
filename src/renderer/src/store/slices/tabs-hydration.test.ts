@@ -22,6 +22,7 @@ describe('buildHydratedTabState – unified format', () => {
         w1: [
           {
             id: 't1',
+            entityId: 't1',
             groupId: 'g1',
             worktreeId: 'w1',
             contentType: 'terminal',
@@ -33,6 +34,7 @@ describe('buildHydratedTabState – unified format', () => {
           },
           {
             id: 'f1',
+            entityId: 'f1',
             groupId: 'g1',
             worktreeId: 'w1',
             contentType: 'editor',
@@ -62,6 +64,7 @@ describe('buildHydratedTabState – unified format', () => {
         w1: [
           {
             id: 't1',
+            entityId: 't1',
             groupId: 'g1',
             worktreeId: 'w1',
             contentType: 'terminal',
@@ -75,6 +78,7 @@ describe('buildHydratedTabState – unified format', () => {
         w_gone: [
           {
             id: 't2',
+            entityId: 't2',
             groupId: 'g2',
             worktreeId: 'w_gone',
             contentType: 'terminal',
@@ -104,6 +108,7 @@ describe('buildHydratedTabState – unified format', () => {
         w1: [
           {
             id: 't1',
+            entityId: 't1',
             groupId: 'g1',
             worktreeId: 'w1',
             contentType: 'terminal',

@@ -39,6 +39,7 @@ type TerminalPaneProps = {
   worktreeId: string
   cwd?: string
   isActive: boolean
+  isVisible?: boolean
   onPtyExit: (ptyId: string) => void
   onCloseTab: () => void
 }
@@ -48,6 +49,7 @@ export default function TerminalPane({
   worktreeId,
   cwd,
   isActive,
+  isVisible: _isVisible,
   onPtyExit,
   onCloseTab
 }: TerminalPaneProps): React.JSX.Element {

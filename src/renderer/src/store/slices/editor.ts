@@ -146,7 +146,7 @@ export type EditorSlice = {
   activeTabType: WorkspaceVisibleTabType
   setActiveTabType: (type: WorkspaceVisibleTabType) => void
   openFile: (file: Omit<OpenFile, 'id' | 'isDirty'>, options?: { preview?: boolean }) => void
-  pinFile: (fileId: string) => void
+  pinFile: (fileId: string, tabId?: string) => void
   closeFile: (fileId: string) => void
   closeAllFiles: () => void
   setActiveFile: (fileId: string) => void
@@ -471,7 +471,7 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       }
     }),
 
-  pinFile: (fileId) =>
+  pinFile: (fileId, _tabId) =>
     set((s) => {
       const file = s.openFiles.find((f) => f.id === fileId)
       if (!file?.isPreview) {

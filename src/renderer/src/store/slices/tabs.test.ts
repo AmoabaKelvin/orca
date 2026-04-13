@@ -559,6 +559,7 @@ describe('TabsSlice', () => {
       const tabs: Tab[] = [
         {
           id: 't-1',
+          entityId: 't-1',
           groupId,
           worktreeId: WT,
           contentType: 'terminal',
@@ -570,6 +571,7 @@ describe('TabsSlice', () => {
         },
         {
           id: '/file.ts',
+          entityId: '/file.ts',
           groupId,
           worktreeId: WT,
           contentType: 'editor',

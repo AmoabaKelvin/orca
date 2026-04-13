@@ -11,6 +11,7 @@ import {
 
 function makeTab(overrides: Partial<Tab> & { id: string; worktreeId: string }): Tab {
   return {
+    entityId: overrides.id,
     groupId: 'g1',
     contentType: 'terminal',
     label: overrides.id,
