@@ -17,12 +17,14 @@ export function ToggleButton({
   active,
   onClick,
   title,
-  children
+  children,
+  ariaExpanded
 }: {
   active: boolean
   onClick: () => void
   title: string
   children: React.ReactNode
+  ariaExpanded?: boolean
 }): React.JSX.Element {
   return (
     <Button
@@ -37,6 +39,9 @@ export function ToggleButton({
       )}
       onClick={onClick}
       title={title}
+      aria-label={title}
+      aria-pressed={active}
+      aria-expanded={ariaExpanded}
     >
       {children}
     </Button>

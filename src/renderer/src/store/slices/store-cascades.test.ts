@@ -89,6 +89,7 @@ describe('removeWorktree cascade', () => {
       fileSearchStateByWorktree: {
         [worktreeId]: {
           query: 'needle',
+          queryDetailsExpanded: true,
           caseSensitive: true,
           wholeWord: false,
           useRegex: false,
@@ -214,6 +215,7 @@ describe('removeWorktree cascade', () => {
       fileSearchStateByWorktree: {
         [wt1]: {
           query: 'old',
+          queryDetailsExpanded: false,
           caseSensitive: false,
           wholeWord: false,
           useRegex: false,
@@ -225,6 +227,7 @@ describe('removeWorktree cascade', () => {
         },
         [wt2]: {
           query: 'keep',
+          queryDetailsExpanded: true,
           caseSensitive: true,
           wholeWord: true,
           useRegex: false,

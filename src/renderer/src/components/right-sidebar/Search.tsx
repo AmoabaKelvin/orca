@@ -1,6 +1,14 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Search as SearchIcon, CaseSensitive, WholeWord, Regex, X, Loader2 } from 'lucide-react'
+import {
+  Search as SearchIcon,
+  CaseSensitive,
+  WholeWord,
+  Regex,
+  X,
+  Loader2,
+  Ellipsis
+} from 'lucide-react'
 import { useAppStore } from '@/store'
 import { Button } from '@/components/ui/button'
 import type { SearchFileResult, SearchMatch } from '../../../../shared/types'
@@ -24,6 +32,7 @@ export default function Search(): React.JSX.Element {
     activeWorktreeId ? s.fileSearchStateByWorktree[activeWorktreeId] : null
   )
   const fileSearchQuery = searchState?.query ?? ''
+  const fileSearchQueryDetailsExpanded = searchState?.queryDetailsExpanded ?? false
   const fileSearchCaseSensitive = searchState?.caseSensitive ?? false
   const fileSearchWholeWord = searchState?.wholeWord ?? false
   const fileSearchUseRegex = searchState?.useRegex ?? false
@@ -43,6 +52,8 @@ export default function Search(): React.JSX.Element {
   const resultsScrollRef = useRef<HTMLDivElement>(null)
   const revealRafRef = useRef<number | null>(null)
   const revealInnerRafRef = useRef<number | null>(null)
+  const includeInputRef = useRef<HTMLInputElement>(null)
+  const excludeInputRef = useRef<HTMLInputElement>(null)
 
   const updateActiveSearchState = useCallback(
     (updates: Partial<NonNullable<typeof searchState>>) => {
@@ -269,6 +280,29 @@ export default function Search(): React.JSX.Element {
     [activeWorktreeId, openFile, setPendingEditorReveal]
   )
 
+  const hasFilePatternFilters =
+    fileSearchIncludePattern.trim().length > 0 || fileSearchExcludePattern.trim().length > 0
+  const searchDetailsVisible = fileSearchQueryDetailsExpanded || hasFilePatternFilters
+
+  const handleToggleSearchDetails = useCallback(() => {
+    const nextExpanded = !searchDetailsVisible
+    updateActiveSearchState({ queryDetailsExpanded: nextExpanded })
+
+    // Why: VS Code shifts focus into the newly revealed include field so the
+    // details toggle acts as an entry point for scope filters instead of only
+    // changing layout. Collapsing returns focus to the main query input.
+    window.setTimeout(() => {
+      if (nextExpanded) {
+        includeInputRef.current?.focus()
+        includeInputRef.current?.select()
+        return
+      }
+
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }, 0)
+  }, [searchDetailsVisible, updateActiveSearchState])
+
   if (!activeWorktreeId) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
@@ -307,6 +341,14 @@ export default function Search(): React.JSX.Element {
             </Button>
           )}
           <ToggleButton
+            active={searchDetailsVisible}
+            onClick={handleToggleSearchDetails}
+            title="Toggle Search Details"
+            ariaExpanded={searchDetailsVisible}
+          >
+            <Ellipsis size={14} />
+          </ToggleButton>
+          <ToggleButton
             active={fileSearchCaseSensitive}
             onClick={() => {
               updateActiveSearchState({ caseSensitive: !fileSearchCaseSensitive })
@@ -338,18 +380,33 @@ export default function Search(): React.JSX.Element {
           </ToggleButton>
         </div>
 
-        <SearchFilters
-          includePattern={fileSearchIncludePattern}
-          excludePattern={fileSearchExcludePattern}
-          onIncludeChange={(value) => {
-            updateActiveSearchState({ includePattern: value })
-            rerunSearch()
-          }}
-          onExcludeChange={(value) => {
-            updateActiveSearchState({ excludePattern: value })
-            rerunSearch()
-          }}
-        />
+        {searchDetailsVisible && (
+          // Why: VS Code keeps include/exclude scope controls tucked behind a
+          // dedicated details toggle so the default search UI stays compact
+          // until the user asks for extra filtering options.
+          <SearchFilters
+            includePattern={fileSearchIncludePattern}
+            excludePattern={fileSearchExcludePattern}
+            includeInputRef={includeInputRef}
+            excludeInputRef={excludeInputRef}
+            onIncludeChange={(value) => {
+              updateActiveSearchState({
+                includePattern: value,
+                queryDetailsExpanded:
+                  value.trim().length > 0 || fileSearchExcludePattern.trim().length > 0
+              })
+              rerunSearch()
+            }}
+            onExcludeChange={(value) => {
+              updateActiveSearchState({
+                excludePattern: value,
+                queryDetailsExpanded:
+                  fileSearchIncludePattern.trim().length > 0 || value.trim().length > 0
+              })
+              rerunSearch()
+            }}
+          />
+        )}
       </div>
 
       {/* Why: the summary is rendered outside the virtualizer so it stays
