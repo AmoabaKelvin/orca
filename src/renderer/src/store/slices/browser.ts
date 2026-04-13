@@ -1043,7 +1043,9 @@ export const createBrowserSlice: StateCreator<AppState, [], [], BrowserSlice> = 
             error: null
           }
         })
-        await get().fetchBrowserSessionProfiles()
+        await get()
+          .fetchBrowserSessionProfiles()
+          .catch(() => {})
       } else {
         set({
           browserSessionImportState: {
@@ -1106,7 +1108,9 @@ export const createBrowserSlice: StateCreator<AppState, [], [], BrowserSlice> = 
             error: null
           }
         })
-        await get().fetchBrowserSessionProfiles()
+        await get()
+          .fetchBrowserSessionProfiles()
+          .catch(() => {})
       } else {
         set({
           browserSessionImportState: {
