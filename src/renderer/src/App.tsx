@@ -33,7 +33,7 @@ import { registerUpdaterBeforeUnloadBypass } from './lib/updater-beforeunload'
 import { buildWorkspaceSessionPayload } from './lib/workspace-session'
 import { countWorkingAgents, countWorkingAgentsPerWorktree } from './lib/agent-status'
 import { activateAndRevealWorktree } from './lib/worktree-activation'
-import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card'
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { findWorktreeById } from '@/store/slices/worktree-helpers'
 
 const isMac = navigator.userAgent.includes('Mac')
@@ -560,9 +560,9 @@ function App(): React.JSX.Element {
             )}
             <div className="titlebar-title">Orca</div>
             {settings?.showTitlebarAgentActivity !== false ? (
-              <HoverCard openDelay={200} closeDelay={100}>
-                <HoverCardTrigger asChild>
-                  <span
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
                     className={`titlebar-agent-badge${activeAgentCount === 0 ? ' titlebar-agent-badge-idle' : ''}`}
                     aria-label={`${activeAgentCount} ${activeAgentCount === 1 ? 'agent' : 'agents'} active`}
                   >
@@ -571,9 +571,9 @@ function App(): React.JSX.Element {
                       aria-hidden
                     />
                     <span className="titlebar-agent-badge-count">{activeAgentCount}</span>
-                  </span>
-                </HoverCardTrigger>
-                <HoverCardContent side="bottom" sideOffset={6} className="titlebar-agent-hovercard">
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent side="bottom" sideOffset={6} className="titlebar-agent-hovercard">
                   <div
                     className={`titlebar-agent-hovercard-header${activeAgentCount > 0 ? ' titlebar-agent-hovercard-header-with-list' : ''}`}
                   >
@@ -615,8 +615,8 @@ function App(): React.JSX.Element {
                   >
                     Hide from titlebar
                   </button>
-                </HoverCardContent>
-              </HoverCard>
+                </PopoverContent>
+              </Popover>
             ) : null}
           </div>
           {/* Why: keep the center titlebar slot mounted even when tabs are hidden.
