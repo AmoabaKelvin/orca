@@ -12,7 +12,6 @@ import { isGitRepoKind } from '../../../../shared/repo-kind'
 import { buildWorktreeComparator } from './smart-sort'
 import { type Row, buildRows, getGroupKeyForWorktree } from './worktree-list-groups'
 import { computeVisibleWorktreeIds, setVisibleWorktreeIds } from './visible-worktrees'
-import { estimateRowHeight } from './worktree-list-estimate'
 import { useModifierHint } from '@/hooks/useModifierHint'
 
 // How long to wait after a sortEpoch bump before actually re-sorting.
@@ -70,8 +69,8 @@ const WorktreeList = React.memo(function WorktreeList() {
 
   const cardProps = useAppStore((s) => s.worktreeCardProperties)
 
-  // PR cache is needed for PR-status grouping, recent sorting, search, and
-  // estimateSize when the PR card property is visible.
+  // PR cache is needed for PR-status grouping, recent sorting, search,
+  // and when the PR card property is visible.
   const prCache = useAppStore((s) =>
     groupBy === 'pr-status' || sortBy === 'recent' || searchQuery || cardProps.includes('pr')
       ? s.prCache
@@ -265,7 +264,7 @@ const WorktreeList = React.memo(function WorktreeList() {
     })
   }, [])
 
-  // Build flat row list for virtualizer
+  // Build flat row list for rendering
   const rows: Row[] = useMemo(
     () => buildRows(groupBy, worktrees, repoMap, prCache, collapsedGroups),
     [groupBy, worktrees, repoMap, prCache, collapsedGroups]
@@ -312,29 +311,21 @@ const WorktreeList = React.memo(function WorktreeList() {
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    // Dynamic height estimate — pixel constants coupled to WorktreeCard's
-    // Tailwind classes (see coupling comment in WorktreeCard meta section).
-    estimateSize: (index) => estimateRowHeight(rows[index], cardProps, repoMap, prCache),
+    // Why a constant instead of per-row pixel math: the previous estimateSize
+    // tried to predict exact card heights from Tailwind class constants, but
+    // those estimates drifted from actual rendered sizes — causing overlapping
+    // cards whenever content (PR rows, comments, badges) didn't match the
+    // prediction. A generous constant that overshoots the tallest possible
+    // card means items may briefly have extra space before measureElement
+    // corrects them, which is invisible compared to overlapping.
+    estimateSize: () => 120,
     overscan: 10,
-    // Why gap instead of padding on the wrapper: the virtualizer accounts for
-    // the gap in its position calculations, guaranteeing consistent spacing
-    // between cards regardless of estimation/measurement mismatches.
     gap: 6,
     getItemKey: (index) => {
       const row = rows[index]
       return row.type === 'header' ? `hdr:${row.key}` : `wt:${row.worktree.id}`
     }
   })
-
-  // Why no virtualizer.measure() on prCache / cardProps changes:
-  // measure() resets ALL cached DOM measurements back to estimateSize()
-  // predictions. Because measureElement uses a ResizeObserver, visible
-  // items already re-measure automatically when their content changes
-  // (e.g. a PR row appears, card properties toggle on/off). Calling
-  // measure() discards those accurate measurements and replaces them
-  // with imprecise estimates, causing cards to overlap until the next
-  // paint re-measures them — which is exactly the bug users see when
-  // clicking a card triggers a prCache refresh.
 
   React.useEffect(() => {
     if (!pendingRevealWorktreeId) {
