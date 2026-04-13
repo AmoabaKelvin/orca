@@ -223,14 +223,7 @@ class BrowserSessionRegistry {
   async clearDefaultSessionCookies(): Promise<boolean> {
     try {
       const sess = session.fromPartition(ORCA_BROWSER_PARTITION)
-      await sess.cookies.flushStore()
-      const cookies = await sess.cookies.get({})
-      for (const cookie of cookies) {
-        const protocol = cookie.secure ? 'https' : 'http'
-        const domain = cookie.domain?.startsWith('.') ? cookie.domain.slice(1) : cookie.domain
-        const url = `${protocol}://${domain}${cookie.path}`
-        await sess.cookies.remove(url, cookie.name)
-      }
+      await sess.clearStorageData({ storages: ['cookies'] })
       const defaultProfile = this.profiles.get('default')
       if (defaultProfile) {
         this.profiles.set('default', { ...defaultProfile, source: null })

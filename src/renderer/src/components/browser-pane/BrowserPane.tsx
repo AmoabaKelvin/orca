@@ -7,7 +7,6 @@ import {
   CircleCheck,
   Copy,
   Crosshair,
-  Ellipsis,
   ExternalLink,
   Globe,
   Image,
@@ -377,11 +376,6 @@ function BrowserPagePane({
   } | null>(null)
   const grab = useGrabMode(browserTab.id)
   const createBrowserTab = useAppStore((s) => s.createBrowserTab)
-  const reopenClosedBrowserTab = useAppStore((s) => s.reopenClosedBrowserTab)
-  const recentlyClosedBrowserTabsByWorktree = useAppStore(
-    (s) => s.recentlyClosedBrowserTabsByWorktree
-  )
-  const recentlyClosedCount = recentlyClosedBrowserTabsByWorktree[worktreeId]?.length ?? 0
   const consumeAddressBarFocusRequest = useAppStore((s) => s.consumeAddressBarFocusRequest)
   const browserDefaultUrl = useAppStore((s) => s.browserDefaultUrl)
   const setBrowserDefaultUrl = useAppStore((s) => s.setBrowserDefaultUrl)
@@ -411,6 +405,14 @@ function BrowserPagePane({
       clearBrowserSessionImportState()
     }
   }, [browserSessionImportState, clearBrowserSessionImportState])
+
+  useEffect(() => {
+    if (!resourceNotice) {
+      return
+    }
+    const timer = setTimeout(() => setResourceNotice(null), 10_000)
+    return () => clearTimeout(timer)
+  }, [resourceNotice])
 
   const keepAddressBarFocusRef = useRef(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -1013,12 +1015,15 @@ function BrowserPagePane({
         evictParkedWebviews(browserTab.id)
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Why: this effect mounts
+    // and wires up webview event listeners once per tab identity. browserTab.url and
+    // webviewPartition are intentionally excluded: re-running on URL changes would
+    // detach/reattach the webview, cancelling in-progress navigations. Callbacks use
+    // refs so they always see current values without needing to be in the dep array.
   }, [
     browserTab.id,
-    browserTab.url,
     workspaceId,
     worktreeId,
-    webviewPartition,
     createBrowserTab,
     focusAddressBarNow,
     focusWebviewNow,
@@ -1726,91 +1731,18 @@ function BrowserPagePane({
           </div>
         )}
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button size="icon" variant="ghost" className="h-8 w-8" title="Browser actions">
-              <Ellipsis className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onSelect={() => {
-                createBrowserTab(worktreeId, browserTab.url, {
-                  title: browserTab.title || 'Browser'
-                })
-              }}
-            >
-              <Copy className="size-3.5" />
-              Duplicate Tab
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={recentlyClosedCount === 0}
-              onSelect={() => {
-                reopenClosedBrowserTab(worktreeId)
-              }}
-            >
-              <Copy className="size-3.5" />
-              Reopen Closed Tab
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() => {
-                void window.api.ui.writeClipboardText(currentBrowserUrl)
-                setResourceNotice('Copied the current page URL.')
-              }}
-            >
-              <Copy className="size-3.5" />
-              Copy Current URL
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {detectedBrowsers.map((browser) => (
-              <DropdownMenuItem
-                key={browser.family}
-                onSelect={async () => {
-                  const store = useAppStore.getState()
-                  let targetProfileId = sessionProfileId
-                  if (!targetProfileId) {
-                    const profile = await store.createBrowserSessionProfile(
-                      'imported',
-                      `${browser.label} Session`
-                    )
-                    if (!profile) {
-                      return
-                    }
-                    targetProfileId = profile.id
-                  }
-                  void store.importCookiesFromBrowser(targetProfileId, browser.family)
-                }}
-              >
-                <Import className="size-3.5" />
-                Import from {browser.label}
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuItem
-              onSelect={async () => {
-                const store = useAppStore.getState()
-                let targetProfileId = sessionProfileId
-                if (!targetProfileId) {
-                  const profile = await store.createBrowserSessionProfile(
-                    'imported',
-                    'Imported Session'
-                  )
-                  if (!profile) {
-                    return
-                  }
-                  targetProfileId = profile.id
-                }
-                void store.importCookiesToProfile(targetProfileId)
-              }}
-            >
-              <Import className="size-3.5" />
-              Import from File…
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
-              <Settings className="size-3.5" />
-              Browser Settings…
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8"
+          title="Browser Settings"
+          onClick={() => {
+            useAppStore.getState().openSettingsTarget({ pane: 'general', repoId: null })
+            useAppStore.getState().setActiveView('settings')
+          }}
+        >
+          <Settings className="size-4" />
+        </Button>
       </div>
       {downloadState ? (
         <div className="flex items-center gap-3 border-b border-border/60 bg-amber-500/10 px-3 py-2 text-xs text-foreground/90">
@@ -1857,8 +1789,16 @@ function BrowserPagePane({
         </div>
       ) : null}
       {resourceNotice ? (
-        <div className="border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground">
-          {resourceNotice}
+        <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground">
+          <span>{resourceNotice}</span>
+          <button
+            type="button"
+            onClick={() => setResourceNotice(null)}
+            className="shrink-0 text-muted-foreground/60 hover:text-foreground"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
         </div>
       ) : null}
       {grab.state !== 'idle' ? (
