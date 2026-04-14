@@ -93,10 +93,12 @@ export const TERMINAL_WINDOWS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   {
     title: 'Right-click to paste',
     description:
-      'On Windows, right-click pastes the clipboard into the terminal. Ctrl+right-click still opens the context menu.',
+      'On Windows, right-click pastes the clipboard into the terminal. Use Ctrl+right-click to open the context menu.',
     keywords: ['terminal', 'windows', 'right click', 'paste', 'context menu']
   }
 ]
+
+export const TERMINAL_RIGHT_CLICK_TO_PASTE_SEARCH_ENTRY = TERMINAL_WINDOWS_SEARCH_ENTRIES
 
 export function getTerminalPaneSearchEntries(isWindows: boolean): SettingsSearchEntry[] {
   // Why: the settings search index must mirror the visible controls. Keeping

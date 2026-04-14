@@ -300,15 +300,15 @@ export function TerminalPane({
           matchesSettingsSearch(searchQuery, TERMINAL_RIGHT_CLICK_TO_PASTE_SEARCH_ENTRY) && (
             <SearchableSetting
               title="Right-click to paste"
-              description="On Windows, right-click pastes the clipboard into the terminal. Ctrl+right-click still opens the context menu."
+              description="On Windows, right-click pastes the clipboard into the terminal. Use Ctrl+right-click to open the context menu."
               keywords={['terminal', 'windows', 'right click', 'paste', 'context menu']}
               className="flex items-center justify-between gap-4 px-1 py-2"
             >
               <div className="space-y-0.5">
                 <Label>Right-click to paste</Label>
                 <p className="text-xs text-muted-foreground">
-                  On Windows, right-click pastes the clipboard into the terminal. Ctrl+right-click
-                  still opens the context menu.
+                  On Windows, right-click pastes the clipboard into the terminal. Use
+                  Ctrl+right-click to open the context menu.
                 </p>
               </div>
               <button
