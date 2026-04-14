@@ -289,13 +289,7 @@ export default function Terminal(): React.JSX.Element | null {
       },
       { preview: false }
     )
-
-    // Why: openFile adds the editor tab but doesn't control its position in
-    // the tab bar. Append the new file to the end of the existing order so
-    // it appears rightmost without disturbing other tabs' positions.
-    const currentOrder = useAppStore.getState().tabBarOrderByWorktree[activeWorktreeId] ?? []
-    setTabBarOrder(activeWorktreeId, [...currentOrder, filePath])
-  }, [activeWorktreeId, openFile, setTabBarOrder])
+  }, [activeWorktreeId, openFile])
 
   const handleCloseTab = useCallback(
     (tabId: string) => {
