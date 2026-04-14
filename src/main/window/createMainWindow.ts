@@ -235,6 +235,16 @@ export function createMainWindow(
       return
     }
 
+    if (action.type === 'toggleLeftSidebar') {
+      mainWindow.webContents.send('ui:toggleLeftSidebar')
+      return
+    }
+
+    if (action.type === 'toggleRightSidebar') {
+      mainWindow.webContents.send('ui:toggleRightSidebar')
+      return
+    }
+
     if (action.type === 'toggleWorktreePalette') {
       // Why: embedded browser guests can keep keyboard focus inside Chromium's
       // guest webContents, which bypasses the renderer's window-level keydown

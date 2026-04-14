@@ -482,6 +482,8 @@ export type PreloadApi = {
     get: () => Promise<PersistedUIState>
     set: (args: Partial<PersistedUIState>) => Promise<void>
     onOpenSettings: (callback: () => void) => () => void
+    onToggleLeftSidebar: (callback: () => void) => () => void
+    onToggleRightSidebar: (callback: () => void) => () => void
     onToggleWorktreePalette: (callback: () => void) => () => void
     onOpenQuickOpen: (callback: () => void) => () => void
     onJumpToWorktreeIndex: (callback: (index: number) => void) => () => void

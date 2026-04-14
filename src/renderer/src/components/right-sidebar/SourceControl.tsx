@@ -254,6 +254,19 @@ function SourceControlInner(): React.JSX.Element {
 
   const [isExecutingBulk, setIsExecutingBulk] = useState(false)
 
+  // Why: the sidebar no longer uses key={activeWorktreeId} to force a full
+  // remount on worktree switch (that caused an IPC storm on Windows).
+  // Instead, reset worktree-specific local state here so the previous
+  // worktree's UI state doesn't leak into the new one.
+  useEffect(() => {
+    setScope('all')
+    setCollapsedSections(new Set())
+    setBaseRefDialogOpen(false)
+    setDefaultBaseRef('origin/main')
+    setFilterQuery('')
+    setIsExecutingBulk(false)
+  }, [activeWorktreeId])
+
   const handleOpenDiff = useCallback(
     (entry: GitStatusEntry) => {
       if (!activeWorktreeId || !worktreePath) {

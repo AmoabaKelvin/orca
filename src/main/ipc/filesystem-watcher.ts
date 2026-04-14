@@ -56,6 +56,14 @@ const unwatchableRoots = new Set<string>()
 // listener so we register exactly once per sender.
 const senderCleanupRegistered = new Set<number>()
 
+// Why: on Windows, tearing down and recreating @parcel/watcher subscriptions
+// is expensive (ReadDirectoryChangesW setup + antivirus scanning can take
+// 500 ms+).  A 30 s grace period lets rapid worktree switches reuse the
+// existing watcher instead of paying the creation cost on every switch.
+// Key: rootKey, Value: pending teardown timer.
+const WATCHER_TEARDOWN_GRACE_MS = 30_000
+const pendingTeardowns = new Map<string, ReturnType<typeof setTimeout>>()
+
 // ── Path normalization ───────────────────────────────────────────────
 
 function normalizeRootPath(rootPath: string): string {
@@ -306,6 +314,14 @@ async function subscribe(worktreePath: string, sender: WebContents): Promise<voi
   }
 
   let root = watchedRoots.get(rootKey)
+
+  // Cancel any pending grace-period teardown — a new listener arrived.
+  const pendingTeardown = pendingTeardowns.get(rootKey)
+  if (pendingTeardown) {
+    clearTimeout(pendingTeardown)
+    pendingTeardowns.delete(rootKey)
+  }
+
   if (!root) {
     // Verify root exists and is a directory
     try {
@@ -356,6 +372,12 @@ async function subscribe(worktreePath: string, sender: WebContents): Promise<voi
         if (watchedRoot.listeners.has(sender.id)) {
           watchedRoot.listeners.delete(sender.id)
           if (watchedRoot.listeners.size === 0) {
+            // Cancel any pending grace-period teardown for this root.
+            const pending = pendingTeardowns.get(key)
+            if (pending) {
+              clearTimeout(pending)
+              pendingTeardowns.delete(key)
+            }
             if (watchedRoot.batch.timer) {
               clearTimeout(watchedRoot.batch.timer)
             }
@@ -379,15 +401,27 @@ function unsubscribe(worktreePath: string, senderId: number): void {
 
   root.listeners.delete(senderId)
 
-  // Tear down the watcher when the last subscriber leaves
+  // Defer watcher teardown when the last subscriber leaves so rapid
+  // worktree switches can reuse the existing native watcher.
   if (root.listeners.size === 0) {
     if (root.batch.timer) {
       clearTimeout(root.batch.timer)
     }
-    void root.subscription.unsubscribe().catch((err: unknown) => {
-      console.error(`[filesystem-watcher] unsubscribe error for ${rootKey}:`, err)
-    })
-    watchedRoots.delete(rootKey)
+
+    const teardownTimer = setTimeout(() => {
+      pendingTeardowns.delete(rootKey)
+      // Re-check: a new listener may have arrived during the grace period.
+      const currentRoot = watchedRoots.get(rootKey)
+      if (!currentRoot || currentRoot.listeners.size > 0) {
+        return
+      }
+      void currentRoot.subscription.unsubscribe().catch((err: unknown) => {
+        console.error(`[filesystem-watcher] unsubscribe error for ${rootKey}:`, err)
+      })
+      watchedRoots.delete(rootKey)
+    }, WATCHER_TEARDOWN_GRACE_MS)
+
+    pendingTeardowns.set(rootKey, teardownTimer)
   }
 }
 
@@ -454,6 +488,12 @@ export function registerFilesystemWatcherHandlers(): void {
 
 /** Tear down all watchers on app shutdown. */
 export async function closeAllWatchers(): Promise<void> {
+  // Cancel any pending grace-period teardowns — we're tearing down everything.
+  for (const timer of pendingTeardowns.values()) {
+    clearTimeout(timer)
+  }
+  pendingTeardowns.clear()
+
   for (const [rootKey, root] of watchedRoots) {
     if (root.batch.timer) {
       clearTimeout(root.batch.timer)

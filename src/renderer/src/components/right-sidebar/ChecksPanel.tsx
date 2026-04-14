@@ -43,6 +43,19 @@ export default function ChecksPanel(): React.JSX.Element {
   const prevChecksRef = useRef<string>('')
   const conflictSummaryRefreshKeyRef = useRef<string | null>(null)
 
+  // Why: the sidebar no longer uses key={activeWorktreeId} to force a full
+  // remount on worktree switch (that caused an IPC storm on Windows).
+  // Reset worktree-specific local state so stale UI from the previous
+  // worktree doesn't leak (e.g. mid-edit title, stale loading indicators).
+  useEffect(() => {
+    setEditingTitle(false)
+    setTitleDraft('')
+    setTitleSaving(false)
+    setIsRefreshing(false)
+    setEmptyRefreshing(false)
+    conflictSummaryRefreshKeyRef.current = null
+  }, [activeWorktreeId])
+
   // Find active worktree and repo
   const { worktree, repo } = useMemo(() => {
     if (!activeWorktreeId) {

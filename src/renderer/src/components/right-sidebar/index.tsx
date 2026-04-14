@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useLayoutEffect, useMemo, useRef } from 'react'
 import { Files, Search, GitBranch, ListChecks } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { cn } from '@/lib/utils'
@@ -114,7 +114,6 @@ function RightSidebarInner(): React.JSX.Element {
   const setRightSidebarWidth = useAppStore((s) => s.setRightSidebarWidth)
   const rightSidebarTab = useAppStore((s) => s.rightSidebarTab)
   const setRightSidebarTab = useAppStore((s) => s.setRightSidebarTab)
-  const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
   const checksStatus = useAppStore(getActiveChecksStatus)
   const activityBarPosition = useAppStore((s) => s.activityBarPosition)
   const setActivityBarPosition = useAppStore((s) => s.setActivityBarPosition)
@@ -137,19 +136,18 @@ function RightSidebarInner(): React.JSX.Element {
     ? rightSidebarTab
     : visibleItems[0].id
 
-  // Why: suppress CSS width transitions on first mount so the sidebar
-  // appears at full width instantly instead of animating from auto→320 px.
-  // Without this, Chromium may fire the transition, causing the terminal
-  // container to resize through intermediate widths.  Each intermediate
+  // Why: suppress CSS width transitions when the sidebar opens so the
+  // width snaps to 320 px instantly instead of animating from 0→320 px.
+  // Without this, Chromium fires the transition causing the terminal
+  // container to resize through intermediate widths. Each intermediate
   // width triggers a synchronous xterm scrollback reflow that blocks the
-  // renderer, freezing the entire app for seconds on Windows.
-  const [isMounting, setIsMounting] = useState(true)
-  useEffect(() => {
-    // Clear the flag after the first paint so drag-resize transitions
-    // work normally after the sidebar is visible.
-    const id = requestAnimationFrame(() => setIsMounting(false))
-    return () => cancelAnimationFrame(id)
-  }, [])
+  // renderer for seconds on Windows.
+  //
+  // useLayoutEffect + direct DOM style manipulation runs synchronously
+  // BEFORE the browser paints, so the transition is killed before Chromium
+  // can start it.  A useState-based approach has a timing race: the state
+  // update triggers a re-render that arrives one frame too late.
+  const prevOpenRef = useRef(rightSidebarOpen)
 
   const activityBarSideWidth = activityBarPosition === 'side' ? ACTIVITY_BAR_SIDE_WIDTH : 0
   const { containerRef, isResizing, onResizeStart } = useSidebarResize<HTMLDivElement>({
@@ -162,12 +160,34 @@ function RightSidebarInner(): React.JSX.Element {
     setWidth: setRightSidebarWidth
   })
 
+  useLayoutEffect(() => {
+    if (rightSidebarOpen && !prevOpenRef.current) {
+      const el = containerRef.current
+      if (el) {
+        // Kill the transition before the browser paints the width change.
+        el.style.transition = 'none'
+        // Restore CSS-class-driven transitions in the next frame so close
+        // animations and drag-resize still animate smoothly.
+        requestAnimationFrame(() => {
+          el.style.transition = ''
+        })
+      }
+    }
+    prevOpenRef.current = rightSidebarOpen
+  }, [rightSidebarOpen, containerRef])
+
   const panelContent = (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden scrollbar-sleek-parent">
-      {effectiveTab === 'explorer' && <FileExplorer key={activeWorktreeId ?? 'none'} />}
-      {effectiveTab === 'search' && <SearchPanel key={activeWorktreeId ?? 'none'} />}
-      {effectiveTab === 'source-control' && <SourceControl key={activeWorktreeId ?? 'none'} />}
-      {effectiveTab === 'checks' && <ChecksPanel key={activeWorktreeId ?? 'none'} />}
+      {/* Why: sidebar panels no longer use key={activeWorktreeId} because
+          the full unmount/remount cycle on every worktree switch triggered
+          an IPC storm (watchWorktree + readDir + git:branchCompare + …)
+          that froze the app for seconds on Windows.  Each panel now reacts
+          to activeWorktreeId changes via store subscriptions and reset
+          effects, keeping the component instance alive across switches. */}
+      {effectiveTab === 'explorer' && <FileExplorer />}
+      {effectiveTab === 'search' && <SearchPanel />}
+      {effectiveTab === 'source-control' && <SourceControl />}
+      {effectiveTab === 'checks' && <ChecksPanel />}
     </div>
   )
 
@@ -187,7 +207,7 @@ function RightSidebarInner(): React.JSX.Element {
       ref={containerRef}
       className={cn(
         'relative flex-shrink-0 flex flex-row overflow-visible',
-        isResizing || isMounting ? 'transition-none' : 'transition-[width] duration-200'
+        isResizing ? 'transition-none' : 'transition-[width] duration-200'
       )}
     >
       {/* Panel content area */}

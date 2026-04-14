@@ -10,6 +10,8 @@ export type WindowShortcutInput = {
 export type WindowShortcutAction =
   | { type: 'zoom'; direction: 'in' | 'out' | 'reset' }
   | { type: 'toggleWorktreePalette' }
+  | { type: 'toggleLeftSidebar' }
+  | { type: 'toggleRightSidebar' }
   | { type: 'openQuickOpen' }
   | { type: 'jumpToWorktreeIndex'; index: number }
 
@@ -67,6 +69,18 @@ export function resolveWindowShortcutAction(
     ((platform === 'darwin' && !input.shift) || (platform !== 'darwin' && input.shift))
   ) {
     return { type: 'toggleWorktreePalette' }
+  }
+
+  // Why: Ctrl+B and Ctrl+L are terminal control characters (STX / form-feed).
+  // Without main-process interception, xterm.js processes the keydown before
+  // the renderer's window-capture handler can preventDefault, causing ^B / ^L
+  // to appear in the terminal alongside the sidebar toggle.
+  if (input.code === 'KeyB' && !input.shift) {
+    return { type: 'toggleLeftSidebar' }
+  }
+
+  if (input.code === 'KeyL' && !input.shift) {
+    return { type: 'toggleRightSidebar' }
   }
 
   if (input.code === 'KeyP' && !input.shift) {

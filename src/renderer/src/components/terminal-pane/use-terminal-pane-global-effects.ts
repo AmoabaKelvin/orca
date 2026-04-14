@@ -6,7 +6,7 @@ import {
 } from '@/constants/terminal'
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
 import { shellEscapePath } from './pane-helpers'
-import { fitAndFocusPanes, fitPanes } from './pane-helpers'
+import { fitAndFocusPanes, fitPanes, hasDimensionsChanged } from './pane-helpers'
 import type { PtyTransport } from './pty-transport'
 
 type UseTerminalPaneGlobalEffectsArgs = {
@@ -36,13 +36,37 @@ export function useTerminalPaneGlobalEffects({
   // function can cancel it if the pane deactivates mid-flush.
   const pendingFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Why: the deferred rAF (guardedResumeAndFit) must be cancellable when
+  // the pane deactivates before the rAF fires — otherwise it would call
+  // resumeRendering() on an already-suspended manager.
+  const pendingRafRef = useRef<number | null>(null)
+
+  // Why: two independent code paths schedule fitPanes() after a worktree
+  // switch — the isActive effect (after pending-write drain) and the
+  // ResizeObserver (after its 150 ms debounce).  On Windows, each redundant
+  // fit() call adds non-trivial overhead (clear + refresh of 10 000
+  // scrollback lines).  An epoch counter lets whichever path fires first
+  // serve the activation, while the second path skips.  The staleness
+  // check also rejects callbacks from a prior activation during rapid
+  // worktree switches (A→B→C).
+  const fitEpochRef = useRef(0)
+  const fitRanForEpochRef = useRef(-1)
+
   useEffect(() => {
     const manager = managerRef.current
     if (!manager) {
       return
     }
     if (isActive) {
-      manager.resumeRendering()
+      // Why: resumeRendering() creates WebGL contexts for each pane, which
+      // blocks the renderer for 100–500 ms per pane on Windows (ANGLE →
+      // D3D11).  Deferring it into the rAF that runs after the pending-write
+      // drain lets the browser paint one frame with the DOM renderer so the
+      // terminal content appears immediately.  WebGL takes over seamlessly
+      // in the next frame without a visible flash.
+
+      fitEpochRef.current++
+      const epoch = fitEpochRef.current
 
       // Why: while a worktree is in the background, PTY output accumulates
       // in pendingWritesRef with no size cap.  A Claude agent running for
@@ -65,8 +89,35 @@ export function useTerminalPaneGlobalEffects({
         pendingWritesRef.current.set(paneId, '')
       }
 
+      const guardedResumeAndFit = (): void => {
+        pendingRafRef.current = null
+        // Why: read managerRef.current at rAF time instead of capturing
+        // it at effect entry — the PaneManager instance can change if the
+        // component unmounts and remounts during rapid tab switches.
+        const mgr = managerRef.current
+        if (!mgr) {
+          return
+        }
+        mgr.resumeRendering()
+        // Why: three-layer guard prevents redundant and stale fits.
+        // 1. Staleness — reject callbacks from a superseded activation
+        //    (e.g. rapid A→B→C worktree switch).
+        if (epoch !== fitEpochRef.current) {
+          return
+        }
+        // 2. Dimension check — if a window resize changed the container
+        //    size, the fit must run even if one already ran for this epoch.
+        const dimensionsChanged = hasDimensionsChanged(mgr)
+        // 3. Dedup — if dims are the same and a fit already ran, skip.
+        if (!dimensionsChanged && fitRanForEpochRef.current >= epoch) {
+          return
+        }
+        fitRanForEpochRef.current = epoch
+        fitAndFocusPanes(mgr)
+      }
+
       if (entries.length === 0) {
-        requestAnimationFrame(() => fitAndFocusPanes(manager))
+        pendingRafRef.current = requestAnimationFrame(guardedResumeAndFit)
       } else {
         let entryIdx = 0
         let offset = 0
@@ -74,7 +125,7 @@ export function useTerminalPaneGlobalEffects({
         const drainNextChunk = (): void => {
           if (entryIdx >= entries.length) {
             pendingFlushRef.current = null
-            requestAnimationFrame(() => fitAndFocusPanes(manager))
+            pendingRafRef.current = requestAnimationFrame(guardedResumeAndFit)
             return
           }
 
@@ -107,6 +158,12 @@ export function useTerminalPaneGlobalEffects({
       if (pendingFlushRef.current !== null) {
         clearTimeout(pendingFlushRef.current)
         pendingFlushRef.current = null
+      }
+      // Cancel any pending rAF so guardedResumeAndFit doesn't call
+      // resumeRendering() on an already-suspended manager.
+      if (pendingRafRef.current !== null) {
+        cancelAnimationFrame(pendingRafRef.current)
+        pendingRafRef.current = null
       }
       manager.suspendRendering()
     }
@@ -192,6 +249,17 @@ export function useTerminalPaneGlobalEffects({
         if (!manager) {
           return
         }
+        // Why: apply the same epoch-based deduplication as the isActive
+        // effect's rAF path.  Read the current epoch at fire time (not a
+        // captured value) because the ResizeObserver persists across the
+        // activation.  Dimension changes (e.g. window resize) bypass the
+        // dedup so legitimate refits are never suppressed.
+        const currentEpoch = fitEpochRef.current
+        const dimensionsChanged = hasDimensionsChanged(manager)
+        if (!dimensionsChanged && fitRanForEpochRef.current >= currentEpoch) {
+          return
+        }
+        fitRanForEpochRef.current = currentEpoch
         fitPanes(manager)
       }, RESIZE_DEBOUNCE_MS)
     })

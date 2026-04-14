@@ -43,6 +43,18 @@ export function useIpcEvents(): void {
     )
 
     unsubs.push(
+      window.api.ui.onToggleLeftSidebar(() => {
+        useAppStore.getState().toggleSidebar()
+      })
+    )
+
+    unsubs.push(
+      window.api.ui.onToggleRightSidebar(() => {
+        useAppStore.getState().toggleRightSidebar()
+      })
+    )
+
+    unsubs.push(
       window.api.ui.onToggleWorktreePalette(() => {
         const store = useAppStore.getState()
         if (store.activeModal === 'worktree-palette') {

@@ -922,6 +922,16 @@ const api = {
       ipcRenderer.on('ui:openSettings', listener)
       return () => ipcRenderer.removeListener('ui:openSettings', listener)
     },
+    onToggleLeftSidebar: (callback: () => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent) => callback()
+      ipcRenderer.on('ui:toggleLeftSidebar', listener)
+      return () => ipcRenderer.removeListener('ui:toggleLeftSidebar', listener)
+    },
+    onToggleRightSidebar: (callback: () => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent) => callback()
+      ipcRenderer.on('ui:toggleRightSidebar', listener)
+      return () => ipcRenderer.removeListener('ui:toggleRightSidebar', listener)
+    },
     onToggleWorktreePalette: (callback: () => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent) => callback()
       ipcRenderer.on('ui:toggleWorktreePalette', listener)
