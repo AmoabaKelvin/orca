@@ -1,6 +1,7 @@
 /* eslint-disable max-lines */
 import { app, BrowserWindow, powerMonitor } from 'electron'
 import { autoUpdater } from 'electron-updater'
+import type { NsisUpdater } from 'electron-updater'
 import { is } from '@electron-toolkit/utils'
 import type { UpdateStatus } from '../shared/types'
 import { killAllPty } from './ipc/pty'
@@ -71,11 +72,7 @@ function decorateStatusWithActiveNudge(status: UpdateStatus): UpdateStatus {
   if (!activeUpdateNudgeId) {
     return status
   }
-  if (
-    status.state === 'idle' ||
-    status.state === 'checking' ||
-    status.state === 'not-available'
-  ) {
+  if (status.state === 'idle' || status.state === 'checking' || status.state === 'not-available') {
     return status
   }
   return { ...status, activeNudgeId: activeUpdateNudgeId }
@@ -414,6 +411,18 @@ export function setupAutoUpdater(
 
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
+
+  // Why: no Windows Authenticode certificate exists for this project.
+  // electron-builder embeds the code-signing publisherName into the app's
+  // bundled app-update.yml at build time. Versions that were incorrectly
+  // signed with the macOS Apple Developer ID cert (issue #631) baked in a
+  // publisherName whose chain Windows cannot validate, and even after the
+  // CI fix the installed app's app-update.yml still contains the stale
+  // publisherName. Skip Windows code signing verification — update
+  // integrity is still guaranteed by the SHA-512 hash check in latest.yml.
+  if (process.platform === 'win32') {
+    ;(autoUpdater as NsisUpdater).verifyUpdateCodeSignature = () => Promise.resolve(null)
+  }
 
   // Use the generic provider with GitHub's /releases/latest/download/ URL so
   // electron-updater always fetches the manifest (latest-mac.yml, latest.yml,
