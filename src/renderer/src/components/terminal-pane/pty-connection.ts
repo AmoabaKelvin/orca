@@ -41,7 +41,6 @@ export function connectPanePty(
   manager: PaneManager,
   deps: PtyConnectionDeps
 ): IDisposable {
-  const logPrefix = `[pty-render][tab:${deps.tabId}][pane:${pane.id}]`
   let disposed = false
   let connectFrame: number | null = null
   // Why: setup commands must only run once — in the initial pane of the tab.
@@ -59,7 +58,6 @@ export function connectPanePty(
   const cacheKey = `${deps.tabId}:${pane.id}`
 
   const onExit = (ptyId: string): void => {
-    console.info(`${logPrefix} exit pty=${ptyId}`)
     deps.clearRuntimePaneTitle(deps.tabId, pane.id)
     deps.clearTabPtyId(deps.tabId, ptyId)
     // Why: if the PTY exits abruptly (Ctrl-D, crash, shell termination) without
@@ -96,9 +94,6 @@ export function connectPanePty(
   let allowInitialIdleCacheSeed = false
 
   const onTitleChange = (title: string, rawTitle: string): void => {
-    console.info(
-      `${logPrefix} title title=${JSON.stringify(title)} raw=${JSON.stringify(rawTitle)}`
-    )
     manager.setPaneGpuRendering(pane.id, !isGeminiTerminalTitle(rawTitle))
     deps.setRuntimePaneTitle(deps.tabId, pane.id, title)
     deps.updateTabTitle(deps.tabId, title)
@@ -120,7 +115,6 @@ export function connectPanePty(
   }
 
   const onPtySpawn = (ptyId: string): void => {
-    console.info(`${logPrefix} spawn-success pty=${ptyId}`)
     deps.updateTabPtyId(deps.tabId, ptyId)
     // Spawn completion is when a pane gains a concrete PTY ID. The initial
     // frame-level sync often runs before that async result arrives.
@@ -187,7 +181,6 @@ export function connectPanePty(
   connectFrame = requestAnimationFrame(() => {
     connectFrame = null
     if (disposed) {
-      console.info(`${logPrefix} skip connect after dispose`)
       return
     }
     try {
@@ -209,12 +202,10 @@ export function connectPanePty(
     }
 
     const reportError = (message: string): void => {
-      console.error(`${logPrefix} error ${message}`)
       deps.onPtyErrorRef?.current?.(pane.id, message)
     }
 
     const startFreshSpawn = (): void => {
-      console.info(`${logPrefix} connect fresh-spawn cols=${cols} rows=${rows}`)
       const spawnPromise = Promise.resolve(
         transport.connect({
           url: '',
@@ -306,13 +297,9 @@ export function connectPanePty(
         ? undefined
         : pendingSpawnByTabId.get(deps.tabId)
       if (pendingSpawn) {
-        console.info(`${logPrefix} awaiting pending spawn for tab`)
         void pendingSpawn
           .then((spawnedPtyId) => {
             if (transport.getPtyId()) {
-              console.info(
-                `${logPrefix} pending spawn resolved but transport already has pty=${transport.getPtyId()}`
-              )
               return
             }
             if (!spawnedPtyId) {
@@ -322,12 +309,11 @@ export function connectPanePty(
               // spawn instead of staying attached to a completed-but-empty
               // promise and rendering a dead terminal surface.
               console.warn(
-                `${logPrefix} pending spawn resolved without pty id, retrying fresh spawn`
+                `Pending PTY spawn for tab ${deps.tabId} resolved without a PTY id, retrying fresh spawn`
               )
               startFreshSpawn()
               return
             }
-            console.info(`${logPrefix} attach existing pty=${spawnedPtyId}`)
             transport.attach({
               existingPtyId: spawnedPtyId,
               cols,
@@ -339,9 +325,6 @@ export function connectPanePty(
             })
           })
           .catch((err) => {
-            console.error(
-              `${logPrefix} pending spawn rejected ${err instanceof Error ? err.message : String(err)}`
-            )
             reportError(err instanceof Error ? err.message : String(err))
           })
       } else {
@@ -362,7 +345,6 @@ export function connectPanePty(
         cancelAnimationFrame(connectFrame)
         connectFrame = null
       }
-      console.info(`${logPrefix} dispose binding`)
       onDataDisposable.dispose()
       onResizeDisposable.dispose()
     }

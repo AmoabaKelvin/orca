@@ -249,23 +249,15 @@ export function registerPtyHandlers(
         validationCwd = cwd
       }
 
-      console.info(
-        `[pty][spawn:${id}] start shell=${shellPath} cwd=${effectiveCwd} validationCwd=${validationCwd} platform=${process.platform} arch=${process.arch}`
-      )
-
       ensureNodePtySpawnHelperExecutable()
 
       if (!existsSync(validationCwd)) {
-        console.error(`[pty][spawn:${id}] validation failed: cwd does not exist: ${validationCwd}`)
         throw new Error(
           `Working directory "${validationCwd}" does not exist. ` +
             `It may have been deleted or is on an unmounted volume.`
         )
       }
       if (!statSync(validationCwd).isDirectory()) {
-        console.error(
-          `[pty][spawn:${id}] validation failed: cwd is not a directory: ${validationCwd}`
-        )
         throw new Error(`Working directory "${validationCwd}" is not a directory.`)
       }
 
@@ -316,16 +308,10 @@ export function registerPtyHandlers(
       let primaryError: string | null = null
       if (process.platform !== 'win32') {
         primaryError = getShellValidationError(shellPath)
-        if (primaryError) {
-          console.warn(
-            `[pty][spawn:${id}] shell validation failed for ${shellPath}: ${primaryError}`
-          )
-        }
       }
 
       if (!primaryError) {
         try {
-          console.info(`[pty][spawn:${id}] spawning primary shell ${shellPath}`)
           ptyProcess = pty.spawn(shellPath, shellArgs, {
             name: 'xterm-256color',
             cols: args.cols,
@@ -338,7 +324,6 @@ export function registerPtyHandlers(
           // not caught by the validation above (e.g. architecture mismatch
           // of the native addon, PTY allocation failure, or resource limits).
           primaryError = err instanceof Error ? err.message : String(err)
-          console.warn(`[pty][spawn:${id}] primary spawn failed for ${shellPath}: ${primaryError}`)
         }
       }
 
@@ -353,9 +338,6 @@ export function registerPtyHandlers(
         for (const fallback of fallbackShells) {
           const fallbackValidationError = getShellValidationError(fallback)
           if (fallbackValidationError) {
-            console.warn(
-              `[pty][spawn:${id}] skipping fallback shell ${fallback}: ${fallbackValidationError}`
-            )
             continue
           }
           try {
@@ -364,9 +346,6 @@ export function registerPtyHandlers(
             // SHELL in the env would confuse shell startup logic and any
             // subprocesses that inspect $SHELL.
             spawnEnv.SHELL = fallback
-            console.info(
-              `[pty][spawn:${id}] attempting fallback shell ${fallback} after primary failure: ${primaryError ?? 'unknown error'}`
-            )
             ptyProcess = pty.spawn(fallback, ['-l'], {
               name: 'xterm-256color',
               cols: args.cols,
@@ -379,10 +358,7 @@ export function registerPtyHandlers(
             )
             shellPath = fallback
             break
-          } catch (fallbackError) {
-            console.warn(
-              `[pty][spawn:${id}] fallback spawn failed for ${fallback}: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`
-            )
+          } catch {
             // Fallback also failed — try next.
           }
         }
@@ -395,9 +371,6 @@ export function registerPtyHandlers(
           `arch: ${process.arch}`,
           `platform: ${process.platform} ${process.getSystemVersion?.() ?? ''}`
         ].join(', ')
-        console.error(
-          `[pty][spawn:${id}] final failure: primaryError=${primaryError ?? 'unknown error'} diag=${diag}`
-        )
         throw new Error(
           `Failed to spawn shell "${shellPath}": ${primaryError ?? 'unknown error'} (${diag}). ` +
             `If this persists, please file an issue.`
@@ -416,9 +389,6 @@ export function registerPtyHandlers(
       ptyProcesses.set(id, proc)
       ptyShellName.set(id, basename(shellPath))
       ptyLoadGeneration.set(id, loadGeneration)
-      console.info(
-        `[pty][spawn:${id}] success shell=${shellPath} cwd=${effectiveCwd} generation=${loadGeneration}`
-      )
       runtime?.onPtySpawned(id)
 
       const onDataDisposable = proc.onData((data) => {

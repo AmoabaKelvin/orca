@@ -91,10 +91,6 @@ export function getEagerPtyBufferHandle(ptyId: string): EagerPtyHandle | undefin
 // runs a long-lived command (e.g. tail -f) in a worktree the user never opens.
 const EAGER_BUFFER_MAX_BYTES = 512 * 1024
 
-function debugLog(message: string): void {
-  console.info(message)
-}
-
 export function registerEagerPtyBuffer(
   ptyId: string,
   onExit: (ptyId: string, code: number) => void
@@ -267,9 +263,6 @@ export function createIpcPtyTransport(opts: IpcPtyTransportOptions = {}): PtyTra
 
   return {
     async connect(options) {
-      debugLog(
-        `[pty-transport] connect start cwd=${cwd ?? ''} cols=${options.cols ?? 80} rows=${options.rows ?? 24}`
-      )
       storedCallbacks = options.callbacks
       ensurePtyDispatcher()
 
@@ -293,7 +286,6 @@ export function createIpcPtyTransport(opts: IpcPtyTransportOptions = {}): PtyTra
 
         ptyId = result.id
         connected = true
-        debugLog(`[pty-transport] connect success pty=${result.id}`)
         onPtySpawn?.(result.id)
 
         ptyDataHandlers.set(result.id, (data) => {
@@ -356,14 +348,12 @@ export function createIpcPtyTransport(opts: IpcPtyTransportOptions = {}): PtyTra
         return result.id
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        debugLog(`[pty-transport] connect failure ${msg}`)
         storedCallbacks.onError?.(msg)
         throw err
       }
     },
 
     attach(options) {
-      debugLog(`[pty-transport] attach existing pty=${options.existingPtyId}`)
       storedCallbacks = options.callbacks
       ensurePtyDispatcher()
 
@@ -478,7 +468,6 @@ export function createIpcPtyTransport(opts: IpcPtyTransportOptions = {}): PtyTra
     },
 
     detach() {
-      debugLog(`[pty-transport] detach pty=${ptyId ?? 'null'}`)
       if (staleTitleTimer) {
         clearTimeout(staleTitleTimer)
         staleTitleTimer = null
@@ -494,12 +483,8 @@ export function createIpcPtyTransport(opts: IpcPtyTransportOptions = {}): PtyTra
 
     sendInput(data: string): boolean {
       if (!connected || !ptyId) {
-        debugLog(
-          `[pty-transport] sendInput dropped connected=${String(connected)} pty=${ptyId ?? 'null'} len=${data.length}`
-        )
         return false
       }
-      debugLog(`[pty-transport] sendInput pty=${ptyId} len=${data.length}`)
       window.api.pty.write(ptyId, data)
       return true
     },
@@ -521,7 +506,6 @@ export function createIpcPtyTransport(opts: IpcPtyTransportOptions = {}): PtyTra
     },
 
     destroy() {
-      debugLog(`[pty-transport] destroy pty=${ptyId ?? 'null'}`)
       destroyed = true
       this.disconnect()
     }
