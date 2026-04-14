@@ -57,23 +57,27 @@ export function registerWorktreeHandlers(mainWindow: BrowserWindow, store: Store
     // the sum of all repos. Each listRepoWorktrees spawns `git worktree list`.
     const results = await Promise.all(
       repos.map(async (repo) => {
-        let gitWorktrees
-        if (isFolderRepo(repo)) {
-          gitWorktrees = [createFolderWorktree(repo)]
-        } else if (repo.connectionId) {
-          const provider = getSshGitProvider(repo.connectionId)
-          if (!provider) {
-            return []
+        try {
+          let gitWorktrees
+          if (isFolderRepo(repo)) {
+            gitWorktrees = [createFolderWorktree(repo)]
+          } else if (repo.connectionId) {
+            const provider = getSshGitProvider(repo.connectionId)
+            if (!provider) {
+              return []
+            }
+            gitWorktrees = await provider.listWorktrees(repo.path)
+          } else {
+            gitWorktrees = await listRepoWorktrees(repo)
           }
-          gitWorktrees = await provider.listWorktrees(repo.path)
-        } else {
-          gitWorktrees = await listRepoWorktrees(repo)
+          return gitWorktrees.map((gw) => {
+            const worktreeId = `${repo.id}::${gw.path}`
+            const meta = store.getWorktreeMeta(worktreeId)
+            return mergeWorktree(repo.id, gw, meta, repo.displayName)
+          })
+        } catch {
+          return []
         }
-        return gitWorktrees.map((gw) => {
-          const worktreeId = `${repo.id}::${gw.path}`
-          const meta = store.getWorktreeMeta(worktreeId)
-          return mergeWorktree(repo.id, gw, meta, repo.displayName)
-        })
       })
     )
 

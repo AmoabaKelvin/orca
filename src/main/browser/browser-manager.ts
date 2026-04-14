@@ -483,6 +483,7 @@ class BrowserManager {
     const guest = webContents.fromId(webContentsId)
     if (!guest || guest.isDestroyed()) {
       this.webContentsIdByTabId.delete(browserTabId)
+      this.tabIdByWebContentsId.delete(webContentsId)
       return false
     }
     guest.openDevTools({ mode: 'detach' })

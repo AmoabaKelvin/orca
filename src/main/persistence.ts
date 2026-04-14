@@ -342,6 +342,9 @@ export class Store {
       clearTimeout(this.writeTimer)
       this.writeTimer = null
     }
+    // Why: discard any in-flight async write so its rename cannot land after
+    // the sync write below, overwriting the latest state with a stale snapshot.
+    this.pendingWrite = null
     try {
       this.writeToDiskSync()
     } catch (err) {

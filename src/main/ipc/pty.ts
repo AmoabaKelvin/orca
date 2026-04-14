@@ -203,6 +203,14 @@ export function registerPtyHandlers(
   })
   localExitUnsub = localProvider.onExit((payload) => {
     if (!mainWindow.isDestroyed()) {
+      // Why: flush any batched data for this PTY before sending the exit event,
+      // otherwise the last ≤8ms of output is silently lost because the renderer
+      // tears down the terminal on pty:exit before the batch timer fires.
+      const remaining = pendingData.get(payload.id)
+      if (remaining) {
+        mainWindow.webContents.send('pty:data', { id: payload.id, data: remaining })
+        pendingData.delete(payload.id)
+      }
       mainWindow.webContents.send('pty:exit', payload)
     }
   })
