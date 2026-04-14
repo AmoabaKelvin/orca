@@ -14,22 +14,22 @@
 </p>
 
 <p align="center">
-  <strong>The AI Orchestrator for 100x builders.</strong><br/>
-  Run Claude Code, Codex, or OpenCode side-by-side across repos — each in its own worktree, tracked in one place.<br/>
-  Available for <strong>macOS, Windows, and Linux</strong>.
+  <strong>专为 100x 开发者打造的 AI IDE。</strong><br/>
+  跨代码库并排运行 Claude Code、Codex 或 OpenCode — 每个都在自己独立的工作区中运行，并在一个地方集中管理。<br/>
+  支持 <strong>macOS、Windows 和 Linux</strong>。
 </p>
 
 <p align="center">
-  <a href="https://onOrca.dev"><strong>Download at onOrca.dev</strong></a>
+  <a href="https://onOrca.dev"><strong>在 onOrca.dev 下载</strong></a>
 </p>
 
 <p align="center">
   <img src="docs/assets/file-drag.gif" alt="Orca Screenshot" width="800" />
 </p>
 
-## Supported Agents
+## 支持的 AI Agents
 
-Orca supports any CLI agent (_not just this list_).
+Orca 支持任何 CLI Agent (_不仅限于以下列表_)。
 
 <p>
   <a href="https://docs.anthropic.com/claude/docs/claude-code"><kbd><img src="https://www.google.com/s2/favicons?domain=anthropic.com&sz=64" width="16" valign="middle" /> Claude Code</kbd></a> &nbsp;
@@ -58,53 +58,52 @@ Orca supports any CLI agent (_not just this list_).
 
 ---
 
-## Features
+## 特性
 
-- **No login required** — Bring your own Claude Code or Codex subscription.
-- **Worktree-native** — Every feature gets its own worktree. No stashing, no branch juggling. Spin up and switch instantly.
-- **Multi-agent terminals** — Run multiple AI agents side-by-side in tabs and panes. See which ones are active at a glance.
-- **Built-in source control** — Review AI-generated diffs, make quick edits, and commit without leaving Orca.
-- **GitHub integration** — PRs, issues, and Actions checks linked to each worktree automatically.
-- **Notifications** — Know when an agent finishes or needs attention. Mark threads unread to come back later.
-
----
-
-## Install
-
-- **[Download from onOrca.dev](https://onOrca.dev)**
-- Or download the latest binaries via the **[GitHub Releases page](https://github.com/stablyai/orca/releases)**.
+- **免登录** — 直接用你的 Claude Code 或 Codex 订阅。
+- **原生支持 Worktree** — 每个功能都在自己的工作树中开发。告别频繁的 stashing 或切换分支。瞬间启动并无缝切换。
+- **多Agent终端** — 在不同标签和面板中并排运行多个 AI Agent。一目了然地查看哪些代理处于活跃状态。
+- **内置版本控制** — 查看 AI 生成的代码Diff，进行快速修改并直接提交，无需离开 Orca。
+- **集成 GitHub** — PR、Issues 和 Actions 检查会自动链接到对应的工作区。
+- **通知系统** — 当代理完成任务或需要关注时及时通知你。支持标记为未读稍后处理。
 
 ---
 
-## [New] Hot Swap Codex Accounts
+## 安装
 
-**Multiple Codex accounts? Switch in one click.**
+- **[从 onOrca.dev 下载](https://onOrca.dev)**
+- 或者通过 **[GitHub Releases 页面](https://github.com/stablyai/orca/releases)** 下载最新的安装包。
 
-If you run multiple Codex accounts to get the best token deal, Orca lets you hot-swap between them instantly — no re-login, no config files. Just pick an account and keep building.
+---
+
+## [全新] Codex 账号热切换
+
+**有多个 Codex 账号？一键切换。**
+
+如果你使用多个 Codex 账号以获得最佳 API 额度，Orca 让你能在它们之间即时热切换 — 无需重新登录，也无需修改配置文件。只需一键点击切换账号。
 
 <p align="center">
-  <img src="docs/assets/codex-account-switcher.gif" alt="Orca Codex Account Switcher — hot swap between multiple Codex accounts" width="800" />
+  <img src="docs/assets/codex-account-switcher.gif" alt="Orca Codex 账号切换器 — 在多个账号之间热切换" width="800" />
 </p>
 
 ---
 
-## [New] Per Worktree Browser &amp; Design Mode
+## [全新] 每工作树内置浏览器与设计模式
 
-**See your app. Click any element. Drop it into the chat.**
+**预览应用。点击任意元素。直接拖入聊天框。**
 
-Orca ships with a built-in browser right inside your worktree. Preview your app as you build, then switch to Design Mode — click any UI element and it lands directly in your AI chat as context. No screenshots, no copy-pasting selectors. Just point at what you want to change and tell the agent what to do.
-
+Orca 在你的工作树中内置了浏览器。随时预览你的应用，然后切换到设计模式 — 点击任何 UI 元素，它就会直接落入你的 AI 聊天框作为上下文。
 <p align="center">
-  <img src="docs/assets/orca-design-mode.gif" alt="Orca Design Mode — click any UI element and drop it into the chat" width="800" />
+  <img src="docs/assets/orca-design-mode.gif" alt="Orca 设计模式 — 点击任意 UI 元素并放入聊天框" width="800" />
 </p>
 
 ---
 
-## [New] Introducing the Orca CLI
+## [全新] 隆重推出 Orca CLI
 
-**Agent orchestration from your terminal.**
+**在终端中进行代理编排。**
 
-Let your AI agent control your IDE. Use AI to add repos to your IDE, spin up worktrees, and update the current worktree's comment with meaningful progress checkpoints directly from the terminal. Ships with the Orca IDE (install under Settings).
+让 AI Agent控制你的Orca IDE。使用 AI 将代码库添加到 IDE、启动工作树，并在终端让AI Agent直接更新当前工作树的备注。随 Orca IDE 附带 (在设置中安装)。
 
 ```bash
 npx skills add https://github.com/stablyai/orca --skill orca-cli
@@ -112,15 +111,15 @@ npx skills add https://github.com/stablyai/orca --skill orca-cli
 
 ---
 
-## Community &amp; Support
+## 社区与支持
 
-- **Discord:** Join the community on **[Discord](https://discord.gg/fzjDKHxv8Q)**.
-- **Twitter / X:** Follow **[@orca_build](https://x.com/orca_build)** for updates and announcements.
-- **Feedback &amp; Ideas:** We ship fast. Missing something? [Request a new feature](https://github.com/stablyai/orca/issues).
-- **Show Support:** Star this repo to follow along with our daily ships.
+- **Discord:** 加入我们的 **[Discord](https://discord.gg/fzjDKHxv8Q)** 社区。
+- **Twitter / X:** 关注 **[@orca_build](https://x.com/orca_build)** 获取更新和公告。
+- **反馈与想法:** 我们发布新功能非常快。需要新功能？[提交功能请求](https://github.com/stablyai/orca/issues)。
+- **支持我们:** 给本仓库点亮 Star，关注我们的日常更新。
 
 ---
 
-## Developing
+## 开发
 
-Want to contribute or run locally? See our [CONTRIBUTING.md](CONTRIBUTING.md) guide.
+想要贡献代码或在本地运行？请参阅我们的 [CONTRIBUTING.md](CONTRIBUTING.md) 指南。

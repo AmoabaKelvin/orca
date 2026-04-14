@@ -14,22 +14,22 @@
 </p>
 
 <p align="center">
-  <strong>The AI Orchestrator for 100x builders.</strong><br/>
-  Run Claude Code, Codex, or OpenCode side-by-side across repos — each in its own worktree, tracked in one place.<br/>
-  Available for <strong>macOS, Windows, and Linux</strong>.
+  <strong>100x 開発者のための AI IDE。</strong><br/>
+  Claude Code、Codex、または OpenCode をリポジトリをまたいで並行して実行 — 各エージェントは独立したワークツリーで実行され、1 つの場所で集中管理されます。<br/>
+  <strong>macOS、Windows、Linux</strong> で利用可能です。
 </p>
 
 <p align="center">
-  <a href="https://onOrca.dev"><strong>Download at onOrca.dev</strong></a>
+  <a href="https://onOrca.dev"><strong>onOrca.dev でダウンロード</strong></a>
 </p>
 
 <p align="center">
   <img src="docs/assets/file-drag.gif" alt="Orca Screenshot" width="800" />
 </p>
 
-## Supported Agents
+## 対応する AI Agent
 
-Orca supports any CLI agent (_not just this list_).
+Orca は任意の CLI Agent に対応しています（_このリストに限定されません_）。
 
 <p>
   <a href="https://docs.anthropic.com/claude/docs/claude-code"><kbd><img src="https://www.google.com/s2/favicons?domain=anthropic.com&sz=64" width="16" valign="middle" /> Claude Code</kbd></a> &nbsp;
@@ -58,53 +58,52 @@ Orca supports any CLI agent (_not just this list_).
 
 ---
 
-## Features
+## 機能
 
-- **No login required** — Bring your own Claude Code or Codex subscription.
-- **Worktree-native** — Every feature gets its own worktree. No stashing, no branch juggling. Spin up and switch instantly.
-- **Multi-agent terminals** — Run multiple AI agents side-by-side in tabs and panes. See which ones are active at a glance.
-- **Built-in source control** — Review AI-generated diffs, make quick edits, and commit without leaving Orca.
-- **GitHub integration** — PRs, issues, and Actions checks linked to each worktree automatically.
-- **Notifications** — Know when an agent finishes or needs attention. Mark threads unread to come back later.
-
----
-
-## Install
-
-- **[Download from onOrca.dev](https://onOrca.dev)**
-- Or download the latest binaries via the **[GitHub Releases page](https://github.com/stablyai/orca/releases)**.
+- **ログイン不要** — お持ちの Claude Code や Codex サブスクリプションをそのまま利用できます。
+- **ワークツリーネイティブ** — 各機能は独立したワークツリーで開発。スタッシュやブランチの切り替えに悩む必要はありません。瞬時に立ち上げ、切り替えることができます。
+- **マルチAgentターミナル** — 複数の AI Agent をタブやペインで並行して実行。どのアカウントがアクティブかを一目で確認できます。
+- **内蔵バージョン管理** — AI が生成したコードDiffを確認し、素早く編集を行い、Orca から離れることなく直接コミットできます。
+- **GitHub 連携** — PR、Issue、Actions のチェックは、各ワークツリーに自動的にリンクされます。
+- **通知** — エージェントが作業を完了した際や注意が必要な際にお知らせします。スレッドを未読にして後で確認することも可能です。
 
 ---
 
-## [New] Hot Swap Codex Accounts
+## インストール
 
-**Multiple Codex accounts? Switch in one click.**
+- **[onOrca.dev からダウンロード](https://onOrca.dev)**
+- または、**[GitHub Releases ページ](https://github.com/stablyai/orca/releases)**から最新のインストーラーをダウンロードしてください。
 
-If you run multiple Codex accounts to get the best token deal, Orca lets you hot-swap between them instantly — no re-login, no config files. Just pick an account and keep building.
+---
+
+## [新機能] Codex アカウントのホットスワップ
+
+**複数の Codex アカウントをお持ちですか？ワンクリックで切り替え可能です。**
+
+最適な API クォータを得るために複数の Codex アカウントを使用している場合、Orca では再ログインや設定ファイルなしで、即座にアカウントをホットスワップできます。ワンクリックでアカウントを切り替え可能です。
 
 <p align="center">
-  <img src="docs/assets/codex-account-switcher.gif" alt="Orca Codex Account Switcher — hot swap between multiple Codex accounts" width="800" />
+  <img src="docs/assets/codex-account-switcher.gif" alt="Orca Codex アカウント切り替え — 複数のアカウント間でホットスワップ" width="800" />
 </p>
 
 ---
 
-## [New] Per Worktree Browser &amp; Design Mode
+## [新機能] ワークツリーごとのブラウザ ＆ デザインモード
 
-**See your app. Click any element. Drop it into the chat.**
+**アプリをプレビュー。要素をクリックして。そのままチャットにドロップ。**
 
-Orca ships with a built-in browser right inside your worktree. Preview your app as you build, then switch to Design Mode — click any UI element and it lands directly in your AI chat as context. No screenshots, no copy-pasting selectors. Just point at what you want to change and tell the agent what to do.
-
+Orca には、ワークツリー内にブラウザが組み込まれています。いつでもアプリをプレビューし、デザインモードに切り替えます — 任意の UI 要素をクリックすると、コンテキストとしてそのまま AI チャットに取り込まれます。
 <p align="center">
-  <img src="docs/assets/orca-design-mode.gif" alt="Orca Design Mode — click any UI element and drop it into the chat" width="800" />
+  <img src="docs/assets/orca-design-mode.gif" alt="Orca デザインモード — UI 要素をクリックしてチャットにドロップ" width="800" />
 </p>
 
 ---
 
-## [New] Introducing the Orca CLI
+## [新機能] Orca CLI の紹介
 
-**Agent orchestration from your terminal.**
+**ターミナルからのエージェントオーケストレーション。**
 
-Let your AI agent control your IDE. Use AI to add repos to your IDE, spin up worktrees, and update the current worktree's comment with meaningful progress checkpoints directly from the terminal. Ships with the Orca IDE (install under Settings).
+AI Agent に Orca IDE を制御させましょう。AI を使って IDE にリポジトリを追加したり、ワークツリーを立ち上げたり、ターミナルから AI Agent に現在のワークツリーのコメントを直接更新させることができます。Orca IDE に同梱されています（設定からインストール）。
 
 ```bash
 npx skills add https://github.com/stablyai/orca --skill orca-cli
@@ -112,15 +111,15 @@ npx skills add https://github.com/stablyai/orca --skill orca-cli
 
 ---
 
-## Community &amp; Support
+## コミュニティ ＆ サポート
 
-- **Discord:** Join the community on **[Discord](https://discord.gg/fzjDKHxv8Q)**.
-- **Twitter / X:** Follow **[@orca_build](https://x.com/orca_build)** for updates and announcements.
-- **Feedback &amp; Ideas:** We ship fast. Missing something? [Request a new feature](https://github.com/stablyai/orca/issues).
-- **Show Support:** Star this repo to follow along with our daily ships.
+- **Discord:** **[Discord](https://discord.gg/fzjDKHxv8Q)** のコミュニティに参加する。
+- **Twitter / X:** アップデートやアナウンスについては **[@orca_build](https://x.com/orca_build)** をフォローしてください。
+- **フィードバック ＆ アイデア:** 私たちは迅速に新機能をリリースします。不足している機能はありますか？[機能リクエストを送信](https://github.com/stablyai/orca/issues) してください。
+- **サポートを示す:** 毎日のリリースを追うために、このリポジトリにスターをつけてください。
 
 ---
 
-## Developing
+## 開発について
 
-Want to contribute or run locally? See our [CONTRIBUTING.md](CONTRIBUTING.md) guide.
+貢献したい、またはローカルで実行したいですか？ [CONTRIBUTING.md](CONTRIBUTING.md) ガイドをご覧ください。
