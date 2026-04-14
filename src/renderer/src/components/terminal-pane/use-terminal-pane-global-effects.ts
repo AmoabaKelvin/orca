@@ -12,25 +12,30 @@ import type { PtyTransport } from './pty-transport'
 type UseTerminalPaneGlobalEffectsArgs = {
   tabId: string
   isActive: boolean
+  isVisible: boolean
   managerRef: React.RefObject<PaneManager | null>
   containerRef: React.RefObject<HTMLDivElement | null>
   paneTransportsRef: React.RefObject<Map<number, PtyTransport>>
   pendingWritesRef: React.RefObject<Map<number, string>>
   isActiveRef: React.RefObject<boolean>
+  isVisibleRef: React.RefObject<boolean>
   toggleExpandPane: (paneId: number) => void
 }
 
 export function useTerminalPaneGlobalEffects({
   tabId,
   isActive,
+  isVisible,
   managerRef,
   containerRef,
   paneTransportsRef,
   pendingWritesRef,
   isActiveRef,
+  isVisibleRef,
   toggleExpandPane
 }: UseTerminalPaneGlobalEffectsArgs): void {
   const wasActiveRef = useRef(false)
+  const wasVisibleRef = useRef(false)
 
   // Why: tracks any in-progress chunked pending-write flush so the cleanup
   // function can cancel it if the pane deactivates mid-flush.
@@ -57,14 +62,13 @@ export function useTerminalPaneGlobalEffects({
     if (!manager) {
       return
     }
-    if (isActive) {
-      // Why: resume WebGL immediately so the terminal shows its last-known
-      // state on the first painted frame.  On macOS, WebGL context creation
-      // is ~5 ms — fast enough to feel instant.  On Windows (ANGLE → D3D11)
-      // it can take 100–500 ms, but the alternative (deferring to a rAF
-      // after the pending-write drain) leaves the terminal blank for multiple
-      // frames, which is a worse UX tradeoff.
-      manager.resumeRendering()
+    if (isVisible) {
+      // Why: resumeRendering() creates WebGL contexts for each pane, which
+      // blocks the renderer for 100–500 ms per pane on Windows (ANGLE →
+      // D3D11).  Deferring it into the rAF that runs after the pending-write
+      // drain lets the browser paint one frame with the DOM renderer so the
+      // terminal content appears immediately.  WebGL takes over seamlessly
+      // in the next frame without a visible flash.
 
       fitEpochRef.current++
       const epoch = fitEpochRef.current
@@ -110,7 +114,11 @@ export function useTerminalPaneGlobalEffects({
           return
         }
         fitRanForEpochRef.current = epoch
-        fitAndFocusPanes(mgr)
+        if (isActive) {
+          fitAndFocusPanes(mgr)
+          return
+        }
+        fitPanes(mgr)
       }
 
       if (entries.length === 0) {
@@ -150,7 +158,7 @@ export function useTerminalPaneGlobalEffects({
 
         drainNextChunk()
       }
-    } else if (wasActiveRef.current) {
+    } else if (wasVisibleRef.current) {
       // Cancel any in-progress chunked flush before suspending.
       if (pendingFlushRef.current !== null) {
         clearTimeout(pendingFlushRef.current)
@@ -164,10 +172,12 @@ export function useTerminalPaneGlobalEffects({
       }
       manager.suspendRendering()
     }
+    wasVisibleRef.current = isVisible
     wasActiveRef.current = isActive
     isActiveRef.current = isActive
+    isVisibleRef.current = isVisible
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive])
+  }, [isActive, isVisible])
 
   useEffect(() => {
     const onToggleExpand = (event: Event): void => {
@@ -215,7 +225,7 @@ export function useTerminalPaneGlobalEffects({
   }, [tabId, managerRef])
 
   useEffect(() => {
-    if (!isActive) {
+    if (!isVisible) {
       return
     }
     const container = containerRef.current
@@ -268,7 +278,7 @@ export function useTerminalPaneGlobalEffects({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive])
+  }, [isVisible])
 
   useEffect(() => {
     return window.api.ui.onFileDrop((data) => {

@@ -318,7 +318,13 @@ export class PaneManager {
       this.dragState,
       this.getDragCallbacks(),
       (paneId) => {
-        if (!this.destroyed && this.activePaneId !== paneId) {
+        if (!this.destroyed) {
+          // Why: split-pane layout/focus callbacks can leave the manager's
+          // activePaneId temporarily in sync while the browser's real focused
+          // xterm textarea is still on a different pane. Clicking a pane must
+          // always re-focus its terminal, even if the manager already thinks
+          // that pane is active; otherwise input can keep going to the wrong
+          // split after vertical/horizontal splits.
           this.setActivePane(paneId, { focus: true })
         }
       },

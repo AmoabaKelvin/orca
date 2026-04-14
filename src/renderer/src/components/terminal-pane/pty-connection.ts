@@ -4,17 +4,22 @@ import { isGeminiTerminalTitle, isClaudeAgent } from '@/lib/agent-status'
 import { scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
 import { useAppStore } from '@/store'
 import type { PtyTransport } from './pty-transport'
-import { createIpcPtyTransport, getEagerPtyBufferHandle } from './pty-transport'
+import { createIpcPtyTransport } from './pty-transport'
 import { shouldSeedCacheTimerOnInitialTitle } from './cache-timer-seeding'
+
+const pendingSpawnByTabId = new Map<string, Promise<string | null>>()
 
 type PtyConnectionDeps = {
   tabId: string
   worktreeId: string
   cwd?: string
   startup?: { command: string; env?: Record<string, string> } | null
+  restoredLeafId?: string | null
+  restoredPtyIdByLeafId?: Record<string, string>
   paneTransportsRef: React.RefObject<Map<number, PtyTransport>>
   pendingWritesRef: React.RefObject<Map<number, string>>
   isActiveRef: React.RefObject<boolean>
+  isVisibleRef: React.RefObject<boolean>
   onPtyExitRef: React.RefObject<(ptyId: string) => void>
   onPtyErrorRef?: React.RefObject<(paneId: number, message: string) => void>
   clearTabPtyId: (tabId: string, ptyId: string) => void
@@ -36,6 +41,8 @@ export function connectPanePty(
   manager: PaneManager,
   deps: PtyConnectionDeps
 ): IDisposable {
+  let disposed = false
+  let connectFrame: number | null = null
   // Why: setup commands must only run once — in the initial pane of the tab.
   // Capture and clear the startup reference synchronously so that panes
   // created later by splits or layout restoration cannot re-execute the
@@ -168,6 +175,7 @@ export function connectPanePty(
     onAgentBecameWorking,
     onAgentExited
   })
+  const hasExistingPaneTransport = deps.paneTransportsRef.current.size > 0
   deps.paneTransportsRef.current.set(pane.id, transport)
 
   const onDataDisposable = pane.terminal.onData((data) => {
@@ -181,7 +189,11 @@ export function connectPanePty(
   // Defer PTY spawn/attach to next frame so FitAddon has time to calculate
   // the correct terminal dimensions from the laid-out container.
   deps.pendingWritesRef.current.set(pane.id, '')
-  requestAnimationFrame(() => {
+  connectFrame = requestAnimationFrame(() => {
+    connectFrame = null
+    if (disposed) {
+      return
+    }
     try {
       pane.fitAddon.fit()
     } catch {
@@ -210,9 +222,39 @@ export function connectPanePty(
     // terminal state is preserved.  This matches the MAX_BUFFER_BYTES
     // constant used for serialized scrollback capture.
     const MAX_PENDING_BYTES = 512 * 1024
+    const startFreshSpawn = (): void => {
+      const spawnPromise = Promise.resolve(
+        transport.connect({
+          url: '',
+          cols,
+          rows,
+          callbacks: {
+            onConnect: () => {
+              if (paneStartup?.command) {
+                // Why: setup commands are injected only after the PTY reports a live
+                // shell connection. Writing earlier is racy with shell startup files
+                // and can drop characters on slower shells.
+                transport.sendInput(`${paneStartup.command}\r`)
+              }
+            },
+            onData: dataCallback,
+            onError: reportError
+          }
+        })
+      )
+        .then((spawnedPtyId) =>
+          typeof spawnedPtyId === 'string' ? spawnedPtyId : transport.getPtyId()
+        )
+        .finally(() => {
+          if (pendingSpawnByTabId.get(deps.tabId) === spawnPromise) {
+            pendingSpawnByTabId.delete(deps.tabId)
+          }
+        })
+      pendingSpawnByTabId.set(deps.tabId, spawnPromise)
+    }
 
     const dataCallback = (data: string): void => {
-      if (deps.isActiveRef.current) {
+      if (deps.isVisibleRef.current) {
         pane.terminal.write(data)
       } else {
         const pending = deps.pendingWritesRef.current
@@ -239,21 +281,39 @@ export function connectPanePty(
     // The eagerly-spawned PTY could exit during the one-frame gap (e.g.,
     // broken .bashrc), clearing the tab's ptyId. Reading it stale would
     // cause attach() on a dead process, leaving the pane frozen.
+    const restoredPtyId =
+      deps.restoredLeafId && deps.restoredPtyIdByLeafId
+        ? (deps.restoredPtyIdByLeafId[deps.restoredLeafId] ?? null)
+        : null
     const existingPtyId = useAppStore
       .getState()
       .tabsByWorktree[deps.worktreeId]?.find((t) => t.id === deps.tabId)?.ptyId
 
-    // Why: only attach if the eager buffer handle still exists. For split-pane
-    // tabs, replayTerminalLayout calls connectPanePty once per pane. The first
-    // pane consumes the handle via attach(); subsequent panes find no handle
-    // and fall through to connect(), which spawns their own fresh PTYs. Without
-    // this guard, every split pane would try to share the same PTY ID, and the
-    // last one's handler would overwrite the earlier ones' in the dispatcher.
-    if (existingPtyId && getEagerPtyBufferHandle(existingPtyId)) {
+    // Why: remounting a multi-pane terminal tab (for example after closing or
+    // moving a split group) must preserve each pane's own live PTY. The saved
+    // leaf→PTY mapping takes precedence over the tab-level PTY owner.
+    if (restoredPtyId) {
       allowInitialIdleCacheSeed = true
-      // Why: this tab had a PTY eagerly spawned by reconnectPersistedTerminals().
-      // Attach to it instead of spawning a duplicate. Startup commands are
-      // intentionally skipped — the PTY was already spawned with a fresh shell.
+      transport.attach({
+        existingPtyId: restoredPtyId,
+        cols,
+        rows,
+        callbacks: {
+          onData: dataCallback,
+          onError: reportError
+        }
+      })
+    } else if (existingPtyId && !hasExistingPaneTransport) {
+      // Why: only the first pane in a tab may reattach to the tab-level PTY.
+      // Additional panes created by in-tab splits need their own fresh PTYs; if
+      // they attach to the tab's existing ptyId, both panes end up sharing one
+      // session and the last-attached pane steals the live transport handlers.
+      // Group moves/remounts still reattach correctly because they recreate the
+      // whole TerminalPane with no surviving pane transports yet.
+      allowInitialIdleCacheSeed = true
+      // Why: this tab already owns a PTY. Attach to it instead of spawning a
+      // duplicate. Startup commands are intentionally skipped — the PTY was
+      // already spawned with a fresh shell.
       transport.attach({
         existingPtyId,
         cols,
@@ -265,21 +325,58 @@ export function connectPanePty(
       })
     } else {
       allowInitialIdleCacheSeed = false
-      transport.connect({
-        url: '',
-        cols,
-        rows,
-        callbacks: {
-          onData: dataCallback,
-          onError: reportError
-        }
-      })
+      const pendingSpawn = hasExistingPaneTransport
+        ? undefined
+        : pendingSpawnByTabId.get(deps.tabId)
+      if (pendingSpawn) {
+        void pendingSpawn
+          .then((spawnedPtyId) => {
+            if (transport.getPtyId()) {
+              return
+            }
+            if (!spawnedPtyId) {
+              // Why: React StrictMode in dev can mount, start a spawn, then
+              // immediately unmount/remount the pane. If the first mount never
+              // produced a usable PTY ID, the remounted pane must issue its own
+              // spawn instead of staying attached to a completed-but-empty
+              // promise and rendering a dead terminal surface.
+              console.warn(
+                `Pending PTY spawn for tab ${deps.tabId} resolved without a PTY id, retrying fresh spawn`
+              )
+              startFreshSpawn()
+              return
+            }
+            transport.attach({
+              existingPtyId: spawnedPtyId,
+              cols,
+              rows,
+              callbacks: {
+                onData: dataCallback,
+                onError: reportError
+              }
+            })
+          })
+          .catch((err) => {
+            reportError(err instanceof Error ? err.message : String(err))
+          })
+      } else {
+        startFreshSpawn()
+      }
     }
     scheduleRuntimeGraphSync()
   })
 
   return {
     dispose() {
+      disposed = true
+      if (connectFrame !== null) {
+        // Why: StrictMode and split-group remounts can dispose a pane binding
+        // before its deferred PTY attach/spawn work runs. Cancel that queued
+        // frame so stale bindings cannot reattach the PTY and steal the live
+        // handler wiring from the current pane.
+        cancelAnimationFrame(connectFrame)
+        connectFrame = null
+      }
       onDataDisposable.dispose()
       onResizeDisposable.dispose()
     }

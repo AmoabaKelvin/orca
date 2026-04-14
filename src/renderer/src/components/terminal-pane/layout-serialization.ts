@@ -15,6 +15,16 @@ export function paneLeafId(paneId: number): string {
   return `pane:${paneId}`
 }
 
+export function collectLeafIdsInOrder(node: TerminalPaneLayoutNode | null | undefined): string[] {
+  if (!node) {
+    return []
+  }
+  if (node.type === 'leaf') {
+    return [node.leafId]
+  }
+  return [...collectLeafIdsInOrder(node.first), ...collectLeafIdsInOrder(node.second)]
+}
+
 // Cross-platform monospace fallback chain ensures the terminal always has a
 // usable font regardless of OS.  macOS-only fonts like SF Mono and Menlo are
 // harmless on other platforms (the browser skips them), while Cascadia Mono /

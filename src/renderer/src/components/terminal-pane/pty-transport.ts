@@ -199,9 +199,11 @@ export function createIpcPtyTransport(opts: IpcPtyTransportOptions = {}): PtyTra
 
         storedCallbacks.onConnect?.()
         storedCallbacks.onStatus?.('shell')
+        return result.id
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         storedCallbacks.onError?.(msg)
+        throw err
       }
     },
 
@@ -265,6 +267,20 @@ export function createIpcPtyTransport(opts: IpcPtyTransportOptions = {}): PtyTra
         unregisterPtyHandlers(id)
         storedCallbacks.onDisconnect?.()
       }
+    },
+
+    detach() {
+      if (staleTitleTimer) {
+        clearTimeout(staleTitleTimer)
+        staleTitleTimer = null
+      }
+      openCodeStatus = null
+      if (ptyId) {
+        unregisterPtyHandlers(ptyId)
+      }
+      connected = false
+      ptyId = null
+      storedCallbacks = {}
     },
 
     sendInput(data: string): boolean {
