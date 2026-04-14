@@ -7,6 +7,7 @@ import {
   appendFileSync,
   copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -737,10 +738,21 @@ export async function importCookiesFromBrowser(
       }
     }
   } catch {
-    rmSync(tmpDir, { recursive: true, force: true })
-    return {
-      ok: false,
-      reason: `Could not copy ${browser.label} cookies database. Try closing ${browser.label} first.`
+    // Why: on Windows the browser holds an exclusive file lock on its Cookies
+    // file, so filesystem-level copying fails. Fall back to SQLite's online
+    // backup API which operates at the page level and cooperates with the
+    // browser's WAL-mode locks. The backup also consolidates any pending WAL
+    // data, so no separate WAL/SHM copy is needed.
+    try {
+      const srcDb = new Database(browser.cookiesPath, { readonly: true })
+      await srcDb.backup(tmpCookiesPath)
+      srcDb.close()
+    } catch {
+      rmSync(tmpDir, { recursive: true, force: true })
+      return {
+        ok: false,
+        reason: `Could not copy ${browser.label} cookies database. Try closing ${browser.label} first.`
+      }
     }
   }
 
@@ -777,24 +789,37 @@ export async function importCookiesFromBrowser(
   const partitionName = targetPartition.replace('persist:', '')
   const liveCookiesPath = join(app.getPath('userData'), 'Partitions', partitionName, 'Cookies')
 
-  if (!existsSync(liveCookiesPath)) {
-    rmSync(tmpDir, { recursive: true, force: true })
-    return { ok: false, reason: 'Target cookie database not found. Open a browser tab first.' }
-  }
-
   const stagingCookiesPath = join(app.getPath('userData'), 'Cookies-staged')
-  try {
-    copyFileSync(liveCookiesPath, stagingCookiesPath)
-    for (const suffix of ['-wal', '-shm']) {
-      const src = liveCookiesPath + suffix
-      if (existsSync(src)) {
-        copyFileSync(src, stagingCookiesPath + suffix)
+
+  if (existsSync(liveCookiesPath)) {
+    try {
+      copyFileSync(liveCookiesPath, stagingCookiesPath)
+      for (const suffix of ['-wal', '-shm']) {
+        const src = liveCookiesPath + suffix
+        if (existsSync(src)) {
+          copyFileSync(src, stagingCookiesPath + suffix)
+        }
       }
+    } catch {
+      rmSync(tmpDir, { recursive: true, force: true })
+      unlinkDbFiles(stagingCookiesPath)
+      return { ok: false, reason: 'Could not create staging cookie database.' }
     }
-  } catch {
-    rmSync(tmpDir, { recursive: true, force: true })
-    unlinkDbFiles(stagingCookiesPath)
-    return { ok: false, reason: 'Could not create staging cookie database.' }
+  } else {
+    // Why: the target partition's cookie DB hasn't been created yet (no browser
+    // tab has been opened in Orca). Create the staging DB from the source
+    // browser's schema so the cold-start swap has a valid Cookies file to
+    // place. Ensure the partition directory exists for that swap.
+    try {
+      mkdirSync(dirname(liveCookiesPath), { recursive: true })
+      const tmpSourceDb = new Database(tmpCookiesPath, { readonly: true })
+      await tmpSourceDb.backup(stagingCookiesPath)
+      tmpSourceDb.close()
+    } catch {
+      rmSync(tmpDir, { recursive: true, force: true })
+      unlinkDbFiles(stagingCookiesPath)
+      return { ok: false, reason: 'Could not create staging cookie database.' }
+    }
   }
 
   let sourceDb: InstanceType<typeof Database> | null = null
