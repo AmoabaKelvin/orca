@@ -513,6 +513,7 @@ class BrowserManager {
     const guest = webContents.fromId(guestId)
     if (!guest || guest.isDestroyed()) {
       this.webContentsIdByTabId.delete(browserTabId)
+      this.tabIdByWebContentsId.delete(guestId)
       return null
     }
     return guest

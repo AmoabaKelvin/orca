@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'fs'
-import { writeFile, rename, mkdir } from 'fs/promises'
+import { writeFile, rename, mkdir, rm } from 'fs/promises'
 import { join, dirname } from 'path'
 import { homedir } from 'os'
 import type { PersistedState, Repo, WorktreeMeta, GlobalSettings } from '../shared/types'
@@ -56,6 +56,7 @@ export class Store {
   private state: PersistedState
   private writeTimer: ReturnType<typeof setTimeout> | null = null
   private pendingWrite: Promise<void> | null = null
+  private writeGeneration = 0
   private gitUsernameCache = new Map<string, string>()
 
   constructor() {
@@ -122,11 +123,19 @@ export class Store {
   // Why: async writes avoid blocking the main Electron thread on every
   // debounced save (every 300ms during active use).
   private async writeToDiskAsync(): Promise<void> {
+    const gen = this.writeGeneration
     const dataFile = getDataFile()
     const dir = dirname(dataFile)
     await mkdir(dir, { recursive: true }).catch(() => {})
     const tmpFile = `${dataFile}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`
     await writeFile(tmpFile, JSON.stringify(this.state, null, 2), 'utf-8')
+    // Why: if flush() ran while this async write was in-flight, it bumped
+    // writeGeneration and already wrote the latest state synchronously.
+    // Renaming this stale tmp file would overwrite the fresh data.
+    if (this.writeGeneration !== gen) {
+      await rm(tmpFile).catch(() => {})
+      return
+    }
     await rename(tmpFile, dataFile)
   }
 
@@ -342,8 +351,9 @@ export class Store {
       clearTimeout(this.writeTimer)
       this.writeTimer = null
     }
-    // Why: discard any in-flight async write so its rename cannot land after
-    // the sync write below, overwriting the latest state with a stale snapshot.
+    // Why: bump writeGeneration so any in-flight async writeToDiskAsync skips
+    // its rename, preventing a stale snapshot from overwriting this sync write.
+    this.writeGeneration++
     this.pendingWrite = null
     try {
       this.writeToDiskSync()
