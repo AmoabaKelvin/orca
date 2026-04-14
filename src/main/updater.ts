@@ -420,6 +420,11 @@ export function setupAutoUpdater(
   // CI fix the installed app's app-update.yml still contains the stale
   // publisherName. Skip Windows code signing verification — update
   // integrity is still guaranteed by the SHA-512 hash check in latest.yml.
+  //
+  // TODO: remove this override once a Windows Authenticode certificate is
+  // purchased and WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD are added to CI.
+  // At that point electron-builder will embed the correct publisherName
+  // and the default verification should be re-enabled.
   if (process.platform === 'win32') {
     ;(autoUpdater as NsisUpdater).verifyUpdateCodeSignature = () => Promise.resolve(null)
   }
