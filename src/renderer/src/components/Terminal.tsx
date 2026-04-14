@@ -291,27 +291,10 @@ export default function Terminal(): React.JSX.Element | null {
     )
 
     // Why: openFile adds the editor tab but doesn't control its position in
-    // the tab bar. Without explicit ordering, reconcileOrder may insert it
-    // before existing tabs instead of appending at the end.
-    const state = useAppStore.getState()
-    const termIds = (state.tabsByWorktree[activeWorktreeId] ?? []).map((t) => t.id)
-    const editorIds = state.openFiles
-      .filter((f) => f.worktreeId === activeWorktreeId)
-      .map((f) => f.id)
-    const browserIds = (state.browserTabsByWorktree[activeWorktreeId] ?? []).map((t) => t.id)
-    const validIds = new Set([...termIds, ...editorIds, ...browserIds])
-    const stored = state.tabBarOrderByWorktree[activeWorktreeId]
-    const base = (stored ?? []).filter((id) => validIds.has(id))
-    const inBase = new Set(base)
-    for (const id of [...termIds, ...editorIds, ...browserIds]) {
-      if (!inBase.has(id)) {
-        base.push(id)
-        inBase.add(id)
-      }
-    }
-    const order = base.filter((id) => id !== filePath)
-    order.push(filePath)
-    setTabBarOrder(activeWorktreeId, order)
+    // the tab bar. Append the new file to the end of the existing order so
+    // it appears rightmost without disturbing other tabs' positions.
+    const currentOrder = useAppStore.getState().tabBarOrderByWorktree[activeWorktreeId] ?? []
+    setTabBarOrder(activeWorktreeId, [...currentOrder, filePath])
   }, [activeWorktreeId, openFile, setTabBarOrder])
 
   const handleCloseTab = useCallback(
