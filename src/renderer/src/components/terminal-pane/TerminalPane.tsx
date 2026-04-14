@@ -402,7 +402,8 @@ export default function TerminalPane({
         updateTabPtyId,
         markWorktreeUnread,
         dispatchNotification,
-        setCacheTimerStartedAt
+        setCacheTimerStartedAt,
+        syncPanePtyLayoutBinding
       })
       panePtyBindingsRef.current.set(paneId, newPaneBinding)
       manager.setActivePane(paneId, { focus: true })

@@ -180,9 +180,9 @@ describe('createIpcPtyTransport', () => {
 
   it('kills a PTY that finishes spawning after the transport was destroyed', async () => {
     const { createIpcPtyTransport } = await import('./pty-transport')
-    let resolveSpawn: ((value: { id: string }) => void) | null = null
+    const spawnControls: { resolve: ((value: { id: string }) => void) | null } = { resolve: null }
     const spawnPromise = new Promise<{ id: string }>((resolve) => {
-      resolveSpawn = resolve
+      spawnControls.resolve = resolve
     })
     const spawnMock = vi.fn().mockReturnValue(spawnPromise)
     const killMock = vi.fn()
@@ -228,7 +228,10 @@ describe('createIpcPtyTransport', () => {
     })
 
     transport.destroy?.()
-    resolveSpawn?.({ id: 'pty-late' })
+    if (!spawnControls.resolve) {
+      throw new Error('Expected spawn resolver to be captured')
+    }
+    spawnControls.resolve({ id: 'pty-late' })
     await connectPromise
 
     expect(killMock).toHaveBeenCalledWith('pty-late')
@@ -256,7 +259,7 @@ describe('createIpcPtyTransport', () => {
       }
     })
 
-    transport.detach()
+    transport.detach?.()
 
     onData?.({ id: 'pty-detached', data: '\u001b]0;Detached title\u0007\u0007' })
     expect(onTitleChange).not.toHaveBeenCalled()
