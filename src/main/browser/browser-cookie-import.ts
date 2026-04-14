@@ -11,7 +11,8 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
-  unlinkSync
+  unlinkSync,
+  writeFileSync
 } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -587,24 +588,50 @@ function getEncryptionKeyWindows(cookiesPath: string): Buffer | null {
     }
 
     const dpapiEncrypted = encryptedKeyBuf.subarray(5)
-    const b64Input = dpapiEncrypted.toString('base64')
 
-    // Why: execFileSync with an argument array avoids shell interpretation,
-    // preventing injection even if b64Input were somehow malicious. The
-    // base64 alphabet doesn't contain shell metacharacters, but defense
-    // in depth is cheap here.
-    const decryptedB64 = execFileSync(
-      'powershell.exe',
-      [
-        '-NoProfile',
-        '-NonInteractive',
-        '-Command',
-        `Add-Type -AssemblyName System.Security; [Convert]::ToBase64String([Security.Cryptography.ProtectedData]::Unprotect([Convert]::FromBase64String('${b64Input}'), $null, 'CurrentUser'))`
-      ],
-      { encoding: 'utf-8', timeout: 30_000 }
-    ).trim()
+    // Why: passing the encrypted key through PowerShell's stdout pipe is
+    // fragile — encoding mismatches (BOM, code page, UTF-16) can silently
+    // corrupt the base64 output, producing a 32-byte key that looks valid
+    // but is wrong. Instead, write raw bytes to temp files and let
+    // PowerShell operate on files directly, avoiding all pipe encoding issues.
+    const tmpEncFile = join(tmpdir(), `orca-dpapi-enc-${Date.now()}`)
+    const tmpDecFile = join(tmpdir(), `orca-dpapi-dec-${Date.now()}`)
+    try {
+      writeFileSync(tmpEncFile, dpapiEncrypted)
 
-    return Buffer.from(decryptedB64, 'base64')
+      // Why: -EncodedCommand takes a base64-encoded UTF-16LE script, which
+      // completely bypasses command-line escaping and quoting issues. The
+      // script reads/writes raw bytes via .NET file I/O so no encoding
+      // conversion touches the key material.
+      const psScript = [
+        'Add-Type -AssemblyName System.Security',
+        `$enc = [System.IO.File]::ReadAllBytes('${tmpEncFile.replace(/\\/g, '\\\\')}')`,
+        `$dec = [Security.Cryptography.ProtectedData]::Unprotect($enc, $null, 'CurrentUser')`,
+        `[System.IO.File]::WriteAllBytes('${tmpDecFile.replace(/\\/g, '\\\\')}', $dec)`
+      ].join('; ')
+      const encodedCmd = Buffer.from(psScript, 'utf16le').toString('base64')
+
+      execFileSync(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedCmd],
+        {
+          timeout: 30_000
+        }
+      )
+
+      return readFileSync(tmpDecFile)
+    } finally {
+      try {
+        unlinkSync(tmpEncFile)
+      } catch {
+        /* best-effort */
+      }
+      try {
+        unlinkSync(tmpDecFile)
+      } catch {
+        /* best-effort */
+      }
+    }
   } catch {
     return null
   }
@@ -682,11 +709,13 @@ function decryptCookieValueRaw(encryptedBuffer: Buffer, key: Buffer): Buffer | n
     return null
   }
   const version = encryptedBuffer.subarray(0, 3).toString('utf-8')
-  // Why: macOS uses v10/v11 (AES-128-CBC), Windows uses v10/v20 (AES-256-GCM).
-  // Reject versions that don't belong to the current platform to avoid silently
+  // Why: macOS uses v10/v11 (AES-128-CBC), Windows uses v10 (AES-256-GCM).
+  // v20 is Chromium 127+'s app-bound encryption which requires the browser's
+  // own elevation service to decrypt — it cannot be handled here. Reject
+  // versions that don't belong to the current platform to avoid silently
   // producing garbage by feeding data to the wrong decryption algorithm.
   if (IS_WINDOWS) {
-    if (version !== 'v10' && version !== 'v20') {
+    if (version !== 'v10') {
       return null
     }
     if (encryptedBuffer.length < 3 + 12 + 16) {
@@ -914,6 +943,41 @@ export async function importCookiesFromBrowser(
     }
 
     const decryptedCookies: DecryptedCookie[] = []
+
+    // Why: Chromium 127+ on Windows introduced "app-bound encryption" (v20)
+    // which locks cookies to the browser's own elevation service. These
+    // cookies cannot be decrypted externally — only the browser process can
+    // access them. Detect this early and give a clear message rather than
+    // silently importing 0 cookies.
+    if (IS_WINDOWS) {
+      let v20Count = 0
+      for (const row of allRows) {
+        const enc = row.encrypted_value
+        if (
+          enc instanceof Buffer &&
+          enc.length >= 3 &&
+          enc.subarray(0, 3).toString('utf-8') === 'v20'
+        ) {
+          v20Count++
+        }
+      }
+      if (v20Count > 0 && v20Count === allRows.length) {
+        stagingDb.close()
+        stagingDb = null
+        rmSync(tmpDir, { recursive: true, force: true })
+        unlinkDbFiles(stagingCookiesPath)
+        diag(`  all ${v20Count} cookies use v20 app-bound encryption — cannot decrypt externally`)
+        return {
+          ok: false,
+          reason: `${browser.label} uses app-bound encryption (v20) for all cookies, which prevents external import. Use a cookie export extension (e.g. "Cookie Editor") to export cookies as JSON, then import via "From File".`
+        }
+      }
+      if (v20Count > 0) {
+        diag(
+          `  ${v20Count}/${allRows.length} cookies use v20 app-bound encryption — these will be skipped`
+        )
+      }
+    }
 
     const placeholders = targetCols.map(() => '?').join(', ')
     const insertStmt = stagingDb.prepare(
