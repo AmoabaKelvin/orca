@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import {
   FOCUS_TERMINAL_PANE_EVENT,
   TOGGLE_TERMINAL_PANE_EXPAND_EVENT,
@@ -52,6 +52,25 @@ export function useTerminalPaneGlobalEffects({
   const fitEpochRef = useRef(0)
   const fitRanForEpochRef = useRef(-1)
 
+  // Why: when a worktree becomes active, useEffect flushes pending PTY data
+  // and resumes WebGL rendering asynchronously.  Between the React DOM commit
+  // (display: flex) and the useEffect callback, the browser paints one frame
+  // showing stale xterm buffer content from the last visit.  useLayoutEffect
+  // fires synchronously after the DOM commit but before paint, so setting
+  // visibility: hidden here prevents the stale frame from ever appearing.
+  // The visibility is restored in guardedResumeAndFit after the drain and
+  // WebGL resume are complete.
+  useLayoutEffect(() => {
+    const container = containerRef.current
+    if (!container) {
+      return
+    }
+    if (isActive && !wasActiveRef.current) {
+      container.style.visibility = 'hidden'
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive])
+
   useEffect(() => {
     const manager = managerRef.current
     if (!manager) {
@@ -99,6 +118,16 @@ export function useTerminalPaneGlobalEffects({
           return
         }
         mgr.resumeRendering()
+        // Why: the useLayoutEffect above hid the container to prevent a
+        // stale-buffer flash.  Now that pending data has been drained and
+        // WebGL is active, reveal the terminal with its up-to-date content.
+        // This must run before the fit dedup guards below — if the
+        // ResizeObserver already ran fitPanes for this epoch, the early
+        // return would leave the container permanently hidden.
+        const container = containerRef.current
+        if (container) {
+          container.style.visibility = ''
+        }
         // Why: three-layer guard prevents redundant and stale fits.
         // 1. Staleness — reject callbacks from a superseded activation
         //    (e.g. rapid A→B→C worktree switch).
@@ -166,6 +195,14 @@ export function useTerminalPaneGlobalEffects({
         pendingRafRef.current = null
       }
       manager.suspendRendering()
+      // Why: if the pane deactivates before guardedResumeAndFit ran (e.g.
+      // rapid A→B→C worktree switching), the useLayoutEffect left the
+      // container visibility: hidden.  Reset it so the next activation
+      // starts from a clean state.
+      const container = containerRef.current
+      if (container) {
+        container.style.visibility = ''
+      }
     }
     wasActiveRef.current = isActive
     isActiveRef.current = isActive
