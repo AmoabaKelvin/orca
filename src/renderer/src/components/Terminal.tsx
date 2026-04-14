@@ -24,6 +24,8 @@ import { isUpdaterQuitAndInstallInProgress } from '@/lib/updater-beforeunload'
 import EditorAutosaveController from './editor/EditorAutosaveController'
 import BrowserPane, { destroyPersistentWebview } from './browser-pane/BrowserPane'
 import { reconcileTabOrder } from './tab-bar/reconcile-order'
+import TabGroupSplitLayout from './tab-group/TabGroupSplitLayout'
+import { shouldAutoCreateInitialTerminal } from './terminal/initial-terminal'
 
 const EditorPanel = lazy(() => import('./editor/EditorPanel'))
 
@@ -59,6 +61,11 @@ export default function Terminal(): React.JSX.Element | null {
   const createBrowserTab = useAppStore((s) => s.createBrowserTab)
   const closeBrowserTab = useAppStore((s) => s.closeBrowserTab)
   const setActiveBrowserTab = useAppStore((s) => s.setActiveBrowserTab)
+  const groupsByWorktree = useAppStore((s) => s.groupsByWorktree)
+  const layoutByWorktree = useAppStore((s) => s.layoutByWorktree)
+  const activeGroupIdByWorktree = useAppStore((s) => s.activeGroupIdByWorktree)
+  const ensureWorktreeRootGroup = useAppStore((s) => s.ensureWorktreeRootGroup)
+  const reconcileWorktreeTabModel = useAppStore((s) => s.reconcileWorktreeTabModel)
 
   const markFileDirty = useAppStore((s) => s.markFileDirty)
   const setTabBarOrder = useAppStore((s) => s.setTabBarOrder)
@@ -76,6 +83,13 @@ export default function Terminal(): React.JSX.Element | null {
     setTitlebarTabsTarget(document.getElementById('titlebar-tabs'))
   }, [])
 
+  useEffect(() => {
+    if (!activeWorktreeId) {
+      return
+    }
+    ensureWorktreeRootGroup(activeWorktreeId)
+  }, [activeWorktreeId, ensureWorktreeRootGroup])
+
   // Filter editor files to only show those belonging to the active worktree
   const worktreeFiles = activeWorktreeId
     ? openFiles.filter((f) => f.worktreeId === activeWorktreeId)
@@ -83,6 +97,36 @@ export default function Terminal(): React.JSX.Element | null {
   const worktreeBrowserTabs = activeWorktreeId
     ? (browserTabsByWorktree[activeWorktreeId] ?? [])
     : []
+  const getEffectiveLayoutForWorktree = useCallback(
+    (worktreeId: string) => {
+      const layout = layoutByWorktree[worktreeId]
+      if (layout) {
+        return layout
+      }
+      const groups = groupsByWorktree[worktreeId] ?? []
+      const fallbackGroupId = activeGroupIdByWorktree[worktreeId] ?? groups[0]?.id ?? null
+      if (!fallbackGroupId) {
+        return undefined
+      }
+      return { type: 'leaf', groupId: fallbackGroupId } as const
+    },
+    [activeGroupIdByWorktree, groupsByWorktree, layoutByWorktree]
+  )
+  const effectiveActiveLayout = activeWorktreeId
+    ? getEffectiveLayoutForWorktree(activeWorktreeId)
+    : undefined
+  const activeWorktree = activeWorktreeId
+    ? (allWorktrees.find((worktree) => worktree.id === activeWorktreeId) ?? null)
+    : null
+  const activeTerminalTab = tabs.find((tab) => tab.id === activeTabId) ?? null
+  const activeEditorFile = worktreeFiles.find((file) => file.id === activeFileId) ?? null
+  const activeBrowserTab = worktreeBrowserTabs.find((tab) => tab.id === activeBrowserTabId) ?? null
+  const activeSurfaceLabel =
+    activeTabType === 'browser'
+      ? (activeBrowserTab?.title ?? activeBrowserTab?.url ?? 'Browser')
+      : activeTabType === 'editor'
+        ? (activeEditorFile?.relativePath ?? activeEditorFile?.filePath ?? 'Editor')
+        : (activeTerminalTab?.customTitle ?? activeTerminalTab?.title ?? 'Terminal')
   const activeWorktreeBrowserTabIdsKey = activeWorktreeId
     ? (browserTabsByWorktree[activeWorktreeId] ?? []).map((tab) => tab.id).join(',')
     : ''
@@ -166,12 +210,6 @@ export default function Terminal(): React.JSX.Element | null {
       mountedWorktreeIdsRef.current.delete(id)
     }
   }
-  // Why: tracks worktrees that have already been initialized (either by
-  // auto-creating a first tab or by having tabs on first activation). Once a
-  // worktree is in this set, closing all its tabs will NOT auto-spawn a
-  // replacement — the user explicitly chose to close them.
-  const initializedWorktreesRef = useRef(new Set<string>())
-
   // Auto-create first tab when worktree activates
   useEffect(() => {
     if (!workspaceSessionReady) {
@@ -181,28 +219,14 @@ export default function Terminal(): React.JSX.Element | null {
       return
     }
 
-    if (tabs.length > 0 || worktreeFiles.length > 0 || worktreeBrowserTabs.length > 0) {
-      initializedWorktreesRef.current.add(activeWorktreeId)
+    const { renderableTabCount } = reconcileWorktreeTabModel(activeWorktreeId)
+
+    if (!shouldAutoCreateInitialTerminal(renderableTabCount)) {
       return
     }
 
-    // Why: once a worktree has been initialized (had tabs or auto-created one),
-    // don't auto-create again. This prevents a new terminal from spawning
-    // immediately after the user closes the last tab. Also guards against
-    // React StrictMode double-invocation.
-    if (initializedWorktreesRef.current.has(activeWorktreeId)) {
-      return
-    }
-    initializedWorktreesRef.current.add(activeWorktreeId)
     createTab(activeWorktreeId)
-  }, [
-    workspaceSessionReady,
-    activeWorktreeId,
-    tabs.length,
-    worktreeFiles.length,
-    worktreeBrowserTabs.length,
-    createTab
-  ])
+  }, [workspaceSessionReady, activeWorktreeId, tabs.length, createTab, reconcileWorktreeTabModel])
 
   const handleNewTab = useCallback(() => {
     if (!activeWorktreeId) {
@@ -696,10 +720,11 @@ export default function Terminal(): React.JSX.Element | null {
     >
       <EditorAutosaveController />
 
-      {/* Why: the tab bar is rendered into the titlebar via a portal so it
-          shares the same visual row as the "Orca" title. The portal target
-          (#titlebar-tabs) lives in App.tsx's titlebar. */}
+      {/* Why: once split groups are enabled, each group owns its own tab strip
+          inline like VS Code. The old titlebar portal stays only as a fallback
+          before the root-group layout has been established. */}
       {activeWorktreeId &&
+        !effectiveActiveLayout &&
         titlebarTabsTarget &&
         createPortal(
           <TabBar
@@ -736,140 +761,200 @@ export default function Terminal(): React.JSX.Element | null {
           titlebarTabsTarget
         )}
 
-      {/* Terminal panes container - hidden when editor tab active */}
-      <div
-        className={`relative flex-1 min-h-0 overflow-hidden ${
-          // Why: only hide the terminal container when another tab type has
-          // content to display. Hiding unconditionally for non-terminal types
-          // causes a blank screen when activeTabType is stale (e.g. 'editor'
-          // with no files after session restore). The terminal stays visible
-          // as a fallback until another surface is ready.
-          (activeTabType === 'editor' && worktreeFiles.length > 0) ||
-          (activeTabType === 'browser' && worktreeBrowserTabs.length > 0)
-            ? 'hidden'
-            : ''
-        }`}
-      >
-        {allWorktrees
-          .filter((wt) => mountedWorktreeIdsRef.current.has(wt.id))
-          .map((worktree) => {
-            const worktreeTabs = tabsByWorktree[worktree.id] ?? []
-            const isVisible = activeView !== 'settings' && worktree.id === activeWorktreeId
+      {activeWorktreeId &&
+        effectiveActiveLayout &&
+        titlebarTabsTarget &&
+        createPortal(
+          <div className="flex h-full min-w-0 items-center px-3 text-xs text-muted-foreground">
+            {/* Why: split layouts can show several independent tab rows, so the
+                titlebar cannot host the real tabs without collapsing multiple
+                groups into one shared surface. A lightweight summary still uses
+                that otherwise empty strip and keeps the window chrome balanced. */}
+            <span className="truncate font-medium text-foreground/80">
+              {activeWorktree?.displayName ?? 'Workspace'}
+            </span>
+            <span className="px-2 text-border">/</span>
+            <span className="truncate">{activeSurfaceLabel}</span>
+          </div>,
+          titlebarTabsTarget
+        )}
 
-            return (
-              <div
-                key={worktree.id}
-                className={isVisible ? 'absolute inset-0' : 'absolute inset-0 hidden'}
-                aria-hidden={!isVisible}
-              >
-                {(() => {
-                  const staleWorktreePtyIds = worktreeTabs.flatMap((tab) =>
-                    (ptyIdsByTabId[tab.id] ?? []).filter((ptyId) =>
-                      Boolean(codexRestartNoticeByPtyId[ptyId])
-                    )
-                  )
-                  if (staleWorktreePtyIds.length === 0) {
-                    return null
-                  }
-                  // Why: account switching is global, but repeating the same
-                  // stale-session prompt in every affected Codex pane quickly
-                  // turns into noise. Keep one worktree-scoped chip in the
-                  // same visual corner so users get the same prompt style
-                  // without having to dismiss it in every pane.
-                  return (
-                    <div className="pointer-events-none absolute right-3 top-3 z-20">
-                      <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-border/80 bg-popover/95 px-2 py-1.5 shadow-lg backdrop-blur-sm">
-                        <span className="text-[11px] text-muted-foreground">
-                          Codex is using the previous account
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => queueCodexPaneRestarts(staleWorktreePtyIds)}
-                            className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-2 py-1 text-[11px] font-medium text-background transition-colors hover:opacity-90"
-                          >
-                            <RefreshCw className="size-3" />
-                            Restart
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              for (const ptyId of staleWorktreePtyIds) {
-                                clearCodexRestartNotice(ptyId)
-                              }
-                            }}
-                            className="rounded-md px-1.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
-                          >
-                            Dismiss
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })()}
-                {worktreeTabs.map((tab) => (
-                  <TerminalPane
-                    key={`${tab.id}-${tab.generation ?? 0}`}
-                    tabId={tab.id}
+      {effectiveActiveLayout ? (
+        <div className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
+          {allWorktrees
+            .filter((wt) => mountedWorktreeIdsRef.current.has(wt.id))
+            .map((worktree) => {
+              const layout = getEffectiveLayoutForWorktree(worktree.id)
+              if (!layout) {
+                return null
+              }
+              const isVisible = activeView !== 'settings' && worktree.id === activeWorktreeId
+              return (
+                <div
+                  key={`tab-groups-${worktree.id}`}
+                  className={isVisible ? 'absolute inset-0 flex' : 'absolute inset-0 hidden'}
+                  aria-hidden={!isVisible}
+                >
+                  <TabGroupSplitLayout
+                    layout={layout}
                     worktreeId={worktree.id}
-                    cwd={worktree.path}
-                    isActive={isVisible && tab.id === activeTabId && activeTabType === 'terminal'}
-                    onPtyExit={(ptyId) => handlePtyExit(tab.id, ptyId)}
-                    onCloseTab={() => handleCloseTab(tab.id)}
+                    focusedGroupId={activeGroupIdByWorktree[worktree.id]}
                   />
-                ))}
-              </div>
-            )
-          })}
-      </div>
+                </div>
+              )
+            })}
+        </div>
+      ) : null}
 
-      {/* Browser panes container — all browser panes for the active worktree
-          stay mounted so webview DOM state (scroll position, form inputs, etc.)
-          survives tab switches. BrowserPagePane uses isActive + CSS to show/hide. */}
-      <div
-        className={`relative flex-1 min-h-0 overflow-hidden ${activeTabType !== 'browser' ? 'hidden' : ''}`}
-      >
-        {allWorktrees.map((worktree) => {
-          const browserTabs = browserTabsByWorktree[worktree.id] ?? []
-          const isVisibleWorktree = activeView !== 'settings' && worktree.id === activeWorktreeId
-          if (browserTabs.length === 0) {
-            return null
-          }
-          return (
-            <div
-              key={`browser-${worktree.id}`}
-              className={isVisibleWorktree ? 'absolute inset-0' : 'absolute inset-0 hidden'}
-              aria-hidden={!isVisibleWorktree}
-            >
-              {browserTabs.map((browserTab) => {
-                const isBrowserActive =
-                  isVisibleWorktree &&
-                  activeTabType === 'browser' &&
-                  browserTab.id === activeBrowserTabId
+      {!effectiveActiveLayout && (
+        <>
+          {/* Why: split-group layouts render their own terminal/browser/editor
+              surfaces inside TabGroupPanel. Keeping the legacy workspace-level
+              panes mounted underneath as hidden DOM creates duplicate
+              TerminalPane/BrowserPane instances for the same tab, which lets
+              two React trees race over one PTY or webview. Render only one
+              surface model at a time. */}
+          {/* Terminal panes container - hidden when editor tab active */}
+          <div
+            className={`relative flex-1 min-h-0 overflow-hidden ${
+              // Why: only hide the terminal container when another tab type has
+              // content to display. Hiding unconditionally for non-terminal types
+              // causes a blank screen when activeTabType is stale (e.g. 'editor'
+              // with no files after session restore). The terminal stays visible
+              // as a fallback until another surface is ready.
+              (activeTabType === 'editor' && worktreeFiles.length > 0) ||
+              (activeTabType === 'browser' && worktreeBrowserTabs.length > 0)
+                ? 'hidden'
+                : ''
+            }`}
+          >
+            {allWorktrees
+              .filter((wt) => mountedWorktreeIdsRef.current.has(wt.id))
+              .map((worktree) => {
+                const worktreeTabs = tabsByWorktree[worktree.id] ?? []
+                const isVisible = activeView !== 'settings' && worktree.id === activeWorktreeId
+
                 return (
                   <div
-                    key={browserTab.id}
-                    className={`absolute inset-0${isBrowserActive ? '' : ' pointer-events-none hidden'}`}
+                    key={worktree.id}
+                    className={isVisible ? 'absolute inset-0' : 'absolute inset-0 hidden'}
+                    aria-hidden={!isVisible}
                   >
-                    <BrowserPane browserTab={browserTab} isActive={isBrowserActive} />
+                    {(() => {
+                      const staleWorktreePtyIds = worktreeTabs.flatMap((tab) =>
+                        (ptyIdsByTabId[tab.id] ?? []).filter((ptyId) =>
+                          Boolean(codexRestartNoticeByPtyId[ptyId])
+                        )
+                      )
+                      if (staleWorktreePtyIds.length === 0) {
+                        return null
+                      }
+                      // Why: account switching is global, but repeating the same
+                      // stale-session prompt in every affected Codex pane quickly
+                      // turns into noise. Keep one worktree-scoped chip in the
+                      // same visual corner so users get the same prompt style
+                      // without having to dismiss it in every pane.
+                      return (
+                        <div className="pointer-events-none absolute right-3 top-3 z-20">
+                          <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-border/80 bg-popover/95 px-2 py-1.5 shadow-lg backdrop-blur-sm">
+                            <span className="text-[11px] text-muted-foreground">
+                              Codex is using the previous account
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => queueCodexPaneRestarts(staleWorktreePtyIds)}
+                                className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-2 py-1 text-[11px] font-medium text-background transition-colors hover:opacity-90"
+                              >
+                                <RefreshCw className="size-3" />
+                                Restart
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  for (const ptyId of staleWorktreePtyIds) {
+                                    clearCodexRestartNotice(ptyId)
+                                  }
+                                }}
+                                className="rounded-md px-1.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+                              >
+                                Dismiss
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
+                    {worktreeTabs.map((tab) => (
+                      <TerminalPane
+                        key={`${tab.id}-${tab.generation ?? 0}`}
+                        tabId={tab.id}
+                        worktreeId={worktree.id}
+                        cwd={worktree.path}
+                        isActive={
+                          isVisible && tab.id === activeTabId && activeTabType === 'terminal'
+                        }
+                        onPtyExit={(ptyId) => handlePtyExit(tab.id, ptyId)}
+                        onCloseTab={() => handleCloseTab(tab.id)}
+                      />
+                    ))}
                   </div>
                 )
               })}
-            </div>
-          )
-        })}
-      </div>
+          </div>
 
-      {activeWorktreeId && activeTabType === 'editor' && worktreeFiles.length > 0 && (
-        <Suspense
-          fallback={
-            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-              Loading editor...
-            </div>
-          }
-        >
-          <EditorPanel />
-        </Suspense>
+          {/* Browser panes container — all browser panes for the active worktree
+              stay mounted so webview DOM state (scroll position, form inputs, etc.)
+              survives tab switches. BrowserPagePane uses isActive + CSS to show/hide. */}
+          <div
+            className={`relative flex-1 min-h-0 overflow-hidden ${
+              activeTabType !== 'browser' ? 'hidden' : ''
+            }`}
+          >
+            {allWorktrees.map((worktree) => {
+              const browserTabs = browserTabsByWorktree[worktree.id] ?? []
+              const isVisibleWorktree =
+                activeView !== 'settings' && worktree.id === activeWorktreeId
+              if (browserTabs.length === 0) {
+                return null
+              }
+              return (
+                <div
+                  key={`browser-${worktree.id}`}
+                  className={isVisibleWorktree ? 'absolute inset-0' : 'absolute inset-0 hidden'}
+                  aria-hidden={!isVisibleWorktree}
+                >
+                  {browserTabs.map((browserTab) => {
+                    const isBrowserActive =
+                      isVisibleWorktree &&
+                      activeTabType === 'browser' &&
+                      browserTab.id === activeBrowserTabId
+                    return (
+                      <div
+                        key={browserTab.id}
+                        className={`absolute inset-0${isBrowserActive ? '' : ' pointer-events-none hidden'}`}
+                      >
+                        <BrowserPane browserTab={browserTab} isActive={isBrowserActive} />
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
+
+          {activeWorktreeId && activeTabType === 'editor' && worktreeFiles.length > 0 && (
+            <Suspense
+              fallback={
+                <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+                  Loading editor...
+                </div>
+              }
+            >
+              <EditorPanel />
+            </Suspense>
+          )}
+        </>
       )}
 
       {/* Save confirmation dialog */}

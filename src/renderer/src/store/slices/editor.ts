@@ -252,7 +252,34 @@ export type EditorSlice = {
   hydrateEditorSession: (session: WorkspaceSessionState) => void
 }
 
-export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (set) => ({
+function openWorkspaceEditorItem(
+  state: AppState,
+  fileId: string,
+  worktreeId: string,
+  label: string,
+  contentType: 'editor' | 'diff' | 'conflict-review',
+  isPreview?: boolean
+): string {
+  const targetGroupId =
+    state.activeGroupIdByWorktree?.[worktreeId] ?? state.groupsByWorktree?.[worktreeId]?.[0]?.id
+  if (!targetGroupId) {
+    return fileId
+  }
+  const existing = state.findTabForEntityInGroup?.(worktreeId, targetGroupId, fileId, contentType)
+  if (existing) {
+    state.activateTab?.(existing.id)
+    return existing.id
+  }
+  const created = state.createUnifiedTab?.(worktreeId, contentType, {
+    entityId: fileId,
+    label,
+    isPreview,
+    targetGroupId
+  })
+  return created?.id ?? fileId
+}
+
+export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (set, get) => ({
   editorDrafts: {},
   setEditorDraft: (fileId, content) =>
     set((s) => ({
@@ -340,7 +367,7 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       }
     }),
 
-  openFile: (file, options) =>
+  openFile: (file, options) => {
     set((s) => {
       const id = file.filePath
       const existing = s.openFiles.find((f) => f.id === id)
@@ -469,9 +496,22 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         ...tabBarUpdate,
         ...activeResult
       }
-    }),
+    })
+    void openWorkspaceEditorItem(
+      get(),
+      file.filePath,
+      file.worktreeId,
+      file.relativePath,
+      file.mode === 'conflict-review'
+        ? 'conflict-review'
+        : file.mode === 'diff'
+          ? 'diff'
+          : 'editor',
+      options?.preview ?? false
+    )
+  },
 
-  pinFile: (fileId, _tabId) =>
+  pinFile: (fileId, tabId) => {
     set((s) => {
       const file = s.openFiles.find((f) => f.id === fileId)
       if (!file?.isPreview) {
@@ -480,7 +520,16 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       return {
         openFiles: s.openFiles.map((f) => (f.id === fileId ? { ...f, isPreview: undefined } : f))
       }
-    }),
+    })
+    const state = get()
+    for (const tabs of Object.values(state.unifiedTabsByWorktree ?? {})) {
+      for (const item of tabs) {
+        if (item.entityId === fileId && (!tabId || item.id === tabId)) {
+          state.pinTab?.(item.id)
+        }
+      }
+    }
+  },
 
   // Why: closing a tab does NOT clear Resolved locally state. If the file is
   // still present in Changes or Staged Changes, the continuity badge should
@@ -568,7 +617,19 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       }
     }),
 
-  closeAllFiles: () =>
+  closeAllFiles: () => {
+    const state = get()
+    const activeWorktreeId = state.activeWorktreeId
+    const closingItemIds = Object.values(state.unifiedTabsByWorktree ?? {})
+      .flat()
+      .filter(
+        (item) =>
+          (item.contentType === 'editor' ||
+            item.contentType === 'diff' ||
+            item.contentType === 'conflict-review') &&
+          (!activeWorktreeId || item.worktreeId === activeWorktreeId)
+      )
+      .map((item) => item.id)
     set((s) => {
       const activeWorktreeId = s.activeWorktreeId
       if (!activeWorktreeId) {
@@ -616,9 +677,13 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         // to an old match unexpectedly.
         pendingEditorReveal: null
       }
-    }),
+    })
+    for (const itemId of closingItemIds) {
+      get().closeUnifiedTab?.(itemId)
+    }
+  },
 
-  setActiveFile: (fileId) =>
+  setActiveFile: (fileId) => {
     set((s) => {
       const file = s.openFiles.find((f) => f.id === fileId)
       const worktreeId = file?.worktreeId
@@ -628,7 +693,25 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
           ? { ...s.activeFileIdByWorktree, [worktreeId]: fileId }
           : s.activeFileIdByWorktree
       }
-    }),
+    })
+    const state = get()
+    const worktreeId = state.activeWorktreeId
+    if (!worktreeId) {
+      return
+    }
+    const groupId =
+      state.activeGroupIdByWorktree?.[worktreeId] ?? state.groupsByWorktree?.[worktreeId]?.[0]?.id
+    if (!groupId) {
+      return
+    }
+    const item =
+      state.findTabForEntityInGroup?.(worktreeId, groupId, fileId, 'editor') ??
+      state.findTabForEntityInGroup?.(worktreeId, groupId, fileId, 'diff') ??
+      state.findTabForEntityInGroup?.(worktreeId, groupId, fileId, 'conflict-review')
+    if (item) {
+      state.activateTab?.(item.id)
+    }
+  },
 
   reorderFiles: (fileIds) =>
     set((s) => {
@@ -657,7 +740,7 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       )
     })),
 
-  openDiff: (worktreeId, filePath, relativePath, language, staged) =>
+  openDiff: (worktreeId, filePath, relativePath, language, staged) => {
     set((s) => {
       const diffSource: DiffSource = staged ? 'staged' : 'unstaged'
       const id = `${worktreeId}::diff::${diffSource}::${relativePath}`
@@ -705,12 +788,20 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
         activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' }
       }
-    }),
+    })
+    void openWorkspaceEditorItem(
+      get(),
+      `${worktreeId}::diff::${staged ? 'staged' : 'unstaged'}::${relativePath}`,
+      worktreeId,
+      relativePath,
+      'diff'
+    )
+  },
 
-  openBranchDiff: (worktreeId, worktreePath, entry, compare, language) =>
+  openBranchDiff: (worktreeId, worktreePath, entry, compare, language) => {
+    const branchCompare = toBranchCompareSnapshot(compare)
+    const id = `${worktreeId}::diff::branch::${compare.baseRef}::${branchCompare.compareVersion}::${entry.path}`
     set((s) => {
-      const branchCompare = toBranchCompareSnapshot(compare)
-      const id = `${worktreeId}::diff::branch::${compare.baseRef}::${branchCompare.compareVersion}::${entry.path}`
       const existing = s.openFiles.find((f) => f.id === id)
       if (existing) {
         return {
@@ -756,9 +847,19 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
         activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' }
       }
-    }),
+    })
+    void openWorkspaceEditorItem(get(), id, worktreeId, entry.path, 'diff')
+  },
 
-  openAllDiffs: (worktreeId, worktreePath, alternate, areaFilter) =>
+  openAllDiffs: (worktreeId, worktreePath, alternate, areaFilter) => {
+    const id = areaFilter
+      ? `${worktreeId}::all-diffs::uncommitted::${areaFilter}`
+      : `${worktreeId}::all-diffs::uncommitted`
+    const label = areaFilter
+      ? ({ staged: 'Staged Changes', unstaged: 'Changes', untracked: 'Untracked Files' }[
+          areaFilter
+        ] ?? 'All Changes')
+      : 'All Changes'
     set((s) => {
       const relevantEntries = (s.gitStatusByWorktree[worktreeId] ?? []).filter((entry) => {
         if (areaFilter) {
@@ -769,14 +870,6 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       const skippedConflicts = relevantEntries
         .filter((entry) => entry.conflictStatus === 'unresolved' && entry.conflictKind)
         .map((entry) => ({ path: entry.path, conflictKind: entry.conflictKind! }))
-      const id = areaFilter
-        ? `${worktreeId}::all-diffs::uncommitted::${areaFilter}`
-        : `${worktreeId}::all-diffs::uncommitted`
-      const label = areaFilter
-        ? ({ staged: 'Staged Changes', unstaged: 'Changes', untracked: 'Untracked Files' }[
-            areaFilter
-          ] ?? 'All Changes')
-        : 'All Changes'
       const existing = s.openFiles.find((f) => f.id === id)
       if (existing) {
         return {
@@ -820,11 +913,13 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
         activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' }
       }
-    }),
+    })
+    void openWorkspaceEditorItem(get(), id, worktreeId, label, 'diff')
+  },
 
-  openConflictFile: (worktreeId, worktreePath, entry, language) =>
+  openConflictFile: (worktreeId, worktreePath, entry, language) => {
+    const absolutePath = joinPath(worktreePath, entry.path)
     set((s) => {
-      const absolutePath = joinPath(worktreePath, entry.path)
       const id = absolutePath
       const conflict = toOpenConflictMetadata(entry)
       const existing = s.openFiles.find((f) => f.id === id)
@@ -890,16 +985,18 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
             ? s.trackedConflictPathsByWorktree
             : { ...s.trackedConflictPathsByWorktree, [worktreeId]: nextTracked }
       }
-    }),
+    })
+    void openWorkspaceEditorItem(get(), absolutePath, worktreeId, entry.path, 'editor')
+  },
 
   // Why: Review conflicts is launched from Source Control into the editor area,
   // not from Checks. Merge-conflict review is source-control work, not CI/PR
   // status. The tab renders from a stored snapshot (entries + timestamp), not
   // from live status on every paint, so the list is stable even if the live
   // unresolved set changes between polls.
-  openConflictReview: (worktreeId, worktreePath, entries, source) =>
+  openConflictReview: (worktreeId, worktreePath, entries, source) => {
+    const id = `${worktreeId}::conflict-review`
     set((s) => {
-      const id = `${worktreeId}::conflict-review`
       const conflictReview: ConflictReviewState = {
         source,
         snapshotTimestamp: Date.now(),
@@ -948,13 +1045,15 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
         activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' }
       }
-    }),
+    })
+    void openWorkspaceEditorItem(get(), id, worktreeId, 'Conflict Review', 'conflict-review')
+  },
 
-  openBranchAllDiffs: (worktreeId, worktreePath, compare, alternate) =>
+  openBranchAllDiffs: (worktreeId, worktreePath, compare, alternate) => {
+    const branchCompare = toBranchCompareSnapshot(compare)
+    const id = `${worktreeId}::all-diffs::branch::${compare.baseRef}::${branchCompare.compareVersion}`
     set((s) => {
-      const branchCompare = toBranchCompareSnapshot(compare)
       const branchEntriesSnapshot = s.gitBranchChangesByWorktree[worktreeId] ?? []
-      const id = `${worktreeId}::all-diffs::branch::${compare.baseRef}::${branchCompare.compareVersion}`
       const existing = s.openFiles.find((f) => f.id === id)
       if (existing) {
         return {
@@ -1000,7 +1099,15 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
         activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' }
       }
-    }),
+    })
+    void openWorkspaceEditorItem(
+      get(),
+      id,
+      worktreeId,
+      `Branch Changes (${compare.baseRef})`,
+      'diff'
+    )
+  },
 
   // Cursor line tracking
   editorCursorLine: {},

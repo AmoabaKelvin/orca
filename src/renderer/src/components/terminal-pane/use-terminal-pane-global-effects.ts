@@ -8,32 +8,37 @@ import type { PtyTransport } from './pty-transport'
 type UseTerminalPaneGlobalEffectsArgs = {
   tabId: string
   isActive: boolean
+  isVisible: boolean
   managerRef: React.RefObject<PaneManager | null>
   containerRef: React.RefObject<HTMLDivElement | null>
   paneTransportsRef: React.RefObject<Map<number, PtyTransport>>
   pendingWritesRef: React.RefObject<Map<number, string>>
   isActiveRef: React.RefObject<boolean>
+  isVisibleRef: React.RefObject<boolean>
   toggleExpandPane: (paneId: number) => void
 }
 
 export function useTerminalPaneGlobalEffects({
   tabId,
   isActive,
+  isVisible,
   managerRef,
   containerRef,
   paneTransportsRef,
   pendingWritesRef,
   isActiveRef,
+  isVisibleRef,
   toggleExpandPane
 }: UseTerminalPaneGlobalEffectsArgs): void {
   const wasActiveRef = useRef(false)
+  const wasVisibleRef = useRef(false)
 
   useEffect(() => {
     const manager = managerRef.current
     if (!manager) {
       return
     }
-    if (isActive) {
+    if (isVisible) {
       manager.resumeRendering()
       for (const [paneId, pendingBuffer] of pendingWritesRef.current.entries()) {
         if (pendingBuffer.length > 0) {
@@ -44,14 +49,22 @@ export function useTerminalPaneGlobalEffects({
           pendingWritesRef.current.set(paneId, '')
         }
       }
-      requestAnimationFrame(() => fitAndFocusPanes(manager))
-    } else if (wasActiveRef.current) {
+      requestAnimationFrame(() => {
+        if (isActive) {
+          fitAndFocusPanes(manager)
+          return
+        }
+        fitPanes(manager)
+      })
+    } else if (wasVisibleRef.current) {
       manager.suspendRendering()
     }
+    wasVisibleRef.current = isVisible
     wasActiveRef.current = isActive
     isActiveRef.current = isActive
+    isVisibleRef.current = isVisible
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive])
+  }, [isActive, isVisible])
 
   useEffect(() => {
     const onToggleExpand = (event: Event): void => {
@@ -79,7 +92,7 @@ export function useTerminalPaneGlobalEffects({
   }, [tabId])
 
   useEffect(() => {
-    if (!isActive) {
+    if (!isVisible) {
       return
     }
     const container = containerRef.current
@@ -118,7 +131,7 @@ export function useTerminalPaneGlobalEffects({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive])
+  }, [isVisible])
 
   useEffect(() => {
     return window.api.ui.onFileDrop(({ path, target }) => {

@@ -8,7 +8,7 @@ import {
   type DragEndEvent
 } from '@dnd-kit/core'
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
-import { Columns2, Globe, Plus, Rows2, TerminalSquare } from 'lucide-react'
+import { Globe, Plus, TerminalSquare } from 'lucide-react'
 import type {
   BrowserTab as BrowserTabState,
   TerminalTab,
@@ -60,7 +60,7 @@ type TabBarProps = {
   onCloseAllFiles?: () => void
   onPinFile?: (fileId: string, tabId?: string) => void
   tabBarOrder?: string[]
-  onCreateSplitGroup?: (direction: 'right' | 'down') => void
+  onCreateSplitGroup?: (direction: 'left' | 'right' | 'up' | 'down') => void
 }
 
 type TabItem =
@@ -242,6 +242,7 @@ export default function TabBar({
                     onSetCustomTitle={onSetCustomTitle}
                     onSetTabColor={onSetTabColor}
                     onToggleExpand={onTogglePaneExpand}
+                    onSplitGroup={(direction) => onCreateSplitGroup?.(direction)}
                   />
                 )
               }
@@ -255,6 +256,7 @@ export default function TabBar({
                     onActivate={() => onActivateBrowserTab?.(item.id)}
                     onClose={() => onCloseBrowserTab?.(item.id)}
                     onCloseToRight={() => onCloseToRight(item.id)}
+                    onSplitGroup={(direction) => onCreateSplitGroup?.(direction)}
                   />
                 )
               }
@@ -270,6 +272,7 @@ export default function TabBar({
                   onCloseToRight={() => onCloseToRight(item.id)}
                   onCloseAll={() => onCloseAllFiles?.()}
                   onPin={() => onPinFile?.(item.data.id, item.data.tabId)}
+                  onSplitGroup={(direction) => onCreateSplitGroup?.(direction)}
                 />
               )
             })}
@@ -320,24 +323,6 @@ export default function TabBar({
             New Browser Tab
             <DropdownMenuShortcut>{NEW_BROWSER_SHORTCUT}</DropdownMenuShortcut>
           </DropdownMenuItem>
-          {onCreateSplitGroup && (
-            <>
-              <DropdownMenuItem
-                onSelect={() => onCreateSplitGroup('right')}
-                className="gap-2 rounded-[7px] px-2 py-0.5 text-[12px] leading-5 font-medium"
-              >
-                <Columns2 className="size-4 text-muted-foreground" />
-                New Group Right
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => onCreateSplitGroup('down')}
-                className="gap-2 rounded-[7px] px-2 py-0.5 text-[12px] leading-5 font-medium"
-              >
-                <Rows2 className="size-4 text-muted-foreground" />
-                New Group Down
-              </DropdownMenuItem>
-            </>
-          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

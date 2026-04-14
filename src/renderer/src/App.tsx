@@ -118,6 +118,7 @@ function App(): React.JSX.Element {
   const activeBrowserTabIdByWorktree = useAppStore((s) => s.activeBrowserTabIdByWorktree)
   const unifiedTabsByWorktree = useAppStore((s) => s.unifiedTabsByWorktree)
   const groupsByWorktree = useAppStore((s) => s.groupsByWorktree)
+  const layoutByWorktree = useAppStore((s) => s.layoutByWorktree)
   const activeGroupIdByWorktree = useAppStore((s) => s.activeGroupIdByWorktree)
 
   // Right sidebar + editor state
@@ -257,6 +258,7 @@ function App(): React.JSX.Element {
           activeBrowserTabIdByWorktree,
           unifiedTabsByWorktree,
           groupsByWorktree,
+          layoutByWorktree,
           activeGroupIdByWorktree
         })
       )
@@ -279,6 +281,7 @@ function App(): React.JSX.Element {
     activeBrowserTabIdByWorktree,
     unifiedTabsByWorktree,
     groupsByWorktree,
+    layoutByWorktree,
     activeGroupIdByWorktree
   ])
 
