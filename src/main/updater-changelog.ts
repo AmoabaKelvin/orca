@@ -106,8 +106,14 @@ export async function fetchChangelog(
         if (localIndex < i) {
           continue
         }
-      } else if (compareVersions(localVersion, candidate.version) > 0) {
-        // localVersion is newer than this candidate — user already passed it.
+      } else if (compareVersions(localVersion, candidate.version) >= 0) {
+        // localVersion is newer than (or same as) this candidate — user already
+        // passed it. Why >=: compareVersions returns 0 both for genuinely equal
+        // versions and for unparseable strings. In the localIndex === -1 path,
+        // equal means localVersion literally matches the candidate but wasn't
+        // found by findIndex (shouldn't happen), and unparseable means we can't
+        // determine the relationship. Either way, skipping is the safe default
+        // to avoid showing stale content.
         continue
       }
 
