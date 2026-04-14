@@ -91,6 +91,14 @@ export function UpdateCard() {
   const [mediaFailed, setMediaFailed] = useState(false)
   const [mediaLoaded, setMediaLoaded] = useState(false)
   const [installError, setInstallError] = useState<string | null>(null)
+  // Why: the version-based dismiss gate at the bottom of the visibility
+  // section intentionally keeps error cards visible so a download failure
+  // still surfaces even if the user previously dismissed the "available"
+  // card for the same version.  But this means the error card's own X
+  // button cannot hide the card via dismissUpdate alone.  A separate
+  // local flag tracks whether the user has explicitly closed the error
+  // card in this render cycle.
+  const [errorDismissed, setErrorDismissed] = useState(false)
   // Why: "not-available" is transient feedback ("You're up to date") that
   // should auto-dismiss. A local flag avoids polluting the store with
   // timer state that no other component cares about.
@@ -148,6 +156,9 @@ export function UpdateCard() {
     }
     if (exiting) {
       setExiting(false)
+    }
+    if (errorDismissed) {
+      setErrorDismissed(false)
     }
   }
 
@@ -229,13 +240,24 @@ export function UpdateCard() {
     return null
   }
 
+  // Why: the version-based dismiss gate below intentionally keeps error cards
+  // visible, but when the user explicitly clicks X on the error card itself
+  // the card must disappear. This gate handles that case.
+  if (status.state === 'error' && errorDismissed) {
+    return null
+  }
+
   // Dismiss gate: if the user previously dismissed this version, hide the card
   // for passive reminder states. Keep active in-progress/error states visible so
   // explicit install actions can still surface progress and failures.
   // Why: bypass the gate when the current cycle was user-initiated — the user
   // explicitly asked to check, so they expect to see the result even if they
   // dismissed the same version earlier.
-  if (versionRef.current && dismissedVersion === versionRef.current && !userInitiatedCycleRef.current) {
+  if (
+    versionRef.current &&
+    dismissedVersion === versionRef.current &&
+    !userInitiatedCycleRef.current
+  ) {
     if (status.state !== 'downloading' && status.state !== 'error') {
       return null
     }
@@ -262,8 +284,11 @@ export function UpdateCard() {
     // immediately — otherwise the card would reappear on the next render
     // because the bypass ref still overrides the persisted dismissal.
     userInitiatedCycleRef.current = false
-    if (status.state === 'error' && cachedVersion) {
-      dismissUpdate(cachedVersion)
+    if (status.state === 'error') {
+      setErrorDismissed(true)
+      if (cachedVersion) {
+        dismissUpdate(cachedVersion)
+      }
       return
     }
     dismissUpdate()
@@ -279,7 +304,9 @@ export function UpdateCard() {
     status.state === 'error'
       ? {
           title: 'Update Error',
-          summary: cachedVersion ? 'Could not complete the update.' : 'Could not check for updates.',
+          summary: cachedVersion
+            ? 'Could not complete the update.'
+            : 'Could not check for updates.',
           message: status.message,
           releaseUrl: releaseUrlForVersion(cachedVersion),
           primaryAction: cachedVersion
@@ -450,12 +477,12 @@ export function UpdateCard() {
     !reassuranceSeen && (status.state === 'available' || status.state === 'downloading')
 
   return (
-    <div className="fixed bottom-10 right-4 z-40 w-[360px] max-w-[calc(100vw-32px)] flex flex-col gap-2
-      max-[480px]:left-4 max-[480px]:right-4 max-[480px]:w-auto">
+    <div
+      className="fixed bottom-10 right-4 z-40 w-[360px] max-w-[calc(100vw-32px)] flex flex-col gap-2
+      max-[480px]:left-4 max-[480px]:right-4 max-[480px]:w-auto"
+    >
       {showReassurance && (
-        <Card
-          className={`py-0 gap-0 ${animationClass}`}
-        >
+        <Card className={`py-0 gap-0 ${animationClass}`}>
           <div className="flex items-center gap-3 p-3">
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground">
@@ -611,9 +638,7 @@ function SimpleCardContent({
         </Button>
       </div>
 
-      <p className="text-sm text-muted-foreground">
-        Orca v{version} is ready.
-      </p>
+      <p className="text-sm text-muted-foreground">Orca v{version} is ready.</p>
 
       <p className="text-xs leading-relaxed text-muted-foreground">
         Sessions won&apos;t be interrupted.
@@ -656,9 +681,7 @@ function DownloadingContent({
 }) {
   const release = changelog?.release
   const showMedia =
-    release?.mediaUrl &&
-    !mediaFailed &&
-    !(prefersReducedMotion && isAnimatedGif(release.mediaUrl))
+    release?.mediaUrl && !mediaFailed && !(prefersReducedMotion && isAnimatedGif(release.mediaUrl))
 
   return (
     <div className="flex flex-col gap-3 p-4">
