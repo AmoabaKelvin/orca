@@ -590,6 +590,9 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       const browserTabsForWorktree = activeWorktreeId
         ? (s.browserTabsByWorktree[activeWorktreeId] ?? [])
         : []
+      const terminalTabsForWorktree = activeWorktreeId
+        ? (s.tabsByWorktree[activeWorktreeId] ?? [])
+        : []
       const fallbackBrowserTabId =
         activeWorktreeId && browserTabsForWorktree.length > 0
           ? (s.activeBrowserTabIdByWorktree[activeWorktreeId] ??
@@ -607,6 +610,11 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         newActiveTabTypeByWorktree[activeWorktreeId] =
           browserTabsForWorktree.length > 0 ? 'browser' : 'terminal'
       }
+      const shouldDeactivateWorktree =
+        activeWorktreeId !== null &&
+        remainingForWorktree.length === 0 &&
+        browserTabsForWorktree.length === 0 &&
+        terminalTabsForWorktree.length === 0
 
       // Why: keep tabBarOrderByWorktree in sync so stale editor IDs don't
       // linger and cause position shifts the next time the order is reconciled.
@@ -625,8 +633,14 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         openFiles: newFiles,
         editorDrafts: newEditorDrafts,
         activeFileId: newActiveId,
-        activeBrowserTabId:
-          activeWorktreeId && remainingForWorktree.length === 0
+        // Why: if closing the last editor also leaves the worktree without any
+        // browser or terminal surface, keep parity with the terminal/browser
+        // close handlers and return to the Orca landing state instead of
+        // leaving an active worktree selected with nothing renderable.
+        activeWorktreeId: shouldDeactivateWorktree ? null : s.activeWorktreeId,
+        activeBrowserTabId: shouldDeactivateWorktree
+          ? null
+          : activeWorktreeId && remainingForWorktree.length === 0
             ? fallbackBrowserTabId
             : s.activeBrowserTabId,
         activeTabType: newActiveTabType,
@@ -676,8 +690,11 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       delete newActiveFileIdByWorktree[activeWorktreeId]
       const newActiveTabTypeByWorktree = { ...s.activeTabTypeByWorktree }
       const browserTabsForWorktree = s.browserTabsByWorktree[activeWorktreeId] ?? []
+      const terminalTabsForWorktree = s.tabsByWorktree[activeWorktreeId] ?? []
       newActiveTabTypeByWorktree[activeWorktreeId] =
         browserTabsForWorktree.length > 0 ? 'browser' : 'terminal'
+      const shouldDeactivateWorktree =
+        browserTabsForWorktree.length === 0 && terminalTabsForWorktree.length === 0
 
       // Why: remove all closed editor file IDs from tab bar order so stale
       // entries don't cause position shifts on subsequent tab operations.
@@ -697,8 +714,13 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         openFiles: newFiles,
         editorDrafts: newEditorDrafts,
         activeFileId: null,
-        activeBrowserTabId:
-          browserTabsForWorktree.length > 0
+        // Why: closing every editor in the active worktree can leave no
+        // renderable surface at all. Clear the active worktree in that case so
+        // the renderer shows the landing page instead of a blank workspace.
+        activeWorktreeId: shouldDeactivateWorktree ? null : s.activeWorktreeId,
+        activeBrowserTabId: shouldDeactivateWorktree
+          ? null
+          : browserTabsForWorktree.length > 0
             ? (s.activeBrowserTabIdByWorktree[activeWorktreeId] ??
               browserTabsForWorktree[0]?.id ??
               null)

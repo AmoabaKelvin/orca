@@ -10,6 +10,7 @@ function createEditorStore(): StoreApi<AppState> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return createStore<any>()((...args: any[]) => ({
     activeWorktreeId: 'wt-1',
+    tabsByWorktree: {},
     browserTabsByWorktree: {},
     activeBrowserTabId: null,
     activeBrowserTabIdByWorktree: {},
@@ -257,6 +258,25 @@ describe('createEditorSlice editor drafts', () => {
     expect(store.getState().activeBrowserTabId).toBe('browser-1')
   })
 
+  it('returns to the landing state when closing the last editor in a worktree with no other surfaces', () => {
+    const store = createEditorStore()
+
+    store.getState().openFile({
+      filePath: '/repo/notes.md',
+      relativePath: 'notes.md',
+      worktreeId: 'wt-1',
+      language: 'markdown',
+      mode: 'edit'
+    })
+
+    store.getState().closeFile('/repo/notes.md')
+
+    expect(store.getState().activeWorktreeId).toBeNull()
+    expect(store.getState().activeFileId).toBeNull()
+    expect(store.getState().activeBrowserTabId).toBeNull()
+    expect(store.getState().activeTabType).toBe('terminal')
+  })
+
   it('falls back to a browser tab when closing all editors in the active worktree', () => {
     const store = createEditorStore()
 
@@ -292,6 +312,25 @@ describe('createEditorSlice editor drafts', () => {
 
     expect(store.getState().activeTabType).toBe('browser')
     expect(store.getState().activeBrowserTabId).toBe('browser-1')
+  })
+
+  it('returns to the landing state when closing all editors and no other surfaces remain', () => {
+    const store = createEditorStore()
+
+    store.getState().openFile({
+      filePath: '/repo/a.md',
+      relativePath: 'a.md',
+      worktreeId: 'wt-1',
+      language: 'markdown',
+      mode: 'edit'
+    })
+
+    store.getState().closeAllFiles()
+
+    expect(store.getState().activeWorktreeId).toBeNull()
+    expect(store.getState().activeFileId).toBeNull()
+    expect(store.getState().activeBrowserTabId).toBeNull()
+    expect(store.getState().activeTabType).toBe('terminal')
   })
 })
 
