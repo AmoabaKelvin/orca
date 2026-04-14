@@ -1,5 +1,11 @@
-import React, { lazy, useMemo, type MutableRefObject } from 'react'
-import { LazySection } from './LazySection'
+import React, {
+  lazy,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type MutableRefObject
+} from 'react'
 import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
 import { DiffEditor, type DiffOnMount } from '@monaco-editor/react'
 import type { editor as monacoEditor } from 'monaco-editor'
@@ -85,6 +91,7 @@ export function DiffSectionItem({
   toggleSection,
   setSectionHeights,
   setSections,
+  requestRemeasure,
   modifiedEditorsRef,
   handleSectionSaveRef
 }: {
@@ -102,6 +109,9 @@ export function DiffSectionItem({
   toggleSection: (index: number) => void
   setSectionHeights: React.Dispatch<React.SetStateAction<Record<number, number>>>
   setSections: React.Dispatch<React.SetStateAction<DiffSection[]>>
+  /** Notify the virtualizer to re-measure this item after an async height change
+   *  (e.g. Monaco collapsing unchanged regions or section collapse toggle). */
+  requestRemeasure: (index: number) => void
   modifiedEditorsRef: MutableRefObject<Map<number, monacoEditor.IStandaloneCodeEditor>>
   handleSectionSaveRef: MutableRefObject<(index: number) => Promise<void>>
 }): React.JSX.Element {
@@ -121,6 +131,44 @@ export function DiffSectionItem({
         : computeLineStats(section.originalContent, section.modifiedContent, section.status),
     [section.loading, section.originalContent, section.modifiedContent, section.status]
   )
+
+  // Why: the virtualizer only renders items near the viewport, so mounting
+  // this component is the signal to start fetching diff content — replaces
+  // the IntersectionObserver that LazySection previously provided.
+  useEffect(() => {
+    loadSection(index)
+  }, [index, loadSection])
+
+  // Why: when the virtualizer unmounts this section during scroll, capture
+  // any unsaved edits so they survive the round-trip through section state
+  // and are restored when the user scrolls back.
+  const indexRef = useRef(index)
+  indexRef.current = index
+  useEffect(() => {
+    const editorsMap = modifiedEditorsRef.current
+    return () => {
+      const idx = indexRef.current
+      const editor = editorsMap.get(idx)
+      if (editor) {
+        const content = editor.getValue()
+        setSections((prev) =>
+          prev.map((s, i) => (i === idx ? { ...s, modifiedContent: content } : s))
+        )
+        editorsMap.delete(idx)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stable refs only; runs on unmount
+  }, [])
+
+  // Why: after a collapse toggle the wrapper div changes height; the
+  // virtualizer needs to re-measure to reposition items below.
+  const prevCollapsed = useRef(section.collapsed)
+  useLayoutEffect(() => {
+    if (prevCollapsed.current !== section.collapsed) {
+      prevCollapsed.current = section.collapsed
+      requestRemeasure(index)
+    }
+  }, [section.collapsed, index, requestRemeasure])
 
   const handleOpenInEditor = (e: React.MouseEvent): void => {
     e.stopPropagation()
@@ -145,6 +193,10 @@ export function DiffSectionItem({
         }
         return { ...prev, [index]: contentHeight }
       })
+      // Why: Monaco may report a new content height asynchronously (e.g. after
+      // hideUnchangedRegions collapses folds). The virtualizer uses DOM measurement,
+      // so we must tell it to re-read this item's size to keep positions correct.
+      requestRemeasure(index)
     }
     modifiedEditor.onDidContentSizeChange(updateHeight)
     updateHeight()
@@ -166,7 +218,7 @@ export function DiffSectionItem({
   }
 
   return (
-    <LazySection key={section.key} index={index} onVisible={loadSection}>
+    <>
       <div
         className="sticky top-0 z-10 bg-background flex items-center w-full px-3 py-1.5 text-left text-xs hover:bg-accent transition-colors group cursor-pointer"
         onClick={() => toggleSection(index)}
@@ -303,6 +355,6 @@ export function DiffSectionItem({
           )}
         </div>
       )}
-    </LazySection>
+    </>
   )
 }

@@ -5,6 +5,7 @@ across smaller files would make the lifecycle edges harder to reason about and
 more error-prone than keeping the whole viewer flow together. */
 import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react'
 import type { editor as monacoEditor } from 'monaco-editor'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { useAppStore } from '@/store'
 import { joinPath } from '@/lib/path'
 import { setWithLRU } from '@/lib/scroll-cache'
@@ -323,6 +324,13 @@ export default function CombinedDiffViewer({ file }: { file: OpenFile }): React.
     }
 
     const updateCachedScrollPosition = (): void => {
+      // Why: when sections are restored from cache, this effect's cleanup fires
+      // before the scroll-restore RAF loop has run. At that point scrollTop is
+      // still 0, so saving it would overwrite the real cached scroll position
+      // and prevent restoration. Skip the save while a restore is pending.
+      if (pendingRestoreScrollTopRef.current !== null) {
+        return
+      }
       const existing = combinedDiffViewStateCache.get(file.id)
       setWithLRU(combinedDiffScrollTopCache, file.id, container.scrollTop)
       if (!existing || existing.entrySignature !== entrySignature) {
@@ -398,6 +406,39 @@ export default function CombinedDiffViewer({ file }: { file: OpenFile }): React.
       })
     }
   }, [branchSummary, file, openAllDiffs, openBranchAllDiffs])
+
+  // Why: absolute positioning via @tanstack/react-virtual eliminates the jarring
+  // layout shifts caused by the old line-count height estimates. When Monaco
+  // collapses unchanged regions (hideUnchangedRegions), onDidContentSizeChange
+  // triggers a re-measure and the virtualizer repositions items atomically via
+  // CSS transforms instead of reflowing the entire document.
+  const virtualizer = useVirtualizer({
+    count: sections.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: (index) => {
+      const section = sections[index]
+      if (!section || section.collapsed) {
+        return 30
+      }
+      const cached = sectionHeights[index]
+      if (cached) {
+        return cached + 30
+      }
+      return 200
+    },
+    overscan: 2,
+    getItemKey: (index) => `${sections[index]?.key ?? index}:${generation}`
+  })
+
+  const virtualizerRef = useRef(virtualizer)
+  virtualizerRef.current = virtualizer
+
+  const requestRemeasure = useCallback((index: number) => {
+    const el = scrollContainerRef.current?.querySelector(`[data-index="${index}"]`)
+    if (el instanceof HTMLElement) {
+      virtualizerRef.current.measureElement(el)
+    }
+  }, [])
 
   if (sections.length === 0 && (file.skippedConflicts?.length ?? 0) > 0) {
     return (
@@ -519,26 +560,42 @@ export default function CombinedDiffViewer({ file }: { file: OpenFile }): React.
 
       <div ref={scrollContainerRef} className="flex-1 overflow-auto scrollbar-editor">
         {skippedConflictNotice}
-        {sections.map((section, index) => (
-          <DiffSectionItem
-            key={`${section.key}:${generation}`}
-            section={section}
-            index={index}
-            isBranchMode={isBranchMode}
-            sideBySide={sideBySide}
-            isDark={isDark}
-            settings={settings}
-            sectionHeight={sectionHeights[index]}
-            worktreeId={file.worktreeId}
-            worktreeRoot={file.filePath}
-            loadSection={loadSection}
-            toggleSection={toggleSection}
-            setSectionHeights={setSectionHeights}
-            setSections={setSections}
-            modifiedEditorsRef={modifiedEditorsRef}
-            handleSectionSaveRef={handleSectionSaveRef}
-          />
-        ))}
+        <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
+          {virtualizer.getVirtualItems().map((vItem) => {
+            const section = sections[vItem.index]
+            if (!section) {
+              return null
+            }
+            return (
+              <div
+                key={vItem.key}
+                data-index={vItem.index}
+                ref={virtualizer.measureElement}
+                className="absolute left-0 right-0 border-b border-border"
+                style={{ transform: `translateY(${vItem.start}px)` }}
+              >
+                <DiffSectionItem
+                  section={section}
+                  index={vItem.index}
+                  isBranchMode={isBranchMode}
+                  sideBySide={sideBySide}
+                  isDark={isDark}
+                  settings={settings}
+                  sectionHeight={sectionHeights[vItem.index]}
+                  worktreeId={file.worktreeId}
+                  worktreeRoot={file.filePath}
+                  loadSection={loadSection}
+                  toggleSection={toggleSection}
+                  setSectionHeights={setSectionHeights}
+                  setSections={setSections}
+                  requestRemeasure={requestRemeasure}
+                  modifiedEditorsRef={modifiedEditorsRef}
+                  handleSectionSaveRef={handleSectionSaveRef}
+                />
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
