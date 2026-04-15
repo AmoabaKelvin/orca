@@ -31,10 +31,6 @@ import { shouldAutoCreateInitialTerminal } from './terminal/initial-terminal'
 import CodexRestartChip from './CodexRestartChip'
 
 const EditorPanel = lazy(() => import('./editor/EditorPanel'))
-// Why: keep the split-group renderer path dark until dedicated Playwright
-// coverage lands. This branch keeps the implementation and correctness fixes,
-// but the user-visible rollout stays on the legacy workspace path by default.
-const ENABLE_SPLIT_GROUPS = false
 
 function Terminal(): React.JSX.Element | null {
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
@@ -120,9 +116,7 @@ function Terminal(): React.JSX.Element | null {
     [activeGroupIdByWorktree, groupsByWorktree, layoutByWorktree]
   )
   const effectiveActiveLayout = activeWorktreeId
-    ? ENABLE_SPLIT_GROUPS
-      ? getEffectiveLayoutForWorktree(activeWorktreeId)
-      : undefined
+    ? getEffectiveLayoutForWorktree(activeWorktreeId)
     : undefined
   const activeWorktree = activeWorktreeId
     ? (allWorktrees.find((worktree) => worktree.id === activeWorktreeId) ?? null)
