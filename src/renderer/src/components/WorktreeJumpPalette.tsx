@@ -176,7 +176,7 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
     const all: Worktree[] = Object.values(worktreesByRepo).flat()
     // Why: browser-tab search is explicitly cross-worktree, so it must keep
     // indexing live browser pages even when their owning worktree is archived.
-    return sortWorktreesRecent(all, tabsByWorktree, repoMap, prCache)
+    return sortWorktreesSmart(all, tabsByWorktree, repoMap, prCache)
   }, [worktreesByRepo, tabsByWorktree, repoMap, prCache])
 
   // Why: browser rows need worktree lookups for repo badge colors, and browser
