@@ -105,6 +105,10 @@ export type TerminalTab = {
   ptyId: string | null
   worktreeId: string
   title: string
+  /** Stable fallback label for default-named terminals ("Terminal 1", etc.).
+   *  Why: agent CLIs overwrite the live title via OSC updates, but Orca still
+   *  needs the original terminal label for numbering and reset behavior. */
+  defaultTitle?: string
   customTitle: string | null
   color: string | null
   sortOrder: number

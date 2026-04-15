@@ -9,6 +9,7 @@ import type {
 import { scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
 import { clearTransientTerminalState, emptyLayoutSnapshot } from './terminal-helpers'
 import { isClaudeAgent, detectAgentStatusFromTitle } from '@/lib/agent-status'
+import { buildOrphanTerminalCleanupPatch, getOrphanTerminalIds } from './terminal-orphan-helpers'
 import {
   registerEagerPtyBuffer,
   ensurePtyDispatcher
@@ -17,7 +18,7 @@ import {
 function getNextTerminalOrdinal(tabs: TerminalTab[]): number {
   const usedOrdinals = new Set<number>()
   for (const tab of tabs) {
-    const match = /^Terminal (\d+)$/.exec(tab.customTitle ?? tab.title)
+    const match = /^Terminal (\d+)$/.exec(tab.defaultTitle ?? tab.title)
     if (!match) {
       continue
     }
@@ -29,6 +30,15 @@ function getNextTerminalOrdinal(tabs: TerminalTab[]): number {
     nextOrdinal += 1
   }
   return nextOrdinal
+}
+
+function getFallbackTabTitle(tab: TerminalTab, index?: number): string {
+  return (
+    tab.customTitle?.trim() ||
+    tab.defaultTitle?.trim() ||
+    tab.title ||
+    `Terminal ${(index ?? 0) + 1}`
+  )
 }
 
 export type TerminalSlice = {
@@ -196,8 +206,12 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
     const id = globalThis.crypto.randomUUID()
     let tab!: TerminalTab
     set((s) => {
-      const existing = s.tabsByWorktree[worktreeId] ?? []
+      const orphanTerminalIds = getOrphanTerminalIds(s, worktreeId)
+      const existing = (s.tabsByWorktree[worktreeId] ?? []).filter(
+        (entry) => !orphanTerminalIds.has(entry.id)
+      )
       const nextOrdinal = getNextTerminalOrdinal(existing)
+      const defaultTitle = `Terminal ${nextOrdinal}`
       tab = {
         id,
         ptyId: null,
@@ -205,13 +219,15 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
         // Why: users expect terminal labels to reflect the currently open set,
         // not a monotonic creation counter. Reusing the lowest free ordinal
         // keeps a lone fresh terminal at "Terminal 1" after older tabs close.
-        title: `Terminal ${nextOrdinal}`,
+        title: defaultTitle,
+        defaultTitle,
         customTitle: null,
         color: null,
         sortOrder: existing.length,
         createdAt: Date.now()
       }
       return {
+        ...buildOrphanTerminalCleanupPatch(s, worktreeId, orphanTerminalIds),
         tabsByWorktree: {
           ...s.tabsByWorktree,
           [worktreeId]: [...existing, tab]
@@ -224,7 +240,10 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
         activeTabId: tab.id,
         activeTabIdByWorktree: { ...s.activeTabIdByWorktree, [worktreeId]: tab.id },
         ptyIdsByTabId: { ...s.ptyIdsByTabId, [tab.id]: [] },
-        terminalLayoutsByTabId: { ...s.terminalLayoutsByTabId, [tab.id]: emptyLayoutSnapshot() }
+        terminalLayoutsByTabId: {
+          ...s.terminalLayoutsByTabId,
+          [tab.id]: emptyLayoutSnapshot()
+        }
       }
     })
     const state = get()
@@ -406,12 +425,25 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
       const next = { ...s.tabsByWorktree }
       for (const wId of Object.keys(next)) {
         next[wId] = next[wId].map((t) => {
-          if (t.id !== tabId || t.title === title) {
+          if (t.id !== tabId) {
+            return t
+          }
+          const nextTitle = title.trim() || getFallbackTabTitle(t)
+          if (t.title === nextTitle) {
             return t
           }
           changed = true
           ownerWorktreeId = wId
-          return { ...t, title }
+          return {
+            ...t,
+            // Why: PTYs can briefly emit an empty title while an agent exits.
+            // Keep the stable fallback label instead of rendering a blank tab.
+            title: nextTitle,
+            defaultTitle:
+              t.defaultTitle ??
+              (/^Terminal \d+$/.test(t.title) ? t.title : undefined) ??
+              (/^Terminal \d+$/.test(nextTitle) ? nextTitle : undefined)
+          }
         })
       }
       if (!changed) {
@@ -434,7 +466,11 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
       .flat()
       .find((entry) => entry.contentType === 'terminal' && entry.entityId === tabId)
     if (item) {
-      get().setTabLabel(item.id, title)
+      const resolvedTitle =
+        Object.values(get().tabsByWorktree)
+          .flat()
+          .find((tab) => tab.id === tabId)?.title ?? title.trim()
+      get().setTabLabel(item.id, resolvedTitle)
     }
   },
 

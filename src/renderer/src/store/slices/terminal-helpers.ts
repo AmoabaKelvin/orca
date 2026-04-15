@@ -18,6 +18,7 @@ export function clearTransientTerminalState(tab: TerminalTab, index: number): Te
 }
 
 function getResetTitle(tab: TerminalTab, index: number): string {
-  const fallbackTitle = tab.customTitle?.trim() || `Terminal ${index + 1}`
+  const fallbackTitle =
+    tab.customTitle?.trim() || tab.defaultTitle?.trim() || `Terminal ${index + 1}`
   return detectAgentStatusFromTitle(tab.title) ? fallbackTitle : tab.title
 }

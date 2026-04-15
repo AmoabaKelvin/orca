@@ -4,11 +4,21 @@
 import { useCallback, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { OpenFile } from '@/store/slices/editor'
-import type { BrowserTab as BrowserTabState } from '../../../../shared/types'
+import type {
+  BrowserTab as BrowserTabState,
+  Tab,
+  TabGroup,
+  TerminalTab
+} from '../../../../shared/types'
 import { useAppStore } from '../../store'
 import { destroyPersistentWebview } from '../browser-pane/BrowserPane'
 
 export type GroupEditorItem = OpenFile & { tabId: string }
+
+const EMPTY_GROUPS: readonly TabGroup[] = []
+const EMPTY_UNIFIED_TABS: readonly Tab[] = []
+const EMPTY_BROWSER_TABS: readonly BrowserTabState[] = []
+const EMPTY_RUNTIME_TERMINAL_TABS: readonly TerminalTab[] = []
 
 type TerminalTabItem = {
   id: string
@@ -30,11 +40,16 @@ export function useTabGroupWorkspaceModel({
 }) {
   const worktreeState = useAppStore(
     useShallow((state) => ({
-      groups: state.groupsByWorktree[worktreeId] ?? [],
-      unifiedTabs: state.unifiedTabsByWorktree[worktreeId] ?? [],
+      // Why: Zustand v5 expects selector snapshots to be referentially stable
+      // when the underlying store state has not changed. Allocating fresh
+      // fallback arrays here (`?? []`) makes React think every snapshot is
+      // new, which traps the split-group render path in an infinite update loop
+      // and blanks the window as soon as TabGroupPanel mounts.
+      groups: state.groupsByWorktree[worktreeId] ?? EMPTY_GROUPS,
+      unifiedTabs: state.unifiedTabsByWorktree[worktreeId] ?? EMPTY_UNIFIED_TABS,
       openFiles: state.openFiles,
-      browserTabs: state.browserTabsByWorktree[worktreeId] ?? [],
-      runtimeTerminalTabs: state.tabsByWorktree[worktreeId] ?? [],
+      browserTabs: state.browserTabsByWorktree[worktreeId] ?? EMPTY_BROWSER_TABS,
+      runtimeTerminalTabs: state.tabsByWorktree[worktreeId] ?? EMPTY_RUNTIME_TERMINAL_TABS,
       expandedPaneByTabId: state.expandedPaneByTabId,
       worktree:
         Object.values(state.worktreesByRepo)
@@ -61,6 +76,7 @@ export function useTabGroupWorkspaceModel({
   const pinFile = useAppStore((state) => state.pinFile)
   const closeBrowserTab = useAppStore((state) => state.closeBrowserTab)
   const setActiveBrowserTab = useAppStore((state) => state.setActiveBrowserTab)
+  const setActiveWorktree = useAppStore((state) => state.setActiveWorktree)
   const copyUnifiedTabToGroup = useAppStore((state) => state.copyUnifiedTabToGroup)
   const setTabCustomTitle = useAppStore((state) => state.setTabCustomTitle)
   const setTabColor = useAppStore((state) => state.setTabColor)
@@ -153,8 +169,24 @@ export function useTabGroupWorkspaceModel({
     [closeFile, worktreeId]
   )
 
+  const leaveWorktreeIfEmpty = useCallback(() => {
+    const state = useAppStore.getState()
+    if (state.activeWorktreeId !== worktreeId) {
+      return
+    }
+    // Why: split-group close actions bypass the legacy Terminal.tsx handlers
+    // that used to deselect the worktree when its final visible surface
+    // closed. Without the same guard here, the renderer keeps an empty
+    // worktree selected and TabGroupPanel has nothing to render, producing a
+    // blank workspace instead of Orca's landing screen.
+    const { renderableTabCount } = state.reconcileWorktreeTabModel(worktreeId)
+    if (renderableTabCount === 0) {
+      setActiveWorktree(null)
+    }
+  }, [setActiveWorktree, worktreeId])
+
   const closeItem = useCallback(
-    (itemId: string) => {
+    (itemId: string, opts?: { skipEmptyCheck?: boolean }) => {
       const item = groupTabs.find((candidate) => candidate.id === itemId)
       if (!item) {
         return
@@ -168,8 +200,18 @@ export function useTabGroupWorkspaceModel({
         closeEditorIfUnreferenced(item.entityId, item.id)
         closeUnifiedTab(item.id)
       }
+      if (!opts?.skipEmptyCheck) {
+        leaveWorktreeIfEmpty()
+      }
     },
-    [closeBrowserTab, closeEditorIfUnreferenced, closeTab, closeUnifiedTab, groupTabs]
+    [
+      closeBrowserTab,
+      closeEditorIfUnreferenced,
+      closeTab,
+      closeUnifiedTab,
+      groupTabs,
+      leaveWorktreeIfEmpty
+    ]
   )
 
   const closeMany = useCallback(
@@ -309,13 +351,14 @@ export function useTabGroupWorkspaceModel({
       (item) => item.groupId === groupId
     )
     for (const item of items) {
-      closeItem(item.id)
+      closeItem(item.id, { skipEmptyCheck: true })
     }
     // Why: empty split groups are layout state, not tab state. The workspace
     // model owns collapsing those placeholder panes so views do not need to
     // understand when closing tabs is insufficient to remove a group shell.
     closeEmptyGroup(worktreeId, groupId)
-  }, [closeEmptyGroup, closeItem, groupId, worktreeId])
+    leaveWorktreeIfEmpty()
+  }, [closeEmptyGroup, closeItem, groupId, leaveWorktreeIfEmpty, worktreeId])
 
   const closeAllEditorTabsInGroup = useCallback(() => {
     for (const item of groupTabs) {

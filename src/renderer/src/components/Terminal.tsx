@@ -31,6 +31,10 @@ import { shouldAutoCreateInitialTerminal } from './terminal/initial-terminal'
 import CodexRestartChip from './CodexRestartChip'
 
 const EditorPanel = lazy(() => import('./editor/EditorPanel'))
+// Why: keep the split-group renderer path dark until dedicated Playwright
+// coverage lands. This branch keeps the implementation and correctness fixes,
+// but the user-visible rollout stays on the legacy workspace path by default.
+const ENABLE_SPLIT_GROUPS = false
 
 function Terminal(): React.JSX.Element | null {
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
@@ -116,7 +120,9 @@ function Terminal(): React.JSX.Element | null {
     [activeGroupIdByWorktree, groupsByWorktree, layoutByWorktree]
   )
   const effectiveActiveLayout = activeWorktreeId
-    ? getEffectiveLayoutForWorktree(activeWorktreeId)
+    ? ENABLE_SPLIT_GROUPS
+      ? getEffectiveLayoutForWorktree(activeWorktreeId)
+      : undefined
     : undefined
   const activeWorktree = activeWorktreeId
     ? (allWorktrees.find((worktree) => worktree.id === activeWorktreeId) ?? null)
@@ -189,10 +195,19 @@ function Terminal(): React.JSX.Element | null {
     setSaveDialogFileId(null)
   }, [])
 
-  // Ensure activeTabId is valid (adjusting state during render)
-  if (tabs.length > 0 && (!activeTabId || !tabs.find((t) => t.id === activeTabId))) {
+  useEffect(() => {
+    if (tabs.length === 0) {
+      return
+    }
+    if (activeTabId && tabs.some((tab) => tab.id === activeTabId)) {
+      return
+    }
+    // Why: mutating Zustand during render trips React's "Cannot update a
+    // component while rendering a different component" warning. Keep the
+    // legacy active-tab repair, but run it as an effect after the render that
+    // observed the stale activeTabId.
     setActiveTab(tabs[0].id)
-  }
+  }, [activeTabId, setActiveTab, tabs])
 
   // Track which worktrees have been activated during this app session.
   // Only mount TerminalPanes for visited worktrees to prevent mass PTY
@@ -222,18 +237,16 @@ function Terminal(): React.JSX.Element | null {
       return
     }
 
+    // Why: this fallback exists to give a newly activated/restored worktree a
+    // focusable surface when the reconciled tab model has nothing renderable.
+    // Re-running it on ordinary tab-count changes would recreate a terminal
+    // immediately after the user intentionally closed the last visible one.
     const { renderableTabCount } = reconcileWorktreeTabModel(activeWorktreeId)
     if (!shouldAutoCreateInitialTerminal(renderableTabCount)) {
       return
     }
     createTab(activeWorktreeId)
-  }, [
-    workspaceSessionReady,
-    activeWorktreeId,
-    tabs.length,
-    createTab,
-    reconcileWorktreeTabModel
-  ])
+  }, [workspaceSessionReady, activeWorktreeId, createTab, reconcileWorktreeTabModel])
 
   const handleNewTab = useCallback(() => {
     if (!activeWorktreeId) {

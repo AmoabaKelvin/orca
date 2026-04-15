@@ -806,5 +806,58 @@ describe('TabsSlice', () => {
       expect(store.getState().groupsByWorktree[WT][0].tabOrder).toEqual([])
       expect(store.getState().groupsByWorktree[WT][0].activeTabId).toBeNull()
     })
+
+    it('restores live runtime terminal tabs into the unified tab model', () => {
+      const runtimeTerminalId = 'runtime-terminal-1'
+
+      store.setState({
+        tabsByWorktree: {
+          [WT]: [
+            {
+              id: runtimeTerminalId,
+              ptyId: 'pty-4',
+              worktreeId: WT,
+              title: 'Terminal 1',
+              customTitle: null,
+              color: null,
+              sortOrder: 0,
+              createdAt: 1
+            }
+          ]
+        },
+        ptyIdsByTabId: {
+          [runtimeTerminalId]: ['pty-4']
+        },
+        unifiedTabsByWorktree: {
+          [WT]: []
+        },
+        groupsByWorktree: {
+          [WT]: []
+        },
+        activeGroupIdByWorktree: {}
+      })
+
+      const result = store.getState().reconcileWorktreeTabModel(WT)
+      const state = store.getState()
+      const restoredTab = state.unifiedTabsByWorktree[WT]?.[0]
+      const restoredGroup = state.groupsByWorktree[WT]?.[0]
+
+      expect(result.renderableTabCount).toBe(1)
+      expect(result.activeRenderableTabId).toBe(runtimeTerminalId)
+      expect(restoredTab).toMatchObject({
+        id: runtimeTerminalId,
+        entityId: runtimeTerminalId,
+        contentType: 'terminal',
+        label: 'Terminal 1'
+      })
+      expect(restoredGroup).toMatchObject({
+        activeTabId: runtimeTerminalId,
+        tabOrder: [runtimeTerminalId]
+      })
+      expect(state.layoutByWorktree[WT]).toEqual({
+        type: 'leaf',
+        groupId: restoredGroup?.id
+      })
+    })
   })
 })

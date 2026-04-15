@@ -46,6 +46,12 @@ describe('clearTransientTerminalState', () => {
     expect(result.title).toBe('Terminal 1')
   })
 
+  it('prefers defaultTitle over index fallback when present', () => {
+    const tab = makeTab({ title: '. claude', customTitle: null, defaultTitle: 'Terminal 4' })
+    const result = clearTransientTerminalState(tab, 0)
+    expect(result.title).toBe('Terminal 4')
+  })
+
   it('keeps original title when no agent status detected', () => {
     const tab = makeTab({ title: 'bash' })
     const result = clearTransientTerminalState(tab, 0)
