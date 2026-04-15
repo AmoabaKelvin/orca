@@ -5,7 +5,7 @@ import type { Worktree, Repo, TerminalTab } from '../../../../shared/types'
 type SortBy = 'name' | 'smart' | 'recent' | 'repo'
 
 type PRCacheEntry = { data: object | null; fetchedAt: number }
-export type RecentSortOverride = {
+export type SmartSortOverride = {
   worktree: Worktree
   tabs: TerminalTab[]
   hasRecentPRSignal: boolean
@@ -86,10 +86,10 @@ function getSmartSortCandidate(
   tabsByWorktree: Record<string, TerminalTab[]> | null,
   repoMap: Map<string, Repo>,
   prCache: Record<string, PRCacheEntry> | null,
-  recentSortOverrides: Record<string, RecentSortOverride> | null
-): RecentSortOverride {
+  smartSortOverrides: Record<string, SmartSortOverride> | null
+): SmartSortOverride {
   return (
-    recentSortOverrides?.[worktree.id] ?? {
+    smartSortOverrides?.[worktree.id] ?? {
       worktree,
       tabs: tabsByWorktree?.[worktree.id] ?? [],
       hasRecentPRSignal: hasRecentPRSignal(worktree, repoMap, prCache)
@@ -106,7 +106,7 @@ export function buildWorktreeComparator(
   repoMap: Map<string, Repo>,
   prCache: Record<string, PRCacheEntry> | null,
   now: number = Date.now(),
-  recentSortOverrides: Record<string, RecentSortOverride> | null = null
+  smartSortOverrides: Record<string, SmartSortOverride> | null = null
 ): (a: Worktree, b: Worktree) => number {
   return (a, b) => {
     switch (sortBy) {
@@ -118,14 +118,14 @@ export function buildWorktreeComparator(
           tabsByWorktree,
           repoMap,
           prCache,
-          recentSortOverrides
+          smartSortOverrides
         )
         const smartB = getSmartSortCandidate(
           b,
           tabsByWorktree,
           repoMap,
           prCache,
-          recentSortOverrides
+          smartSortOverrides
         )
         return (
           computeSmartScoreFromSignals(

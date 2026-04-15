@@ -1,7 +1,7 @@
 /* eslint-disable max-lines */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Repo, TerminalTab, Worktree } from '../../../../shared/types'
-import { buildWorktreeComparator, computeSmartScore, type RecentSortOverride } from './smart-sort'
+import { buildWorktreeComparator, computeSmartScore, type SmartSortOverride } from './smart-sort'
 
 const NOW = new Date('2026-03-27T12:00:00.000Z').getTime()
 
@@ -295,7 +295,7 @@ describe('buildWorktreeComparator', () => {
     const tabsByWorktree = {
       [background.id]: [makeTab({ worktreeId: background.id, title: 'Claude Code - working' })]
     }
-    const recentSortOverrides: Record<string, RecentSortOverride> = {
+    const smartSortOverrides: Record<string, SmartSortOverride> = {
       [activeAfterClick.id]: {
         worktree: activeBeforeClick,
         tabs: [],
@@ -304,7 +304,7 @@ describe('buildWorktreeComparator', () => {
     }
 
     worktrees.sort(
-      buildWorktreeComparator('smart', tabsByWorktree, repoMap, null, NOW, recentSortOverrides)
+      buildWorktreeComparator('smart', tabsByWorktree, repoMap, null, NOW, smartSortOverrides)
     )
 
     expect(worktrees.map((worktree) => worktree.id)).toEqual(['background', 'active'])
@@ -324,7 +324,7 @@ describe('buildWorktreeComparator', () => {
       lastActivityAt: NOW - 2 * 60_000
     })
     const worktrees = [background, activeAfterClick]
-    const recentSortOverrides: Record<string, RecentSortOverride> = {
+    const smartSortOverrides: Record<string, SmartSortOverride> = {
       [activeAfterClick.id]: {
         worktree: activeBeforeClick,
         tabs: [],
@@ -332,7 +332,7 @@ describe('buildWorktreeComparator', () => {
       }
     }
 
-    worktrees.sort(buildWorktreeComparator('smart', null, repoMap, null, NOW, recentSortOverrides))
+    worktrees.sort(buildWorktreeComparator('smart', null, repoMap, null, NOW, smartSortOverrides))
 
     expect(worktrees.map((worktree) => worktree.id)).toEqual(['active', 'background'])
   })
