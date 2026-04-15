@@ -9,7 +9,10 @@ on:
         default: false
         type: boolean
   schedule:
-    - cron: '7,17,27 3,15 * * *'
+    # Why: GitHub scheduled workflows are not guaranteed to start exactly on
+    # time and can be delayed or dropped around high-load periods. We retry
+    # across the full target hour and dedupe per PT slot.
+    - cron: '*/5 3,15 * * *'
       timezone: 'America/Los_Angeles'
 
 permissions:
@@ -23,6 +26,9 @@ jobs:
   create-rc-tag:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      should_release: ${{ steps.existing.outputs.already_ran != 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
 
     steps:
       - name: Checkout
@@ -92,9 +98,23 @@ jobs:
           echo "Reason: ${{ steps.existing.outputs.reason }}"
 
       - name: Create and push RC tag
+        id: version
         if: steps.existing.outputs.already_ran != 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npm version prerelease --preid=rc -m "release: %s [rc-slot:${{ steps.slot.outputs.value }}]"
+          # Why: pushes made with GITHUB_TOKEN do not reliably trigger other
+          # workflows via push events. The RC workflow invokes release.yml
+          # directly after creating the tag, so the actual Electron release
+          # runs inside this scheduled flow instead of depending on push.
+          new_tag="$(npm version prerelease --preid=rc -m "release: %s [rc-slot:${{ steps.slot.outputs.value }}]")"
           git push origin main --follow-tags
+          echo "tag=$new_tag" >>"$GITHUB_OUTPUT"
+
+  release-rc:
+    needs: create-rc-tag
+    if: needs.create-rc-tag.outputs.should_release == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.create-rc-tag.outputs.tag }}
+    secrets: inherit
