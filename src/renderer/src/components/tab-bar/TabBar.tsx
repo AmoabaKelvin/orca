@@ -8,7 +8,7 @@ import {
   type DragEndEvent
 } from '@dnd-kit/core'
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
-import { Columns2, FilePlus, Globe, Plus, Rows2, TerminalSquare } from 'lucide-react'
+import { FilePlus, Globe, Plus, TerminalSquare } from 'lucide-react'
 import type {
   BrowserTab as BrowserTabState,
   TerminalTab,
@@ -344,24 +344,6 @@ function TabBarInner({
               New Markdown
               <DropdownMenuShortcut>{NEW_FILE_SHORTCUT}</DropdownMenuShortcut>
             </DropdownMenuItem>
-          )}
-          {onCreateSplitGroup && (
-            <>
-              <DropdownMenuItem
-                onSelect={() => onCreateSplitGroup('right')}
-                className="gap-2 rounded-[7px] px-2 py-0.5 text-[12px] leading-5 font-medium"
-              >
-                <Columns2 className="size-4 text-muted-foreground" />
-                New Group Right
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => onCreateSplitGroup('down')}
-                className="gap-2 rounded-[7px] px-2 py-0.5 text-[12px] leading-5 font-medium"
-              >
-                <Rows2 className="size-4 text-muted-foreground" />
-                New Group Down
-              </DropdownMenuItem>
-            </>
           )}
         </DropdownMenuContent>
       </DropdownMenu>
