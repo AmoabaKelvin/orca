@@ -1,7 +1,7 @@
 import type { Worktree, Repo, TerminalTab } from '../../../../shared/types'
 import type { AppState } from '@/store/types'
 import { matchesSearch } from './worktree-list-groups'
-import { buildWorktreeComparator, sortWorktreesRecent } from './smart-sort'
+import { buildWorktreeComparator, sortWorktreesSmart } from './smart-sort'
 import { useAppStore } from '@/store'
 
 /**
@@ -120,13 +120,10 @@ export function getVisibleWorktreeIds(): string[] {
 
   let sortedIds: string[]
 
-  if (state.sortBy === 'recent') {
-    sortedIds = sortWorktreesRecent(
-      allWorktrees,
-      state.tabsByWorktree,
-      repoMap,
-      state.prCache
-    ).map((w) => w.id)
+  if (state.sortBy === 'smart') {
+    sortedIds = sortWorktreesSmart(allWorktrees, state.tabsByWorktree, repoMap, state.prCache).map(
+      (w) => w.id
+    )
   } else {
     const sorted = [...allWorktrees].sort(
       buildWorktreeComparator(

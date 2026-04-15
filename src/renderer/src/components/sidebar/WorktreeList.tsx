@@ -402,7 +402,7 @@ const WorktreeList = React.memo(function WorktreeList() {
   const clearPendingRevealWorktreeId = useAppStore((s) => s.clearPendingRevealWorktreeId)
 
   // Read tabsByWorktree when needed for filtering or sorting
-  const needsTabs = showActiveOnly || sortBy === 'recent'
+  const needsTabs = showActiveOnly || sortBy === 'smart'
   const tabsByWorktree = useAppStore((s) => (needsTabs ? s.tabsByWorktree : null))
   const browserTabsByWorktree = useAppStore((s) =>
     showActiveOnly ? s.browserTabsByWorktree : null
@@ -410,10 +410,10 @@ const WorktreeList = React.memo(function WorktreeList() {
 
   const cardProps = useAppStore((s) => s.worktreeCardProperties)
 
-  // PR cache is needed for PR-status grouping, recent sorting, search,
+  // PR cache is needed for PR-status grouping, smart sorting, search,
   // and when the PR card property is visible.
   const prCache = useAppStore((s) =>
-    groupBy === 'pr-status' || sortBy === 'recent' || searchQuery || cardProps.includes('pr')
+    groupBy === 'pr-status' || sortBy === 'smart' || searchQuery || cardProps.includes('pr')
       ? s.prCache
       : null
   )
@@ -507,7 +507,7 @@ const WorktreeList = React.memo(function WorktreeList() {
     // persistent ones (unread, linked PR) survive — changing relative ranks.
     // Instead, restore the pre-shutdown order from the persisted sortOrder
     // snapshot, and switch to the live smart score once PTYs start spawning.
-    if (sortBy === 'recent' && !sessionHasHadPty.current) {
+    if (sortBy === 'smart' && !sessionHasHadPty.current) {
       const hasAnyLivePty = Object.values(state.tabsByWorktree)
         .flat()
         .some((t) => t.ptyId)
@@ -537,7 +537,7 @@ const WorktreeList = React.memo(function WorktreeList() {
   // restart. Only persist during live sessions (sessionHasHadPty latched) —
   // on cold start we are *reading* the persisted order, not overwriting it.
   useEffect(() => {
-    if (sortBy !== 'recent' || sortedIds.length === 0 || !sessionHasHadPty.current) {
+    if (sortBy !== 'smart' || sortedIds.length === 0 || !sessionHasHadPty.current) {
       return
     }
     void window.api.worktrees.persistSortOrder({ orderedIds: sortedIds })

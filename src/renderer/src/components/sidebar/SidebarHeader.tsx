@@ -27,6 +27,7 @@ const PROPERTY_OPTIONS: { id: WorktreeCardProperty; label: string }[] = [
 
 const SORT_OPTIONS = [
   { id: 'name', label: 'Name' },
+  { id: 'smart', label: 'Smart' },
   { id: 'recent', label: 'Recent' },
   { id: 'repo', label: 'Repo' }
 ] as const

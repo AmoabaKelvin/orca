@@ -559,7 +559,7 @@ export type PersistedUIState = {
   sidebarWidth: number
   rightSidebarWidth: number
   groupBy: 'none' | 'repo' | 'pr-status'
-  sortBy: 'name' | 'recent' | 'repo'
+  sortBy: 'name' | 'smart' | 'recent' | 'repo'
   showActiveOnly: boolean
   filterRepoIds: string[]
   uiZoomLevel: number
@@ -586,6 +586,12 @@ export type PersistedUIState = {
   windowBounds?: { x: number; y: number; width: number; height: number } | null
   /** Whether the window was maximized when it was last closed. */
   windowMaximized?: boolean
+  /** One-shot migration flag: 'recent' used to mean the weighted smart sort
+   *  (v1→v2 rename). When this flag is absent and sortBy is 'recent', the
+   *  main-process load() migrates it to 'smart' and sets this flag so the
+   *  migration never re-fires — allowing users to intentionally select the
+   *  new 'recent' (last-activity) sort without it being clobbered on restart. */
+  _sortBySmartMigrated?: boolean
 }
 
 // ─── Persistence shape ──────────────────────────────────────────────

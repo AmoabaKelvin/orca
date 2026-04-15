@@ -2,7 +2,7 @@ import { detectAgentStatusFromTitle } from '@/lib/agent-status'
 import { branchName } from '@/lib/git-utils'
 import type { Worktree, Repo, TerminalTab } from '../../../../shared/types'
 
-type SortBy = 'name' | 'recent' | 'repo'
+type SortBy = 'name' | 'smart' | 'recent' | 'repo'
 
 type PRCacheEntry = { data: object | null; fetchedAt: number }
 export type RecentSortOverride = {
@@ -74,14 +74,14 @@ function computeSmartScoreFromSignals(
     // since the PTY spawns asynchronously after creation). Weight must exceed
     // the max passive-signal combination for shutdown worktrees
     // (isUnread 18 + PR 10 + issue 6 = 34) so brand-new worktrees always
-    // appear at the top of the "recent" sort immediately.
+    // appear at the top of the "smart" sort immediately.
     score += 36 * Math.max(0, 1 - activityAge / ONE_DAY)
   }
 
   return score
 }
 
-function getRecentSortCandidate(
+function getSmartSortCandidate(
   worktree: Worktree,
   tabsByWorktree: Record<string, TerminalTab[]> | null,
   repoMap: Map<string, Repo>,
@@ -112,61 +112,64 @@ export function buildWorktreeComparator(
     switch (sortBy) {
       case 'name':
         return a.displayName.localeCompare(b.displayName)
-      case 'recent': {
-        const recentA = getRecentSortCandidate(
+      case 'smart': {
+        const smartA = getSmartSortCandidate(
           a,
           tabsByWorktree,
           repoMap,
           prCache,
           recentSortOverrides
         )
-        const recentB = getRecentSortCandidate(
+        const smartB = getSmartSortCandidate(
           b,
           tabsByWorktree,
           repoMap,
           prCache,
           recentSortOverrides
         )
-        // Recent means meaningful recent work, not selection time.
         return (
           computeSmartScoreFromSignals(
-            recentB.worktree,
-            recentB.tabs,
-            recentB.hasRecentPRSignal,
+            smartB.worktree,
+            smartB.tabs,
+            smartB.hasRecentPRSignal,
             now
           ) -
             computeSmartScoreFromSignals(
-              recentA.worktree,
-              recentA.tabs,
-              recentA.hasRecentPRSignal,
+              smartA.worktree,
+              smartA.tabs,
+              smartA.hasRecentPRSignal,
               now
             ) ||
-          recentB.worktree.lastActivityAt - recentA.worktree.lastActivityAt ||
+          smartB.worktree.lastActivityAt - smartA.worktree.lastActivityAt ||
           a.displayName.localeCompare(b.displayName)
         )
       }
+      case 'recent':
+        return b.lastActivityAt - a.lastActivityAt || a.displayName.localeCompare(b.displayName)
       case 'repo': {
         const ra = repoMap.get(a.repoId)?.displayName ?? ''
         const rb = repoMap.get(b.repoId)?.displayName ?? ''
         const cmp = ra.localeCompare(rb)
         return cmp !== 0 ? cmp : a.displayName.localeCompare(b.displayName)
       }
-      default:
-        return 0
+      default: {
+        const _exhaustive: never = sortBy
+        return _exhaustive
+      }
     }
   }
 }
 
 /**
- * Sort worktrees by recent-work signals, handling the cold-start / warm
- * distinction in one place. On cold start (no live PTYs yet), falls back to
- * persisted `sortOrder` descending with alphabetical `displayName` fallback.
+ * Sort worktrees by weighted smart-score signals, handling the cold-start /
+ * warm distinction in one place. On cold start (no live PTYs yet), falls back
+ * to persisted `sortOrder` descending with alphabetical `displayName` fallback.
  * Once any PTY is alive, uses the full smart-score comparator.
  *
  * Both the palette and `getVisibleWorktreeIds()` import this to avoid
  * duplicating the cold/warm branching logic.
  */
-export function sortWorktreesRecent(
+export function sortWorktreesSmart(
   worktrees: Worktree[],
   tabsByWorktree: Record<string, TerminalTab[]>,
   repoMap: Map<string, Repo>,
@@ -184,7 +187,7 @@ export function sortWorktreesRecent(
   }
 
   return [...worktrees].sort(
-    buildWorktreeComparator('recent', tabsByWorktree, repoMap, prCache, Date.now())
+    buildWorktreeComparator('smart', tabsByWorktree, repoMap, prCache, Date.now())
   )
 }
 
@@ -213,7 +216,7 @@ export function computeSmartScore(
     tabsByWorktree?.[worktree.id] ?? [],
     // Why: branch-aware PR cache is the freshest signal, but off-screen
     // worktrees may not have fetched it yet. Fall back to persisted linkedPR
-    // only while that branch cache entry is still cold so recent sorting stays
+    // only while that branch cache entry is still cold so smart sorting stays
     // stable on launch without reviving stale PRs after a cache miss resolves.
     repoMap ? hasRecentPRSignal(worktree, repoMap, prCache) : worktree.linkedPR !== null,
     now

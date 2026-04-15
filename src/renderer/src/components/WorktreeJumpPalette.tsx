@@ -11,7 +11,7 @@ import {
   CommandItem
 } from '@/components/ui/command'
 import { branchName } from '@/lib/git-utils'
-import { sortWorktreesRecent } from '@/components/sidebar/smart-sort'
+import { sortWorktreesSmart } from '@/components/sidebar/smart-sort'
 import StatusIndicator from '@/components/sidebar/StatusIndicator'
 import { cn } from '@/lib/utils'
 import { getWorktreeStatus, getWorktreeStatusLabel } from '@/lib/worktree-status'
@@ -169,7 +169,7 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
     const all: Worktree[] = Object.values(worktreesByRepo)
       .flat()
       .filter((w) => !w.isArchived)
-    return sortWorktreesRecent(all, tabsByWorktree, repoMap, prCache)
+    return sortWorktreesSmart(all, tabsByWorktree, repoMap, prCache)
   }, [worktreesByRepo, tabsByWorktree, repoMap, prCache])
 
   const browserSortedWorktrees = useMemo(() => {

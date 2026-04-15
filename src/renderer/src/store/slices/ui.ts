@@ -12,8 +12,6 @@ import {
   DEFAULT_WORKTREE_CARD_PROPERTIES
 } from '../../../../shared/constants'
 
-type LegacyPersistedSortBy = PersistedUIState['sortBy'] | 'smart'
-
 const MIN_SIDEBAR_WIDTH = 220
 const MAX_SIDEBAR_WIDTH = 500
 
@@ -56,7 +54,7 @@ export type UISlice = {
   setSearchQuery: (q: string) => void
   groupBy: 'none' | 'repo' | 'pr-status'
   setGroupBy: (g: UISlice['groupBy']) => void
-  sortBy: 'name' | 'recent' | 'repo'
+  sortBy: 'name' | 'smart' | 'recent' | 'repo'
   setSortBy: (s: UISlice['sortBy']) => void
   showActiveOnly: boolean
   setShowActiveOnly: (v: boolean) => void
@@ -168,7 +166,15 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => (
   hydratePersistedUI: (ui) =>
     set((s) => {
       const validRepoIds = new Set(s.repos.map((repo) => repo.id))
-      const sortBy = (ui.sortBy as LegacyPersistedSortBy) === 'smart' ? 'recent' : ui.sortBy
+      // Migration history:
+      // v1: sort was called 'smart' internally
+      // v2: renamed 'smart' → 'recent' (same weighted-score behavior)
+      // v3: 'smart' reintroduced as the weighted-score sort, 'recent' becomes
+      //     a true last-activity sort. The one-shot migration from old 'recent'
+      //     to 'smart' now happens in the main process (persistence.ts load())
+      //     using the _sortBySmartMigrated flag — not here — so that users who
+      //     intentionally select the new 'recent' sort keep it across restarts.
+      const sortBy = ui.sortBy
       return {
         // Why: persisted UI data comes from disk and may be stale, corrupted,
         // or manually edited. Clamp widths during hydration so invalid values

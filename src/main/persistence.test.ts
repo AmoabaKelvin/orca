@@ -385,13 +385,44 @@ describe('Store', () => {
     expect(ui.lastUpdateCheckAt).toBe(1234)
   })
 
-  it('migrates persisted smart sort to recent', async () => {
+  it('preserves persisted smart sort value', async () => {
     writeDataFile({
       schemaVersion: 1,
       repos: [],
       worktreeMeta: {},
       settings: {},
       ui: { sortBy: 'smart' },
+      githubCache: { pr: {}, issue: {} },
+      workspaceSession: {}
+    })
+
+    const store = await createStore()
+    expect(store.getUI().sortBy).toBe('smart')
+  })
+
+  it('migrates legacy recent sort to smart on first load', async () => {
+    writeDataFile({
+      schemaVersion: 1,
+      repos: [],
+      worktreeMeta: {},
+      settings: {},
+      ui: { sortBy: 'recent' },
+      githubCache: { pr: {}, issue: {} },
+      workspaceSession: {}
+    })
+
+    const store = await createStore()
+    expect(store.getUI().sortBy).toBe('smart')
+    expect(store.getUI()._sortBySmartMigrated).toBe(true)
+  })
+
+  it('preserves new recent sort after migration flag is set', async () => {
+    writeDataFile({
+      schemaVersion: 1,
+      repos: [],
+      worktreeMeta: {},
+      settings: {},
+      ui: { sortBy: 'recent', _sortBySmartMigrated: true },
       githubCache: { pr: {}, issue: {} },
       workspaceSession: {}
     })

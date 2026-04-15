@@ -1,3 +1,6 @@
+/* eslint-disable max-lines -- Why: persistence keeps schema defaults, migration,
+load/save, and flush logic in one file so the full storage contract is reviewable
+as a unit instead of being scattered across modules. */
 import { app } from 'electron'
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'fs'
 import { writeFile, rename, mkdir, rm } from 'fs/promises'
@@ -42,12 +45,9 @@ function getDataFile(): string {
   return _dataFile
 }
 
-function normalizeSortBy(sortBy: unknown): 'name' | 'recent' | 'repo' {
-  if (sortBy === 'recent' || sortBy === 'repo' || sortBy === 'name') {
+function normalizeSortBy(sortBy: unknown): 'name' | 'smart' | 'recent' | 'repo' {
+  if (sortBy === 'smart' || sortBy === 'recent' || sortBy === 'repo' || sortBy === 'name') {
     return sortBy
-  }
-  if (sortBy === 'smart') {
-    return 'recent'
   }
   return getDefaultUIState().sortBy
 }
@@ -88,11 +88,19 @@ export class Store {
               ...parsed.settings?.notifications
             }
           },
-          ui: {
-            ...defaults.ui,
-            ...parsed.ui,
-            sortBy: normalizeSortBy(parsed.ui?.sortBy)
-          },
+          // Why: 'recent' used to mean the weighted smart sort. One-shot
+          // migration moves it to 'smart'; the flag prevents re-firing after
+          // a user intentionally selects the new last-activity 'recent' sort.
+          ui: (() => {
+            const sort = normalizeSortBy(parsed.ui?.sortBy)
+            const migrate = !parsed.ui?._sortBySmartMigrated && sort === 'recent'
+            return {
+              ...defaults.ui,
+              ...parsed.ui,
+              sortBy: migrate ? ('smart' as const) : sort,
+              _sortBySmartMigrated: true
+            }
+          })(),
           workspaceSession: { ...defaults.workspaceSession, ...parsed.workspaceSession },
           sshTargets: (parsed.sshTargets ?? []).map(normalizeSshTarget)
         }

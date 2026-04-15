@@ -1,7 +1,7 @@
 /* eslint-disable max-lines */
 import type { StateCreator } from 'zustand'
 import type { AppState } from '../types'
-import type { Worktree, WorkspaceVisibleTabType } from '../../../../shared/types'
+import type { Worktree, WorkspaceVisibleTabType, WorktreeMeta } from '../../../../shared/types'
 import {
   findWorktreeById,
   applyWorktreeUpdates,
@@ -354,9 +354,9 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
       // re-sorting the sidebar in response would cause the exact reorder-
       // on-click bug PR #209 intended to fix (e.g. dead-PTY reconnection
       // after generation bump triggers updateTabPtyId → here).
-      // The lastActivityAt timestamp is still persisted so that the NEXT
-      // meaningful sortEpoch bump (from a background worktree event) will
-      // include this worktree's updated score.
+      // For 'recent' sort, the active worktree already has the latest
+      // lastActivityAt from setActiveWorktree, so it's already at the top;
+      // additional bumps here would only cause unnecessary re-sort work.
       const isActive = s.activeWorktreeId === worktreeId
       return {
         worktreesByRepo: applyWorktreeUpdates(s.worktreesByRepo, worktreeId, {
@@ -378,6 +378,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
     const reconciledActiveTabId = worktreeId
       ? get().reconcileWorktreeTabModel(worktreeId).activeRenderableTabId
       : null
+    const now = Date.now()
     let shouldClearUnread = false
     set((s) => {
       if (!worktreeId) {
@@ -496,6 +497,16 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
             ? restoredTabId
             : (worktreeTabs[0]?.id ?? null)
 
+      // Why: bump lastActivityAt on selection so the 'recent' sort (which
+      // orders by last interaction time) reflects the user's navigation.
+      // For 'smart' sort, do NOT bump sortEpoch — that would re-sort the
+      // sidebar on every click, causing the reorder-on-click bug (PR #209).
+      // For 'recent' sort, reordering on click IS the expected behavior:
+      // the most recently selected worktree should move to the top.
+      const metaUpdates: Partial<WorktreeMeta> = { lastActivityAt: now }
+      if (shouldClearUnread) {
+        metaUpdates.isUnread = false
+      }
       return {
         activeWorktreeId: worktreeId,
         activeFileId,
@@ -503,11 +514,8 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
         activeTabType,
         activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: activeTabType },
         activeTabId,
-        worktreesByRepo: applyWorktreeUpdates(
-          s.worktreesByRepo,
-          worktreeId,
-          shouldClearUnread ? { isUnread: false } : {}
-        )
+        worktreesByRepo: applyWorktreeUpdates(s.worktreesByRepo, worktreeId, metaUpdates),
+        ...(s.sortBy === 'recent' ? { sortEpoch: s.sortEpoch + 1 } : {})
       }
     })
 
@@ -540,13 +548,11 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
       return
     }
 
-    const updates: Parameters<typeof window.api.worktrees.updateMeta>[0]['updates'] = {}
+    const updates: Parameters<typeof window.api.worktrees.updateMeta>[0]['updates'] = {
+      lastActivityAt: now
+    }
     if (shouldClearUnread) {
       updates.isUnread = false
-    }
-
-    if (Object.keys(updates).length === 0) {
-      return
     }
 
     void window.api.worktrees.updateMeta({ worktreeId, updates }).catch((err) => {
