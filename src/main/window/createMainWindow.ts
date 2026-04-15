@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
+import { BrowserWindow, ipcMain, nativeTheme, screen, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
@@ -61,9 +61,24 @@ export function createMainWindow(
   store: Store | null,
   opts?: CreateMainWindowOptions
 ): BrowserWindow {
+  const savedBounds = store?.getUI().windowBounds
+  const savedMaximized = store?.getUI().windowMaximized ?? false
+  // Why: on first launch (no saved bounds), fill the primary display work area
+  // so the window feels spacious without calling maximize(). Saved bounds still
+  // win on subsequent launches.
+  const defaultBounds = (() => {
+    try {
+      const { width, height } = screen.getPrimaryDisplay().workAreaSize
+      return { width, height }
+    } catch {
+      return { width: 1200, height: 800 }
+    }
+  })()
+
   const mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: savedBounds?.width ?? defaultBounds.width,
+    height: savedBounds?.height ?? defaultBounds.height,
+    ...(savedBounds ? { x: savedBounds.x, y: savedBounds.y } : {}),
     minWidth: 600,
     minHeight: 400,
     show: false,
@@ -114,9 +129,51 @@ export function createMainWindow(
     }
   })
 
+  // Why: on macOS + Electron 41, creating a webview guest process can re-emit
+  // ready-to-show on the same BrowserWindow. Without a one-shot guard the
+  // handler re-runs maximize() from the persisted savedMaximized flag, snapping
+  // the window back to full-screen after the user already resized it (#591).
+  let handledInitialReadyToShow = false
   mainWindow.on('ready-to-show', () => {
-    mainWindow.maximize()
+    if (handledInitialReadyToShow) {
+      return
+    }
+    handledInitialReadyToShow = true
+
+    if (savedMaximized) {
+      mainWindow.maximize()
+    }
     mainWindow.show()
+  })
+
+  // Why: persist window bounds so the app restores to the user's last
+  // position/size instead of maximizing on every launch. Debounce to avoid
+  // hammering the persistence layer during continuous resize drags.
+  let boundsTimer: ReturnType<typeof setTimeout> | null = null
+  const saveBounds = (): void => {
+    if (boundsTimer) {
+      clearTimeout(boundsTimer)
+    }
+    boundsTimer = setTimeout(() => {
+      boundsTimer = null
+      if (mainWindow.isDestroyed() || mainWindow.isFullScreen()) {
+        return
+      }
+      const isMaximized = mainWindow.isMaximized()
+      store?.updateUI({ windowMaximized: isMaximized })
+      if (!isMaximized) {
+        store?.updateUI({ windowBounds: mainWindow.getBounds() })
+      }
+    }, 500)
+  }
+  mainWindow.on('resize', saveBounds)
+  mainWindow.on('move', saveBounds)
+
+  mainWindow.on('maximize', () => {
+    store?.updateUI({ windowMaximized: true })
+  })
+  mainWindow.on('unmaximize', () => {
+    store?.updateUI({ windowMaximized: false, windowBounds: mainWindow.getBounds() })
   })
 
   mainWindow.on('enter-full-screen', () => {

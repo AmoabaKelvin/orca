@@ -12,6 +12,9 @@ vi.mock('electron', () => ({
   BrowserWindow: browserWindowMock,
   ipcMain: { on: vi.fn(), removeListener: vi.fn() },
   nativeTheme: { shouldUseDarkColors: false },
+  screen: {
+    getPrimaryDisplay: () => ({ workAreaSize: { width: 1440, height: 900 } })
+  },
   shell: { openExternal: openExternalMock }
 }))
 
@@ -44,6 +47,7 @@ describe('createMainWindow', () => {
     isMock.dev = false
     vi.mocked(ipcMain.on).mockReset()
     vi.mocked(ipcMain.removeListener).mockReset()
+    vi.useRealTimers()
   })
 
   it('enables renderer sandboxing and opens external links safely', () => {
@@ -87,6 +91,14 @@ describe('createMainWindow', () => {
         webPreferences: expect.objectContaining({ sandbox: true })
       })
     )
+    const browserWindowOptions = browserWindowMock.mock.calls[0]?.[0]
+    if (process.platform === 'darwin') {
+      expect(browserWindowOptions).toMatchObject({
+        titleBarStyle: 'hiddenInset'
+      })
+    } else {
+      expect(browserWindowOptions.titleBarStyle).toBeUndefined()
+    }
 
     expect(windowHandlers.windowOpen({ url: 'https://example.com' })).toEqual({ action: 'deny' })
     expect(windowHandlers.windowOpen({ url: 'localhost:3000' })).toEqual({ action: 'deny' })
@@ -486,5 +498,50 @@ describe('createMainWindow', () => {
     }
 
     expect(browserWindowInstance.setWindowButtonPosition).not.toHaveBeenCalled()
+  })
+
+  it('ignores duplicate ready-to-show events after startup maximize has already run', () => {
+    const windowHandlers: Record<string, (...args: any[]) => void> = {}
+    const webContents = {
+      on: vi.fn(),
+      setZoomLevel: vi.fn(),
+      setBackgroundThrottling: vi.fn(),
+      invalidate: vi.fn(),
+      setWindowOpenHandler: vi.fn(),
+      send: vi.fn()
+    }
+    const browserWindowInstance = {
+      webContents,
+      on: vi.fn((event, handler) => {
+        windowHandlers[event] = handler
+      }),
+      isDestroyed: vi.fn(() => false),
+      isMaximized: vi.fn(() => false),
+      isFullScreen: vi.fn(() => false),
+      getSize: vi.fn(() => [1200, 800]),
+      setSize: vi.fn(),
+      setWindowButtonPosition: vi.fn(),
+      maximize: vi.fn(),
+      show: vi.fn(),
+      loadFile: vi.fn(),
+      loadURL: vi.fn()
+    }
+    browserWindowMock.mockImplementation(function () {
+      return browserWindowInstance
+    })
+
+    createMainWindow({
+      getUI: () =>
+        ({
+          windowMaximized: true
+        }) as never,
+      updateUI: vi.fn()
+    } as never)
+
+    windowHandlers['ready-to-show']()
+    windowHandlers['ready-to-show']()
+
+    expect(browserWindowInstance.maximize).toHaveBeenCalledTimes(1)
+    expect(browserWindowInstance.show).toHaveBeenCalledTimes(1)
   })
 })

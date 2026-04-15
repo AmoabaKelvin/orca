@@ -24,10 +24,30 @@ afterEach(() => {
 })
 
 describe('configureDevUserDataPath', () => {
+  it('uses an explicit dev userData override when provided', async () => {
+    const { app } = await import('electron')
+    const { configureDevUserDataPath } = await import('./configure-process')
+    const originalOverride = process.env.ORCA_DEV_USER_DATA_PATH
+    process.env.ORCA_DEV_USER_DATA_PATH = '/tmp/orca-dev-repro'
+
+    try {
+      configureDevUserDataPath(true)
+    } finally {
+      if (originalOverride === undefined) {
+        delete process.env.ORCA_DEV_USER_DATA_PATH
+      } else {
+        process.env.ORCA_DEV_USER_DATA_PATH = originalOverride
+      }
+    }
+
+    expect(app.setPath).toHaveBeenCalledWith('userData', '/tmp/orca-dev-repro')
+  })
+
   it('moves dev runs onto an orca-dev userData path', async () => {
     const { app } = await import('electron')
     const { configureDevUserDataPath } = await import('./configure-process')
 
+    delete process.env.ORCA_DEV_USER_DATA_PATH
     configureDevUserDataPath(true)
 
     // Why: production code uses path.join(app.getPath('appData'), 'orca-dev')
@@ -157,5 +177,20 @@ describe('installDevParentWatchdog', () => {
     installDevParentWatchdog(false)
 
     expect(setIntervalSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('enableMainProcessGpuFeatures', () => {
+  it('appends Orca GPU flags by default', async () => {
+    const { app } = await import('electron')
+    const { enableMainProcessGpuFeatures } = await import('./configure-process')
+
+    enableMainProcessGpuFeatures()
+
+    expect(app.commandLine.appendSwitch).toHaveBeenCalledWith(
+      'enable-features',
+      'Vulkan,UseSkiaGraphite'
+    )
+    expect(app.commandLine.appendSwitch).toHaveBeenCalledWith('enable-unsafe-webgpu')
   })
 })
