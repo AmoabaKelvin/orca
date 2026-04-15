@@ -124,7 +124,9 @@ function Terminal(): React.JSX.Element | null {
     [activeGroupIdByWorktree, groupsByWorktree, layoutByWorktree]
   )
   const effectiveActiveLayout = activeWorktreeId
-    ? (ENABLE_SPLIT_GROUPS ? getEffectiveLayoutForWorktree(activeWorktreeId) : undefined)
+    ? ENABLE_SPLIT_GROUPS
+      ? getEffectiveLayoutForWorktree(activeWorktreeId)
+      : undefined
     : undefined
   const activeWorktree = activeWorktreeId
     ? (allWorktrees.find((worktree) => worktree.id === activeWorktreeId) ?? null)
@@ -138,6 +140,58 @@ function Terminal(): React.JSX.Element | null {
       : activeTabType === 'editor'
         ? (activeEditorFile?.relativePath ?? activeEditorFile?.filePath ?? 'Editor')
         : (activeTerminalTab?.customTitle ?? activeTerminalTab?.title ?? 'Terminal')
+  const renderStaleCodexRestartChip = useCallback(
+    (worktreeId: string) => {
+      const worktreeTabs = tabsByWorktree[worktreeId] ?? []
+      const staleWorktreePtyIds = worktreeTabs.flatMap((tab) =>
+        (ptyIdsByTabId[tab.id] ?? []).filter((ptyId) => Boolean(codexRestartNoticeByPtyId[ptyId]))
+      )
+      if (staleWorktreePtyIds.length === 0) {
+        return null
+      }
+      // Why: split-group and legacy workspace rendering both represent the
+      // same worktree-level Codex session state. Keeping one shared chip here
+      // preserves the single-prompt UX across rollout paths instead of letting
+      // one branch silently lose the restart/dismiss affordance.
+      return (
+        <div className="pointer-events-none absolute right-3 top-3 z-20">
+          <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-border/80 bg-popover/95 px-2 py-1.5 shadow-lg backdrop-blur-sm">
+            <span className="text-[11px] text-muted-foreground">
+              Codex is using the previous account
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => queueCodexPaneRestarts(staleWorktreePtyIds)}
+                className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-2 py-1 text-[11px] font-medium text-background transition-colors hover:opacity-90"
+              >
+                <RefreshCw className="size-3" />
+                Restart
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  for (const ptyId of staleWorktreePtyIds) {
+                    clearCodexRestartNotice(ptyId)
+                  }
+                }}
+                className="rounded-md px-1.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    [
+      clearCodexRestartNotice,
+      codexRestartNoticeByPtyId,
+      ptyIdsByTabId,
+      queueCodexPaneRestarts,
+      tabsByWorktree
+    ]
+  )
   const activeWorktreeBrowserTabIdsKey = activeWorktreeId
     ? (browserTabsByWorktree[activeWorktreeId] ?? []).map((tab) => tab.id).join(',')
     : ''
@@ -235,13 +289,7 @@ function Terminal(): React.JSX.Element | null {
       return
     }
     createTab(activeWorktreeId)
-  }, [
-    workspaceSessionReady,
-    activeWorktreeId,
-    tabs.length,
-    createTab,
-    reconcileWorktreeTabModel
-  ])
+  }, [workspaceSessionReady, activeWorktreeId, tabs.length, createTab, reconcileWorktreeTabModel])
 
   const handleNewTab = useCallback(() => {
     if (!activeWorktreeId) {
@@ -870,7 +918,7 @@ function Terminal(): React.JSX.Element | null {
         )}
 
       {effectiveActiveLayout ? (
-        <div className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
+        <div className="relative flex flex-1 min-w-0 min-h-0 overflow-hidden">
           {allWorktrees
             .filter((wt) => mountedWorktreeIdsRef.current.has(wt.id))
             .map((worktree) => {
@@ -885,19 +933,10 @@ function Terminal(): React.JSX.Element | null {
                   className={isVisible ? 'absolute inset-0 flex' : 'absolute inset-0 hidden'}
                   aria-hidden={!isVisible}
                 >
+                  {renderStaleCodexRestartChip(worktree.id)}
                   <TabGroupSplitLayout
                     layout={layout}
                     worktreeId={worktree.id}
-                    cwd={worktree.path}
-                    isActive={isVisible && tab.id === activeTabId && activeTabType === 'terminal'}
-                    // Why: the legacy single-surface terminal host still expects
-                    // tab visibility to follow active-tab selection. Split-group
-                    // surfaces pass a broader visibility signal separately, but
-                    // this path must preserve the old one-pane-at-a-time stacking
-                    // behavior until it is migrated off the legacy host.
-                    isVisible={isVisible && tab.id === activeTabId && activeTabType === 'terminal'}
-                    onPtyExit={(ptyId) => handlePtyExit(tab.id, ptyId)}
-                    onCloseTab={() => handleCloseTab(tab.id)}
                     focusedGroupId={activeGroupIdByWorktree[worktree.id]}
                   />
                 </div>
@@ -940,51 +979,7 @@ function Terminal(): React.JSX.Element | null {
                     className={isVisible ? 'absolute inset-0' : 'absolute inset-0 hidden'}
                     aria-hidden={!isVisible}
                   >
-                    {(() => {
-                      const staleWorktreePtyIds = worktreeTabs.flatMap((tab) =>
-                        (ptyIdsByTabId[tab.id] ?? []).filter((ptyId) =>
-                          Boolean(codexRestartNoticeByPtyId[ptyId])
-                        )
-                      )
-                      if (staleWorktreePtyIds.length === 0) {
-                        return null
-                      }
-                      // Why: account switching is global, but repeating the same
-                      // stale-session prompt in every affected Codex pane quickly
-                      // turns into noise. Keep one worktree-scoped chip in the
-                      // same visual corner so users get the same prompt style
-                      // without having to dismiss it in every pane.
-                      return (
-                        <div className="pointer-events-none absolute right-3 top-3 z-20">
-                          <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-border/80 bg-popover/95 px-2 py-1.5 shadow-lg backdrop-blur-sm">
-                            <span className="text-[11px] text-muted-foreground">
-                              Codex is using the previous account
-                            </span>
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => queueCodexPaneRestarts(staleWorktreePtyIds)}
-                                className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-2 py-1 text-[11px] font-medium text-background transition-colors hover:opacity-90"
-                              >
-                                <RefreshCw className="size-3" />
-                                Restart
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  for (const ptyId of staleWorktreePtyIds) {
-                                    clearCodexRestartNotice(ptyId)
-                                  }
-                                }}
-                                className="rounded-md px-1.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
-                              >
-                                Dismiss
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })()}
+                    {renderStaleCodexRestartChip(worktree.id)}
                     {worktreeTabs.map((tab) => (
                       <TerminalPane
                         key={`${tab.id}-${tab.generation ?? 0}`}
@@ -992,6 +987,13 @@ function Terminal(): React.JSX.Element | null {
                         worktreeId={worktree.id}
                         cwd={worktree.path}
                         isActive={
+                          isVisible && tab.id === activeTabId && activeTabType === 'terminal'
+                        }
+                        // Why: the legacy single-surface terminal host still expects
+                        // tab visibility to follow active-tab selection. Without this,
+                        // background terminals never get suspendRendering() and PTY
+                        // data bypasses the buffer, wasting CPU on hidden xterm renders.
+                        isVisible={
                           isVisible && tab.id === activeTabId && activeTabType === 'terminal'
                         }
                         onPtyExit={(ptyId) => handlePtyExit(tab.id, ptyId)}
