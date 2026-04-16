@@ -1,4 +1,4 @@
-import type { TerminalTab } from '../../../shared/types'
+import type { TerminalTab, Worktree } from '../../../shared/types'
 
 // Re-export from shared module so existing renderer imports continue to work.
 // Why: the main process now needs the same agent detection logic for stat
@@ -19,9 +19,10 @@ import {
   getAgentLabel
 } from '../../../shared/agent-detection'
 
-type CountWorkingAgentsArgs = {
+type AgentQueryArgs = {
   tabsByWorktree: Record<string, TerminalTab[]>
   runtimePaneTitlesByTabId: Record<string, Record<number, string>>
+  worktreesByRepo: Record<string, Worktree[]>
 }
 
 export type WorkingAgentEntry = {
@@ -37,11 +38,20 @@ export type WorktreeAgents = {
 
 export function getWorkingAgentsPerWorktree({
   tabsByWorktree,
-  runtimePaneTitlesByTabId
-}: CountWorkingAgentsArgs): Record<string, WorktreeAgents> {
+  runtimePaneTitlesByTabId,
+  worktreesByRepo
+}: AgentQueryArgs): Record<string, WorktreeAgents> {
+  const validIds = collectWorktreeIds(worktreesByRepo)
   const result: Record<string, WorktreeAgents> = {}
 
   for (const [worktreeId, tabs] of Object.entries(tabsByWorktree)) {
+    // Why: tabsByWorktree can retain orphaned entries for worktrees that no
+    // longer exist in git (e.g. deleted worktrees whose tab cleanup didn't
+    // complete, or worktrees removed outside Orca). worktreesByRepo is the
+    // source of truth — only include worktrees that still exist.
+    if (!validIds.has(worktreeId)) {
+      continue
+    }
     const agents: WorkingAgentEntry[] = []
 
     for (const tab of tabs) {
@@ -78,17 +88,32 @@ export function getWorkingAgentsPerWorktree({
 
 export function countWorkingAgents({
   tabsByWorktree,
-  runtimePaneTitlesByTabId
-}: CountWorkingAgentsArgs): number {
+  runtimePaneTitlesByTabId,
+  worktreesByRepo
+}: AgentQueryArgs): number {
+  const validIds = collectWorktreeIds(worktreesByRepo)
   let count = 0
 
-  for (const tabs of Object.values(tabsByWorktree)) {
+  for (const [worktreeId, tabs] of Object.entries(tabsByWorktree)) {
+    if (!validIds.has(worktreeId)) {
+      continue
+    }
     for (const tab of tabs) {
       count += countWorkingAgentsForTab(tab, runtimePaneTitlesByTabId)
     }
   }
 
   return count
+}
+
+function collectWorktreeIds(worktreesByRepo: Record<string, Worktree[]>): Set<string> {
+  const ids = new Set<string>()
+  for (const worktrees of Object.values(worktreesByRepo)) {
+    for (const wt of worktrees) {
+      ids.add(wt.id)
+    }
+  }
+  return ids
 }
 
 function countWorkingAgentsForTab(

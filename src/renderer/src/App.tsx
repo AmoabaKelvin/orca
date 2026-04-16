@@ -95,23 +95,19 @@ function App(): React.JSX.Element {
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
   const tabsByWorktree = useAppStore((s) => s.tabsByWorktree)
   const activeTabId = useAppStore((s) => s.activeTabId)
-  const activeAgentCount = useAppStore((s) =>
-    countWorkingAgents({
-      tabsByWorktree: s.tabsByWorktree,
-      runtimePaneTitlesByTabId: s.runtimePaneTitlesByTabId
-    })
-  )
+  const worktreesByRepo = useAppStore((s) => s.worktreesByRepo)
   const agentInputs = useAppStore(
     useShallow((s) => ({
       tabsByWorktree: s.tabsByWorktree,
-      runtimePaneTitlesByTabId: s.runtimePaneTitlesByTabId
+      runtimePaneTitlesByTabId: s.runtimePaneTitlesByTabId,
+      worktreesByRepo: s.worktreesByRepo
     }))
   )
+  const activeAgentCount = useMemo(() => countWorkingAgents(agentInputs), [agentInputs])
   const workingAgentsPerWorktree = useMemo(
     () => getWorkingAgentsPerWorktree(agentInputs),
     [agentInputs]
   )
-  const worktreesByRepo = useAppStore((s) => s.worktreesByRepo)
   const expandedPaneByTabId = useAppStore((s) => s.expandedPaneByTabId)
   const canExpandPaneByTabId = useAppStore((s) => s.canExpandPaneByTabId)
   const workspaceSessionReady = useAppStore((s) => s.workspaceSessionReady)
