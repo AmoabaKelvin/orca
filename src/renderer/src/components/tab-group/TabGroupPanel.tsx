@@ -209,8 +209,8 @@ export default function TabGroupPanel({
           {/* Why: the split/close affordances belong to the pane they mutate,
               not whichever group happens to render in the workspace's top-right
               corner. Keeping a reserved action slot in every header avoids tab
-              row jitter while hover/focus reveals the local controls only when
-              the user is interacting with that pane. */}
+              row jitter while only the active pane shows the controls by
+              default, with focus-within preserving keyboard access. */}
           <div
             className={actionChromeClassName}
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
