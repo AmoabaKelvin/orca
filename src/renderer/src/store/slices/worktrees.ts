@@ -354,9 +354,9 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
       // re-sorting the sidebar in response would cause the exact reorder-
       // on-click bug PR #209 intended to fix (e.g. dead-PTY reconnection
       // after generation bump triggers updateTabPtyId → here).
-      // For 'recent' sort, the active worktree already has the latest
-      // lastActivityAt from setActiveWorktree, so it's already at the top;
-      // additional bumps here would only cause unnecessary re-sort work.
+      // The lastActivityAt timestamp is still persisted so that the NEXT
+      // meaningful sortEpoch bump (from a background worktree event) will
+      // include this worktree's updated smart-sort score.
       const isActive = s.activeWorktreeId === worktreeId
       return {
         worktreesByRepo: applyWorktreeUpdates(s.worktreesByRepo, worktreeId, {

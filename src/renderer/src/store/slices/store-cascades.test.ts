@@ -320,8 +320,9 @@ describe('setActiveWorktree', () => {
 
     const worktree = store.getState().worktreesByRepo.repo1[0]
     expect(worktree.sortOrder).toBe(123)
-    // Why: setActiveWorktree now persists lastActivityAt for the recent sort,
-    // but must never touch sortOrder which is managed by persistSortOrder.
+    // Why: setActiveWorktree persists lastActivityAt for the smart sort's
+    // time-decay signal, but must never touch sortOrder which is managed
+    // by persistSortOrder.
     expect(mockApi.worktrees.updateMeta).toHaveBeenCalledWith(
       expect.objectContaining({
         worktreeId,

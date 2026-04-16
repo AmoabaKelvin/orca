@@ -170,7 +170,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => (
       // v1: sort was called 'smart' internally
       // v2: renamed 'smart' → 'recent' (same weighted-score behavior)
       // v3: 'smart' reintroduced as the weighted-score sort, 'recent' becomes
-      //     a true last-activity sort. The one-shot migration from old 'recent'
+      //     a creation-time sort. The one-shot migration from old 'recent'
       //     to 'smart' now happens in the main process (persistence.ts load())
       //     using the _sortBySmartMigrated flag — not here — so that users who
       //     intentionally select the new 'recent' sort keep it across restarts.
