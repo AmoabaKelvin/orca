@@ -294,7 +294,7 @@ function TabBarInner({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="ml-0.5 my-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+            className="ml-2 my-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             title="New tab"
           >
@@ -302,7 +302,7 @@ function TabBarInner({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
-          align="end"
+          align="start"
           sideOffset={6}
           className="min-w-[11rem] rounded-[11px] border-border/80 p-1 shadow-[0_16px_36px_rgba(0,0,0,0.24)]"
           onCloseAutoFocus={(e) => {
@@ -321,7 +321,7 @@ function TabBarInner({
                 focusTerminalTabSurface(newActiveTabId)
               }
             }}
-            className="gap-2 rounded-[7px] px-2 py-0.5 text-[12px] leading-5 font-medium"
+            className="gap-2 rounded-[7px] px-2 py-1.5 text-[12px] leading-5 font-medium"
           >
             <TerminalSquare className="size-4 text-muted-foreground" />
             New Terminal
@@ -329,7 +329,7 @@ function TabBarInner({
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={onNewBrowserTab}
-            className="gap-2 rounded-[7px] px-2 py-0.5 text-[12px] leading-5 font-medium"
+            className="gap-2 rounded-[7px] px-2 py-1.5 text-[12px] leading-5 font-medium"
           >
             <Globe className="size-4 text-muted-foreground" />
             New Browser Tab
@@ -338,7 +338,7 @@ function TabBarInner({
           {onNewFileTab && (
             <DropdownMenuItem
               onSelect={onNewFileTab}
-              className="gap-2 rounded-[7px] px-2 py-0.5 text-[12px] leading-5 font-medium"
+              className="gap-2 rounded-[7px] px-2 py-1.5 text-[12px] leading-5 font-medium"
             >
               <FilePlus className="size-4 text-muted-foreground" />
               New Markdown
