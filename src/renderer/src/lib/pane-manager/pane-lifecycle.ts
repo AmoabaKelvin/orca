@@ -59,6 +59,7 @@ export function createPaneDOM(
       '"SF Mono", "Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono", monospace',
     fontWeight: '300',
     fontWeightBold: '500',
+    lineHeight: 1,
     scrollback: 10000,
     allowTransparency: false,
     macOptionIsMeta: true,
