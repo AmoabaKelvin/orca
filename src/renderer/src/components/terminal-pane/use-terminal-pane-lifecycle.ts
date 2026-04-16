@@ -358,7 +358,8 @@ export function useTerminalPaneLifecycle({
             )
           ),
           cursorStyle: currentSettings?.terminalCursorStyle ?? 'bar',
-          cursorBlink: currentSettings?.terminalCursorBlink ?? true
+          cursorBlink: currentSettings?.terminalCursorBlink ?? true,
+          lineHeight: currentSettings?.terminalLineHeight ?? 1
         }
       },
       onLinkClick: (event, url) => {
