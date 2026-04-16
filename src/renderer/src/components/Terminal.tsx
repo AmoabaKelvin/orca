@@ -839,7 +839,9 @@ function Terminal(): React.JSX.Element | null {
               if (!layout) {
                 return null
               }
-              const isVisible = activeView !== 'settings' && worktree.id === activeWorktreeId
+              // Why: use strict equality with 'terminal' instead of !== 'settings'
+              // so the terminal/browser surface hides on the new-workspace page too.
+              const isVisible = activeView === 'terminal' && worktree.id === activeWorktreeId
               return (
                 <div
                   key={`tab-groups-${worktree.id}`}
@@ -884,8 +886,9 @@ function Terminal(): React.JSX.Element | null {
             {allWorktrees
               .filter((wt) => mountedWorktreeIdsRef.current.has(wt.id))
               .map((worktree) => {
-                const isVisible = activeView !== 'settings' && worktree.id === activeWorktreeId
-
+                // Why: use strict equality with 'terminal' instead of !== 'settings'
+                // so the terminal/browser surface hides on the new-workspace page too.
+                const isVisible = activeView === 'terminal' && worktree.id === activeWorktreeId
                 return (
                   <div
                     key={worktree.id}
@@ -929,8 +932,10 @@ function Terminal(): React.JSX.Element | null {
           >
             {allWorktrees.map((worktree) => {
               const browserTabs = browserTabsByWorktree[worktree.id] ?? []
+              // Why: use strict equality with 'terminal' instead of !== 'settings'
+              // so browser panes also hide on the new-workspace page.
               const isVisibleWorktree =
-                activeView !== 'settings' && worktree.id === activeWorktreeId
+                activeView === 'terminal' && worktree.id === activeWorktreeId
               if (browserTabs.length === 0) {
                 return null
               }
