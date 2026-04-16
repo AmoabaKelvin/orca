@@ -15,7 +15,6 @@ export default function TabGroupPanel({
   worktreeId,
   isFocused,
   hasSplitGroups,
-  showSplitButton,
   reserveClosedExplorerToggleSpace,
   reserveCollapsedSidebarHeaderSpace
 }: {
@@ -23,7 +22,6 @@ export default function TabGroupPanel({
   worktreeId: string
   isFocused: boolean
   hasSplitGroups: boolean
-  showSplitButton: boolean
   reserveClosedExplorerToggleSpace: boolean
   reserveCollapsedSidebarHeaderSpace: boolean
 }): React.JSX.Element {
@@ -35,9 +33,6 @@ export default function TabGroupPanel({
   // toggle convention used in VS Code and macOS toolbars.
   const [altHeld, setAltHeld] = useState(false)
   useEffect(() => {
-    if (!showSplitButton) {
-      return
-    }
     const clearAltHeld = (): void => {
       setAltHeld(false)
     }
@@ -61,7 +56,7 @@ export default function TabGroupPanel({
       window.removeEventListener('keyup', up)
       window.removeEventListener('blur', clearAltHeld)
     }
-  }, [showSplitButton])
+  }, [])
 
   const model = useTabGroupWorkspaceModel({ groupId, worktreeId })
   const {
@@ -165,12 +160,18 @@ export default function TabGroupPanel({
     />
   )
 
+  const actionButtonClassName =
+    'my-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-opacity hover:bg-accent/50 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent'
+  const actionChromeClassName = `ml-1.5 flex shrink-0 items-center gap-1 transition-opacity ${
+    isFocused
+      ? 'pointer-events-auto opacity-100'
+      : 'pointer-events-none opacity-0 group-focus-within/tab-group:pointer-events-auto group-focus-within/tab-group:opacity-100'
+  }`
+
   return (
     <div
-      className={`flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden${
-        hasSplitGroups
-          ? ` group/tab-group border-x border-b ${isFocused ? 'border-accent' : 'border-border'}`
-          : ''
+      className={`group/tab-group flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden${
+        hasSplitGroups ? ` border-x border-b ${isFocused ? 'border-accent' : 'border-border'}` : ''
       }`}
       onPointerDown={commands.focusGroup}
       // Why: keyboard and assistive-tech users can move focus into an unfocused
@@ -205,15 +206,22 @@ export default function TabGroupPanel({
               width of that controls cluster instead of the old full sidebar
               width so tabs cap at the agent badge, not at the old divider. */}
           <div className="min-w-0 flex-1 h-full">{tabBar}</div>
-          {showSplitButton && (
+          {/* Why: the split/close affordances belong to the pane they mutate,
+              not whichever group happens to render in the workspace's top-right
+              corner. Keeping a reserved action slot in every header avoids tab
+              row jitter while hover/focus reveals the local controls only when
+              the user is interacting with that pane. */}
+          <div
+            className={actionChromeClassName}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          >
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
                   aria-label={altHeld ? 'Split Editor Down' : 'Split Editor Right'}
                   onClick={handleSplit}
-                  className="my-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+                  className={actionButtonClassName}
                 >
                   {altHeld ? <Rows2 size={16} /> : <Columns2 size={16} />}
                 </button>
@@ -221,28 +229,30 @@ export default function TabGroupPanel({
               <TooltipContent side="bottom" sideOffset={4}>
                 <div className="flex flex-col">
                   <span>Split Right</span>
-                  {/* Why: split-button modifier hints appear in a shared header UI,
-                      so the label must match the current platform's modifier
-                      vocabulary instead of always showing Mac glyphs. */}
+                  {/* Why: split-button modifier hints appear in shared pane header
+                      chrome, so the label must match the current platform's
+                      modifier vocabulary instead of always showing Mac glyphs. */}
                   <span className="text-muted-foreground">[{isMac ? '⌥' : 'Alt'}] Split Down</span>
                 </div>
               </TooltipContent>
             </Tooltip>
-          )}
-          {hasSplitGroups && (
-            <button
-              type="button"
-              aria-label="Close Group"
-              title="Close Group"
-              onClick={(event) => {
-                event.stopPropagation()
-                commands.closeGroup()
-              }}
-              className="my-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-            >
-              <X className="size-4" />
-            </button>
-          )}
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center">
+              {hasSplitGroups ? (
+                <button
+                  type="button"
+                  aria-label="Close Group"
+                  title="Close Group"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    commands.closeGroup()
+                  }}
+                  className={actionButtonClassName}
+                >
+                  <X className="size-4" />
+                </button>
+              ) : null}
+            </div>
+          </div>
         </div>
       </div>
 
