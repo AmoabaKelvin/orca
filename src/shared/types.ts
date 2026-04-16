@@ -575,6 +575,7 @@ export type GlobalSettings = {
   terminalFontSize: number
   terminalFontFamily: string
   terminalFontWeight: number
+  terminalLineHeight: number
   terminalCursorStyle: 'bar' | 'block' | 'underline'
   terminalCursorBlink: boolean
   terminalThemeDark: string

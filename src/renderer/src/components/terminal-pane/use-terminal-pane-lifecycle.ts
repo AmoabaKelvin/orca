@@ -433,7 +433,8 @@ export function useTerminalPaneLifecycle({
           ),
           cursorStyle: currentSettings?.terminalCursorStyle ?? 'bar',
           cursorBlink: currentSettings?.terminalCursorBlink ?? true,
-          macOptionIsMeta: currentSettings?.terminalMacOptionAsAlt === 'true'
+          macOptionIsMeta: currentSettings?.terminalMacOptionAsAlt === 'true',
+          lineHeight: currentSettings?.terminalLineHeight ?? 1
         }
       },
       onLinkClick: (event, url) => {
