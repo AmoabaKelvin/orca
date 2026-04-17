@@ -265,6 +265,17 @@ export const createBrowserSlice: StateCreator<AppState, [], [], BrowserSlice> = 
 
     set((s) => {
       const existingTabs = s.browserTabsByWorktree[worktreeId] ?? []
+      // Why: the new browser tab should appear immediately after the tab that
+      // was active when the user triggered creation. Resolve the anchor from
+      // the worktree-scoped active fields before the activation below flips
+      // the active surface to browser.
+      const activeType = s.activeTabTypeByWorktree?.[worktreeId] ?? s.activeTabType
+      const anchorId =
+        activeType === 'editor'
+          ? (s.activeFileIdByWorktree?.[worktreeId] ?? s.activeFileId ?? null)
+          : activeType === 'browser'
+            ? (s.activeBrowserTabIdByWorktree?.[worktreeId] ?? s.activeBrowserTabId ?? null)
+            : (s.activeTabIdByWorktree?.[worktreeId] ?? s.activeTabId ?? null)
       const nextTabBarOrder = (() => {
         const currentOrder = s.tabBarOrderByWorktree[worktreeId] ?? []
         const terminalIds = (s.tabsByWorktree[worktreeId] ?? []).map((tab) => tab.id)
@@ -279,6 +290,13 @@ export const createBrowserSlice: StateCreator<AppState, [], [], BrowserSlice> = 
           if (!inBase.has(entryId)) {
             base.push(entryId)
             inBase.add(entryId)
+          }
+        }
+        if (anchorId) {
+          const anchorIdx = base.indexOf(anchorId)
+          if (anchorIdx !== -1) {
+            base.splice(anchorIdx + 1, 0, workspaceId)
+            return base
           }
         }
         base.push(workspaceId)

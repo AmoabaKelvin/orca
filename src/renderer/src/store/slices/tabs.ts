@@ -32,6 +32,10 @@ export type TabsSlice = {
   groupsByWorktree: Record<string, TabGroup[]>
   activeGroupIdByWorktree: Record<string, string>
   layoutByWorktree: Record<string, TabGroupLayoutNode>
+  /** Per-group activation history (most recent at end). Used so closing the
+   *  active tab returns focus to the previously-active tab instead of a
+   *  positional neighbor. Bounded to TAB_ACTIVATION_STACK_LIMIT entries. */
+  tabActivationStackByGroupId: Record<string, string[]>
   createUnifiedTab: (
     worktreeId: string,
     contentType: TabContentType,
@@ -41,6 +45,10 @@ export type TabsSlice = {
         'id' | 'entityId' | 'label' | 'customLabel' | 'color' | 'isPreview' | 'isPinned'
       > & {
         targetGroupId: string
+        /** Unified tab id to insert the new tab after in group.tabOrder.
+         *  When omitted, defaults to the target group's current activeTabId.
+         *  When null or not found in the group, falls back to appending. */
+        insertAfterTabId: string | null
       }
     >
   ) => Tab
@@ -376,11 +384,50 @@ function buildActiveSurfacePatch(
   }
 }
 
+const TAB_ACTIVATION_STACK_LIMIT = 32
+
+function pushActivation(
+  stacksByGroupId: Record<string, string[]>,
+  groupId: string,
+  tabId: string
+): Record<string, string[]> {
+  const current = stacksByGroupId[groupId] ?? []
+  const filtered = current.filter((id) => id !== tabId)
+  filtered.push(tabId)
+  const trimmed =
+    filtered.length > TAB_ACTIVATION_STACK_LIMIT
+      ? filtered.slice(filtered.length - TAB_ACTIVATION_STACK_LIMIT)
+      : filtered
+  return { ...stacksByGroupId, [groupId]: trimmed }
+}
+
+/** Pick the most recent entry in the stack that still exists in validIds,
+ *  consuming stale entries as it goes. Returns null if the stack is empty or
+ *  every entry is stale. */
+function popLatestValidActivation(
+  stack: string[] | undefined,
+  validIds: Set<string>
+): { chosen: string | null; remaining: string[] } {
+  if (!stack || stack.length === 0) {
+    return { chosen: null, remaining: stack ?? [] }
+  }
+  const remaining = [...stack]
+  while (remaining.length > 0) {
+    const candidate = remaining.at(-1)!
+    if (validIds.has(candidate)) {
+      return { chosen: candidate, remaining }
+    }
+    remaining.pop()
+  }
+  return { chosen: null, remaining }
+}
+
 export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, get) => ({
   unifiedTabsByWorktree: {},
   groupsByWorktree: {},
   activeGroupIdByWorktree: {},
   layoutByWorktree: {},
+  tabActivationStackByGroupId: {},
 
   createUnifiedTab: (worktreeId, contentType, init) => {
     const id = init?.id ?? globalThis.crypto.randomUUID()
@@ -422,7 +469,25 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
         isPinned: init?.isPinned
       }
 
-      nextOrder.push(created.id)
+      // Why: new tabs should appear immediately after the tab that was active
+      // when the user triggered the creation, not at the end of the group.
+      // `init.insertAfterTabId` overrides the default; `null` means caller
+      // explicitly wants append-at-end (e.g. hydration restoring order).
+      // Undefined falls back to the group's current activeTabId, which at
+      // this point still points at the *previous* active tab because the
+      // group's activeTabId isn't updated until the return below.
+      const anchorId =
+        init?.insertAfterTabId === undefined ? group.activeTabId : init.insertAfterTabId
+      if (anchorId) {
+        const anchorIdx = nextOrder.indexOf(anchorId)
+        if (anchorIdx === -1) {
+          nextOrder.push(created.id)
+        } else {
+          nextOrder.splice(anchorIdx + 1, 0, created.id)
+        }
+      } else {
+        nextOrder.push(created.id)
+      }
       return {
         unifiedTabsByWorktree: {
           ...state.unifiedTabsByWorktree,
@@ -440,7 +505,14 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
         layoutByWorktree: {
           ...state.layoutByWorktree,
           [worktreeId]: state.layoutByWorktree[worktreeId] ?? { type: 'leaf', groupId: group.id }
-        }
+        },
+        // Why: record the just-created tab as the most-recent activation so a
+        // subsequent close falls back through the history in the right order.
+        tabActivationStackByGroupId: pushActivation(
+          state.tabActivationStackByGroupId,
+          group.id,
+          created.id
+        )
       }
     })
     return created
@@ -489,7 +561,14 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
         activeGroupIdByWorktree: {
           ...state.activeGroupIdByWorktree,
           [worktreeId]: tab.groupId
-        }
+        },
+        // Why: track every explicit activation so closeUnifiedTab can fall
+        // back to the previously-active tab instead of a positional neighbor.
+        tabActivationStackByGroupId: pushActivation(
+          state.tabActivationStackByGroupId,
+          tab.groupId,
+          tabId
+        )
       }
     })
   },
@@ -508,11 +587,24 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
 
     const remainingOrder = group.tabOrder.filter((id) => id !== tabId)
     const wasLastTab = remainingOrder.length === 0
+    // Why: when closing the active tab, prefer the most recent prior active
+    // tab in the same group (focus history) over the positional neighbor.
+    // This matches the common browser/VS Code behavior of "Ctrl-W goes back
+    // to the tab I was just on". Fall back to pickNeighbor when no valid
+    // history is available (e.g. hydrated state or cross-group moves).
+    const activationStack = state.tabActivationStackByGroupId[group.id] ?? []
+    const stackWithoutClosed = activationStack.filter((id) => id !== tabId)
+    const remainingIdSet = new Set(remainingOrder)
+    const { chosen: historicalActive, remaining: prunedStack } = popLatestValidActivation(
+      stackWithoutClosed,
+      remainingIdSet
+    )
+    const nextActivationStackForGroup = prunedStack
     const nextActiveTabId =
       group.activeTabId === tabId
         ? wasLastTab
           ? null
-          : pickNeighbor(group.tabOrder, tabId)
+          : (historicalActive ?? pickNeighbor(group.tabOrder, tabId))
         : group.activeTabId
 
     set((current) => {
@@ -544,6 +636,26 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
         (current.tabsByWorktree[worktreeId] ?? []).length === 0 &&
         (current.browserTabsByWorktree[worktreeId] ?? []).length === 0 &&
         !current.openFiles.some((file) => file.worktreeId === worktreeId)
+      // Why: drop the closed tab from its group's activation stack, and drop
+      // the entire stack when the group itself is being collapsed. Stale
+      // entries here never become active (popLatestValidActivation filters
+      // them), but clearing them keeps the map from growing unboundedly as
+      // groups come and go.
+      const nextTabActivationStackByGroupId = (() => {
+        const groupStillExists = nextGroups.some((candidate) => candidate.id === group.id)
+        if (!groupStillExists) {
+          if (!(group.id in current.tabActivationStackByGroupId)) {
+            return current.tabActivationStackByGroupId
+          }
+          const next = { ...current.tabActivationStackByGroupId }
+          delete next[group.id]
+          return next
+        }
+        return {
+          ...current.tabActivationStackByGroupId,
+          [group.id]: nextActivationStackForGroup
+        }
+      })()
       return {
         unifiedTabsByWorktree: { ...current.unifiedTabsByWorktree, [worktreeId]: nextTabs },
         groupsByWorktree: {
@@ -552,6 +664,7 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
         },
         layoutByWorktree: nextLayoutByWorktree,
         activeGroupIdByWorktree: nextActiveGroupIdByWorktree,
+        tabActivationStackByGroupId: nextTabActivationStackByGroupId,
         // Why: the split-group model can legally derive "terminal with no
         // active tab" after the final unified tab closes. That leaves the
         // worktree selected but render-empty, so the workspace shows a blank
@@ -770,10 +883,19 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
         groupId,
         remainingGroups[0]?.id ?? null
       )
+      const nextTabActivationStackByGroupId = (() => {
+        if (!(groupId in current.tabActivationStackByGroupId)) {
+          return current.tabActivationStackByGroupId
+        }
+        const next = { ...current.tabActivationStackByGroupId }
+        delete next[groupId]
+        return next
+      })()
       return {
         groupsByWorktree: { ...current.groupsByWorktree, [worktreeId]: remainingGroups },
         layoutByWorktree: collapsedState.layoutByWorktree,
         activeGroupIdByWorktree: collapsedState.activeGroupIdByWorktree,
+        tabActivationStackByGroupId: nextTabActivationStackByGroupId,
         ...(current.activeWorktreeId === worktreeId
           ? buildActiveSurfacePatch(
               {
@@ -872,6 +994,29 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
         }
         return group
       })
+      // Why: transplant the tab's activation history entry across groups.
+      // Without this, closing the moved tab from its new group would look at a
+      // stack that never saw it, and the stack on the source group would still
+      // carry a stale reference.
+      const sourceStack = state.tabActivationStackByGroupId[sourceGroup.id] ?? []
+      const targetStack = state.tabActivationStackByGroupId[targetGroupId] ?? []
+      const nextSourceStack = sourceStack.filter((id) => id !== tabId)
+      const nextTargetStack = opts?.activate
+        ? (() => {
+            const filtered = targetStack.filter((id) => id !== tabId)
+            filtered.push(tabId)
+            return filtered.length > TAB_ACTIVATION_STACK_LIMIT
+              ? filtered.slice(filtered.length - TAB_ACTIVATION_STACK_LIMIT)
+              : filtered
+          })()
+        : targetStack.includes(tabId)
+          ? targetStack
+          : targetStack
+      const nextTabActivationStackByGroupId = {
+        ...state.tabActivationStackByGroupId,
+        [sourceGroup.id]: nextSourceStack,
+        [targetGroupId]: nextTargetStack
+      }
       return {
         unifiedTabsByWorktree: {
           ...state.unifiedTabsByWorktree,
@@ -883,7 +1028,8 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
           ...state.groupsByWorktree,
           [worktreeId]: nextGroups
         },
-        activeGroupIdByWorktree: nextActiveGroupIdByWorktree
+        activeGroupIdByWorktree: nextActiveGroupIdByWorktree,
+        tabActivationStackByGroupId: nextTabActivationStackByGroupId
       }
     })
     return moved

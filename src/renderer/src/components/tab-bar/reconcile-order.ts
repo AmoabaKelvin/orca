@@ -20,3 +20,33 @@ export function reconcileTabOrder(
   }
   return result
 }
+
+/**
+ * Position `newId` immediately after `anchorId` in `order`, removing any prior
+ * occurrence of `newId`. Falls back to appending at the end when `anchorId` is
+ * null, undefined, or absent from `order`. Returns a new array — `order` is
+ * not mutated.
+ *
+ * Why: all "new X tab" actions (terminal via Cmd+T, untitled file via
+ * Cmd+Shift+N, browser tab via Cmd+Opt+T) must insert next to the currently
+ * active tab instead of appending to the end. Centralizing the logic here
+ * keeps every call site consistent.
+ */
+export function placeIdAfter(
+  order: string[],
+  newId: string,
+  anchorId: string | null | undefined
+): string[] {
+  const filtered = order.filter((id) => id !== newId)
+  if (!anchorId) {
+    filtered.push(newId)
+    return filtered
+  }
+  const anchorIdx = filtered.indexOf(anchorId)
+  if (anchorIdx === -1) {
+    filtered.push(newId)
+    return filtered
+  }
+  filtered.splice(anchorIdx + 1, 0, newId)
+  return filtered
+}

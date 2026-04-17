@@ -1,31 +1,35 @@
 import { useAppStore } from '@/store'
 import { TOGGLE_TERMINAL_PANE_EXPAND_EVENT } from '@/constants/terminal'
-import { reconcileTabOrder } from '../tab-bar/reconcile-order'
+import { placeIdAfter, reconcileTabOrder } from '../tab-bar/reconcile-order'
+import { resolveActiveEntityId } from './active-entity'
 
 export function createNewTerminalTab(activeWorktreeId: string | null): void {
   if (!activeWorktreeId) {
     return
   }
   const state = useAppStore.getState()
+  // Why: snapshot the active entity id *before* createTab flips activeTabId to
+  // the new terminal. That pre-existing id is the anchor we insert next to.
+  const anchorId = resolveActiveEntityId(state, activeWorktreeId)
   const newTab = state.createTab(activeWorktreeId)
   state.setActiveTabType('terminal')
-  // Why: persist the tab bar order with the new terminal at the end of the
-  // current visual order. Without this, reconcileTabOrder falls back to
-  // terminals-first when tabBarOrderByWorktree is unset, causing a new
-  // terminal to jump to index 0 instead of appending after editor tabs.
+  // Why: persist the tab bar order with the new terminal inserted immediately
+  // after the previously active tab. Falling through to reconcileTabOrder's
+  // append-at-end would put the new terminal at the wrong position when the
+  // active tab is not the last one in the bar.
   const freshState = useAppStore.getState()
   const termIds = (freshState.tabsByWorktree[activeWorktreeId] ?? []).map((t) => t.id)
   const editorIds = freshState.openFiles
     .filter((f) => f.worktreeId === activeWorktreeId)
     .map((f) => f.id)
+  const browserIds = (freshState.browserTabsByWorktree[activeWorktreeId] ?? []).map((t) => t.id)
   const base = reconcileTabOrder(
     freshState.tabBarOrderByWorktree[activeWorktreeId],
     termIds,
-    editorIds
+    editorIds,
+    browserIds
   )
-  // The new tab is already in base via termIds; move it to the end
-  const order = base.filter((id) => id !== newTab.id)
-  order.push(newTab.id)
+  const order = placeIdAfter(base, newTab.id, anchorId)
   state.setTabBarOrder(activeWorktreeId, order)
 }
 

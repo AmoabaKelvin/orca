@@ -186,6 +186,41 @@ describe('TabsSlice', () => {
 
       expect(store.getState().groupsByWorktree[WT]).toHaveLength(1)
     })
+
+    it('inserts new tabs after the current active tab, not at the end', () => {
+      const tab1 = store.getState().createUnifiedTab(WT, 'terminal')
+      const tab2 = store.getState().createUnifiedTab(WT, 'terminal')
+      const tab3 = store.getState().createUnifiedTab(WT, 'terminal')
+      // Active is now tab3. Re-activate tab1 then create tab4.
+      store.getState().activateTab(tab1.id)
+      const tab4 = store.getState().createUnifiedTab(WT, 'terminal')
+
+      const group = store.getState().groupsByWorktree[WT][0]
+      expect(group.tabOrder).toEqual([tab1.id, tab4.id, tab2.id, tab3.id])
+      expect(group.activeTabId).toBe(tab4.id)
+    })
+
+    it('honors an explicit insertAfterTabId when provided', () => {
+      const tab1 = store.getState().createUnifiedTab(WT, 'terminal')
+      const tab2 = store.getState().createUnifiedTab(WT, 'terminal')
+      const tab3 = store.getState().createUnifiedTab(WT, 'terminal')
+      const tab4 = store.getState().createUnifiedTab(WT, 'terminal', {
+        insertAfterTabId: tab1.id
+      })
+
+      const group = store.getState().groupsByWorktree[WT][0]
+      expect(group.tabOrder).toEqual([tab1.id, tab4.id, tab2.id, tab3.id])
+    })
+
+    it('appends when insertAfterTabId is explicitly null', () => {
+      const tab1 = store.getState().createUnifiedTab(WT, 'terminal')
+      const tab2 = store.getState().createUnifiedTab(WT, 'terminal', {
+        insertAfterTabId: null
+      })
+
+      const group = store.getState().groupsByWorktree[WT][0]
+      expect(group.tabOrder).toEqual([tab1.id, tab2.id])
+    })
   })
 
   // ─── closeUnifiedTab ────────────────────────────────────────────────
@@ -243,6 +278,59 @@ describe('TabsSlice', () => {
     it('returns null for nonexistent tab', () => {
       const result = store.getState().closeUnifiedTab('nonexistent')
       expect(result).toBeNull()
+    })
+
+    it('falls back to the previously-active tab instead of the positional neighbor', () => {
+      const t1 = store.getState().createUnifiedTab(WT, 'terminal')
+      const t2 = store.getState().createUnifiedTab(WT, 'terminal')
+      const t3 = store.getState().createUnifiedTab(WT, 'terminal')
+      // Visually: [t1, t2, t3]. Activate t1 then t3 so the history is t3 on
+      // top, t1 below it.
+      store.getState().activateTab(t1.id)
+      store.getState().activateTab(t3.id)
+
+      store.getState().closeUnifiedTab(t3.id)
+
+      // Without focus history, pickNeighbor would pick t2. With history, we
+      // expect t1 — the tab that was active just before t3.
+      expect(store.getState().groupsByWorktree[WT][0].activeTabId).toBe(t1.id)
+      expect(t2.id).toBeDefined()
+    })
+
+    it('skips activation-history entries that were themselves closed', () => {
+      const t1 = store.getState().createUnifiedTab(WT, 'terminal')
+      const t2 = store.getState().createUnifiedTab(WT, 'terminal')
+      const t3 = store.getState().createUnifiedTab(WT, 'terminal')
+      const t4 = store.getState().createUnifiedTab(WT, 'terminal')
+      // Activation sequence: t1, t2, t3, t4 (each creation adds to stack).
+      // Close t2 and t3 out of order — they should not resurrect on next close.
+      store.getState().closeUnifiedTab(t2.id)
+      store.getState().closeUnifiedTab(t3.id)
+      // Active is still t4. Close t4 and expect t1 as the surviving history.
+      store.getState().closeUnifiedTab(t4.id)
+
+      expect(store.getState().groupsByWorktree[WT][0].activeTabId).toBe(t1.id)
+    })
+
+    it('falls back to the positional neighbor when no history is available', () => {
+      const t1 = store.getState().createUnifiedTab(WT, 'terminal')
+      const t2 = store.getState().createUnifiedTab(WT, 'terminal')
+      const t3 = store.getState().createUnifiedTab(WT, 'terminal')
+      // Clear the stack to simulate a hydrated state with no activation history.
+      store.setState({ tabActivationStackByGroupId: {} })
+      store.getState().activateTab(t2.id)
+      // Only t2 is in the stack now; closing it should fall back to neighbor.
+      store.setState({
+        tabActivationStackByGroupId: {
+          [store.getState().groupsByWorktree[WT][0].id]: [t2.id]
+        }
+      })
+
+      store.getState().closeUnifiedTab(t2.id)
+
+      // Right neighbor is t3.
+      expect(store.getState().groupsByWorktree[WT][0].activeTabId).toBe(t3.id)
+      expect(t1.id).toBeDefined()
     })
   })
 

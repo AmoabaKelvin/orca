@@ -27,7 +27,8 @@ import {
 import { isUpdaterQuitAndInstallInProgress } from '@/lib/updater-beforeunload'
 import EditorAutosaveController from './editor/EditorAutosaveController'
 import BrowserPane, { destroyPersistentWebview } from './browser-pane/BrowserPane'
-import { reconcileTabOrder } from './tab-bar/reconcile-order'
+import { placeIdAfter, reconcileTabOrder } from './tab-bar/reconcile-order'
+import { resolveActiveEntityId } from './terminal/active-entity'
 import TabGroupSplitLayout from './tab-group/TabGroupSplitLayout'
 import { shouldAutoCreateInitialTerminal } from './terminal/initial-terminal'
 import CodexRestartChip from './CodexRestartChip'
@@ -239,12 +240,15 @@ function Terminal(): React.JSX.Element | null {
     if (!activeWorktreeId) {
       return
     }
+    // Why: snapshot the active entity id before createTab flips activeTabId
+    // to the new terminal. The pre-existing id is the insertion anchor.
+    const anchorId = resolveActiveEntityId(useAppStore.getState(), activeWorktreeId)
     const newTab = createTab(activeWorktreeId)
     setActiveTabType('terminal')
-    // Why: persist the tab bar order with the new terminal at the end of the
-    // current visual order. Without this, reconcileOrder falls back to
-    // terminals-first when tabBarOrderByWorktree is unset, causing a new
-    // terminal to jump to index 0 instead of appending after editor tabs.
+    // Why: reconcile so base contains every live entity, then place the new
+    // terminal immediately after the previously active tab. Falling through
+    // to append-at-end would put it at the wrong position when the active
+    // tab is not the last one in the bar.
     const state = useAppStore.getState()
     const currentTerminals = state.tabsByWorktree[activeWorktreeId] ?? []
     const currentEditors = state.openFiles.filter((f) => f.worktreeId === activeWorktreeId)
@@ -262,9 +266,7 @@ function Terminal(): React.JSX.Element | null {
         inBase.add(id)
       }
     }
-    // The new tab is already in base via termIds; move it to the end
-    const order = base.filter((id) => id !== newTab.id)
-    order.push(newTab.id)
+    const order = placeIdAfter(base, newTab.id, anchorId)
     setTabBarOrder(activeWorktreeId, order)
   }, [activeWorktreeId, createTab, setActiveTabType, setTabBarOrder])
 

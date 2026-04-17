@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { reconcileTabOrder } from './reconcile-order'
+import { placeIdAfter, reconcileTabOrder } from './reconcile-order'
 
 describe('reconcileTabOrder', () => {
   it('returns all IDs when no stored order exists', () => {
@@ -31,5 +31,40 @@ describe('reconcileTabOrder', () => {
   it('maintains interleaved stored order across types', () => {
     const stored = ['t1', 'e1', 't2', 'e2']
     expect(reconcileTabOrder(stored, ['t1', 't2'], ['e1', 'e2'])).toEqual(['t1', 'e1', 't2', 'e2'])
+  })
+})
+
+describe('placeIdAfter', () => {
+  it('inserts the new id immediately after the anchor', () => {
+    expect(placeIdAfter(['a', 'b', 'c'], 'new', 'a')).toEqual(['a', 'new', 'b', 'c'])
+    expect(placeIdAfter(['a', 'b', 'c'], 'new', 'b')).toEqual(['a', 'b', 'new', 'c'])
+  })
+
+  it('appends when the anchor is the last element', () => {
+    expect(placeIdAfter(['a', 'b'], 'new', 'b')).toEqual(['a', 'b', 'new'])
+  })
+
+  it('appends when the anchor is null or undefined', () => {
+    expect(placeIdAfter(['a', 'b'], 'new', null)).toEqual(['a', 'b', 'new'])
+    expect(placeIdAfter(['a', 'b'], 'new', undefined)).toEqual(['a', 'b', 'new'])
+  })
+
+  it('appends when the anchor is not found', () => {
+    expect(placeIdAfter(['a', 'b'], 'new', 'missing')).toEqual(['a', 'b', 'new'])
+  })
+
+  it('removes any prior occurrence of the new id before placing it', () => {
+    expect(placeIdAfter(['a', 'new', 'b', 'c'], 'new', 'b')).toEqual(['a', 'b', 'new', 'c'])
+  })
+
+  it('does not mutate the input array', () => {
+    const input = ['a', 'b', 'c']
+    placeIdAfter(input, 'new', 'a')
+    expect(input).toEqual(['a', 'b', 'c'])
+  })
+
+  it('handles the empty-order case', () => {
+    expect(placeIdAfter([], 'new', null)).toEqual(['new'])
+    expect(placeIdAfter([], 'new', 'missing')).toEqual(['new'])
   })
 })

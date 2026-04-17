@@ -15,6 +15,8 @@ import { zoomLevelToPercent, ZOOM_MIN, ZOOM_MAX } from '@/components/settings/Se
 import { dispatchZoomLevelChanged } from '@/lib/zoom-events'
 import { resolveZoomTarget } from './resolve-zoom-target'
 import { handleSwitchTab } from './ipc-tab-switch'
+import { resolveActiveEntityId } from '@/components/terminal/active-entity'
+import { placeIdAfter } from '@/components/tab-bar/reconcile-order'
 
 export { resolveZoomTarget } from './resolve-zoom-target'
 
@@ -188,11 +190,13 @@ export function useIpcEvents(): void {
         if (!worktreeId) {
           return
         }
+        // Why: snapshot the active entity id before createTab flips activeTabId
+        // to the new terminal. The pre-existing id is the insertion anchor.
+        const anchorId = resolveActiveEntityId(store, worktreeId)
         const newTab = store.createTab(worktreeId)
         store.setActiveTabType('terminal')
-        // Why: replicate the full reconciliation from Terminal.tsx handleNewTab
-        // so the new tab appends at the visual end instead of jumping to index 0
-        // when tabBarOrderByWorktree is unset (e.g. restored worktrees).
+        // Why: reconcile so the base order contains every live entity, then
+        // place the new terminal immediately after the previously active tab.
         const currentTerminals = store.tabsByWorktree[worktreeId] ?? []
         const currentEditors = store.openFiles.filter((f) => f.worktreeId === worktreeId)
         const currentBrowsers = store.browserTabsByWorktree[worktreeId] ?? []
@@ -209,8 +213,7 @@ export function useIpcEvents(): void {
             inBase.add(id)
           }
         }
-        const order = base.filter((id) => id !== newTab.id)
-        order.push(newTab.id)
+        const order = placeIdAfter(base, newTab.id, anchorId)
         store.setTabBarOrder(worktreeId, order)
       })
     )

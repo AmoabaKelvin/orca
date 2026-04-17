@@ -487,10 +487,10 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         }
       }
 
-      // Why: append the new file to the persisted tab bar order so it appears
-      // at the end of the tab bar. Without this, reconcileOrder in TabBar
-      // falls back to type-grouped ordering (terminals first) when the stored
-      // order doesn't contain the new file.
+      // Why: place the new file's tab id immediately after the currently
+      // active tab for this worktree. Appending at the end would put a
+      // freshly-opened file at the far right even when the user was working
+      // in a tab at the start or middle of the bar.
       const tabBarUpdate: Record<string, unknown> = {}
       if (s.tabBarOrderByWorktree) {
         const currentOrder = s.tabBarOrderByWorktree[worktreeId] ?? []
@@ -508,7 +508,19 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
             inBase.add(eid)
           }
         }
-        base.push(id)
+        const activeType = s.activeTabTypeByWorktree?.[worktreeId] ?? s.activeTabType
+        const anchorId =
+          activeType === 'editor'
+            ? (s.activeFileIdByWorktree?.[worktreeId] ?? s.activeFileId ?? null)
+            : activeType === 'browser'
+              ? (s.activeBrowserTabIdByWorktree?.[worktreeId] ?? s.activeBrowserTabId ?? null)
+              : (s.activeTabIdByWorktree?.[worktreeId] ?? s.activeTabId ?? null)
+        const anchorIdx = anchorId ? base.indexOf(anchorId) : -1
+        if (anchorIdx !== -1) {
+          base.splice(anchorIdx + 1, 0, id)
+        } else {
+          base.push(id)
+        }
         tabBarUpdate.tabBarOrderByWorktree = { ...s.tabBarOrderByWorktree, [worktreeId]: base }
       }
 
