@@ -13,6 +13,7 @@ import type {
   WorkspaceVisibleTabType
 } from '../../../../shared/types'
 import {
+  dedupeTabOrder,
   ensureGroup,
   findGroupAndWorktree,
   findGroupForTab,
@@ -84,6 +85,14 @@ export type TabsSlice = {
     tabId: string,
     targetGroupId: string,
     opts?: { index?: number; activate?: boolean }
+  ) => boolean
+  dropUnifiedTab: (
+    tabId: string,
+    target: {
+      groupId: string
+      index?: number
+      splitDirection?: TabSplitDirection
+    }
   ) => boolean
   copyUnifiedTabToGroup: (
     tabId: string,
@@ -442,7 +451,7 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
       const existingTabs = state.unifiedTabsByWorktree[worktreeId] ?? []
 
       let nextTabs = existingTabs
-      let nextOrder = [...group.tabOrder]
+      let nextOrder = dedupeTabOrder(group.tabOrder)
       if (init?.isPreview) {
         const existingPreview = existingTabs.find(
           (tab) => tab.groupId === group.id && tab.isPreview && tab.contentType === contentType
@@ -488,6 +497,9 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
       } else {
         nextOrder.push(created.id)
       }
+      // Why: dedupe at the boundary — upstream added this to guard against
+      // racey stored orders that contain the new id twice after restore.
+      nextOrder = dedupeTabOrder(nextOrder)
       return {
         unifiedTabsByWorktree: {
           ...state.unifiedTabsByWorktree,
@@ -585,7 +597,8 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
       return null
     }
 
-    const remainingOrder = group.tabOrder.filter((id) => id !== tabId)
+    const dedupedGroupOrder = dedupeTabOrder(group.tabOrder)
+    const remainingOrder = dedupeTabOrder(dedupedGroupOrder.filter((id) => id !== tabId))
     const wasLastTab = remainingOrder.length === 0
     // Why: when closing the active tab, prefer the most recent prior active
     // tab in the same group (focus history) over the positional neighbor.
@@ -604,7 +617,7 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
       group.activeTabId === tabId
         ? wasLastTab
           ? null
-          : (historicalActive ?? pickNeighbor(group.tabOrder, tabId))
+          : (historicalActive ?? pickNeighbor(dedupedGroupOrder, tabId))
         : group.activeTabId
 
     set((current) => {
@@ -728,11 +741,15 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
         if (!group) {
           continue
         }
-        const orderMap = new Map(tabIds.map((id, index) => [id, index]))
+        // Why: drag-and-drop should preserve a single canonical position for
+        // each tab. Sanitizing here restores the invariant at the store
+        // boundary so later group operations do not branch on duplicate ids.
+        const nextTabOrder = dedupeTabOrder(tabIds)
+        const orderMap = new Map(nextTabOrder.map((id, index) => [id, index]))
         return {
           groupsByWorktree: {
             ...state.groupsByWorktree,
-            [worktreeId]: updateGroup(groups, { ...group, tabOrder: tabIds })
+            [worktreeId]: updateGroup(groups, { ...group, tabOrder: nextTabOrder })
           },
           unifiedTabsByWorktree: {
             ...state.unifiedTabsByWorktree,
@@ -965,8 +982,12 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
       }
       moved = true
 
-      const sourceOrder = sourceGroup.tabOrder.filter((id) => id !== tabId)
-      const targetOrder = [...targetGroup.tabOrder]
+      const dedupedSourceGroupOrder = dedupeTabOrder(sourceGroup.tabOrder)
+      const sourceOrder = dedupeTabOrder(dedupedSourceGroupOrder.filter((id) => id !== tabId))
+      // Why: defensive filter so target order can't grow a duplicate if the
+      // tab id somehow already exists there (stale state, prior bug). See
+      // dropUnifiedTab for the same guard.
+      const targetOrder = dedupeTabOrder(targetGroup.tabOrder.filter((id) => id !== tabId))
       const targetIndex = Math.max(
         0,
         Math.min(opts?.index ?? targetOrder.length, targetOrder.length)
@@ -981,7 +1002,9 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
           return {
             ...group,
             activeTabId:
-              group.activeTabId === tabId ? pickNeighbor(group.tabOrder, tabId) : group.activeTabId,
+              group.activeTabId === tabId
+                ? pickNeighbor(dedupedSourceGroupOrder, tabId)
+                : group.activeTabId,
             tabOrder: sourceOrder
           }
         }
@@ -1030,6 +1053,161 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
         },
         activeGroupIdByWorktree: nextActiveGroupIdByWorktree,
         tabActivationStackByGroupId: nextTabActivationStackByGroupId
+      }
+    })
+    return moved
+  },
+
+  dropUnifiedTab: (tabId, target) => {
+    let moved = false
+    set((state) => {
+      const foundTab = findTabAndWorktree(state.unifiedTabsByWorktree, tabId)
+      const foundTarget = findGroupAndWorktree(state.groupsByWorktree, target.groupId)
+      if (!foundTab || !foundTarget || foundTab.worktreeId !== foundTarget.worktreeId) {
+        return {}
+      }
+
+      const { tab, worktreeId } = foundTab
+      const sourceGroup = findGroupForTab(state.groupsByWorktree, worktreeId, tab.groupId)
+      const targetGroup = foundTarget.group
+      if (!sourceGroup) {
+        return {}
+      }
+
+      const isSplitDrop = Boolean(target.splitDirection)
+      if (!isSplitDrop && tab.groupId === target.groupId) {
+        return {}
+      }
+      if (isSplitDrop && tab.groupId === target.groupId && sourceGroup.tabOrder.length <= 1) {
+        // Why: dragging the final tab in a group onto that same group's edge
+        // would create a transient sibling only to collapse the source
+        // immediately, leaving the layout unchanged while still churning focus
+        // and group IDs. Treat that as a no-op instead of faking a split.
+        return {}
+      }
+
+      moved = true
+
+      let nextGroups = state.groupsByWorktree[worktreeId] ?? []
+      let nextLayoutByWorktree = state.layoutByWorktree
+      let nextActiveGroupIdByWorktree = state.activeGroupIdByWorktree
+      let resolvedTargetGroupId = target.groupId
+
+      if (target.splitDirection) {
+        const newGroupId = globalThis.crypto.randomUUID()
+        const newGroup: TabGroup = {
+          id: newGroupId,
+          worktreeId,
+          activeTabId: null, // Placeholder; properly set in the nextGroups.map() below
+          tabOrder: []
+        }
+        const currentLayout =
+          nextLayoutByWorktree[worktreeId] ?? ({ type: 'leaf', groupId: target.groupId } as const)
+        const replacement = buildSplitNode(
+          target.groupId,
+          newGroupId,
+          target.splitDirection === 'left' || target.splitDirection === 'right'
+            ? 'horizontal'
+            : 'vertical',
+          target.splitDirection === 'left' || target.splitDirection === 'up' ? 'first' : 'second'
+        )
+
+        resolvedTargetGroupId = newGroupId
+        nextGroups = [...nextGroups, newGroup]
+        nextLayoutByWorktree = {
+          ...nextLayoutByWorktree,
+          [worktreeId]: replaceLeaf(currentLayout, target.groupId, replacement)
+        }
+        nextActiveGroupIdByWorktree = {
+          ...nextActiveGroupIdByWorktree,
+          [worktreeId]: newGroupId
+        }
+      }
+
+      const dedupedSourceGroupOrder = dedupeTabOrder(sourceGroup.tabOrder)
+      const sourceOrder = dedupeTabOrder(dedupedSourceGroupOrder.filter((id) => id !== tabId))
+      const destinationGroup =
+        nextGroups.find((group) => group.id === resolvedTargetGroupId) ?? targetGroup
+      // Why: the target group's stored order can already contain this tab id
+      // from a prior racey write or a same-group split where the source and
+      // destination transiently share it. Splicing without filtering first
+      // would leave the same id in the order twice, which React surfaces as
+      // a duplicate-key warning in TabBar and can mis-reconcile xterm panes.
+      const targetOrder = dedupeTabOrder(destinationGroup.tabOrder.filter((id) => id !== tabId))
+      const targetIndex = Math.max(
+        0,
+        Math.min(target.index ?? targetOrder.length, targetOrder.length)
+      )
+      targetOrder.splice(targetIndex, 0, tabId)
+
+      nextGroups = nextGroups.map((group) => {
+        if (group.id === sourceGroup.id) {
+          return {
+            ...group,
+            activeTabId:
+              group.activeTabId === tabId
+                ? pickNeighbor(dedupedSourceGroupOrder, tabId)
+                : group.activeTabId,
+            tabOrder: sourceOrder
+          }
+        }
+        if (group.id === resolvedTargetGroupId) {
+          return {
+            ...group,
+            activeTabId: tabId,
+            tabOrder: targetOrder
+          }
+        }
+        return group
+      })
+
+      if (sourceOrder.length === 0) {
+        nextGroups = nextGroups.filter((group) => group.id !== sourceGroup.id)
+        const collapsedState = collapseGroupLayout(
+          nextLayoutByWorktree,
+          nextActiveGroupIdByWorktree,
+          worktreeId,
+          sourceGroup.id,
+          resolvedTargetGroupId
+        )
+        nextLayoutByWorktree = collapsedState.layoutByWorktree
+        nextActiveGroupIdByWorktree = collapsedState.activeGroupIdByWorktree
+      } else {
+        nextActiveGroupIdByWorktree = {
+          ...nextActiveGroupIdByWorktree,
+          [worktreeId]: resolvedTargetGroupId
+        }
+      }
+
+      const nextUnifiedTabsByWorktree = {
+        ...state.unifiedTabsByWorktree,
+        [worktreeId]: (state.unifiedTabsByWorktree[worktreeId] ?? []).map((candidate) =>
+          candidate.id === tabId ? { ...candidate, groupId: resolvedTargetGroupId } : candidate
+        )
+      }
+      const nextGroupsByWorktree = {
+        ...state.groupsByWorktree,
+        [worktreeId]: nextGroups
+      }
+
+      return {
+        unifiedTabsByWorktree: nextUnifiedTabsByWorktree,
+        groupsByWorktree: nextGroupsByWorktree,
+        layoutByWorktree: nextLayoutByWorktree,
+        activeGroupIdByWorktree: nextActiveGroupIdByWorktree,
+        ...(state.activeWorktreeId === worktreeId
+          ? buildActiveSurfacePatch(
+              {
+                ...state,
+                unifiedTabsByWorktree: nextUnifiedTabsByWorktree,
+                groupsByWorktree: nextGroupsByWorktree,
+                layoutByWorktree: nextLayoutByWorktree,
+                activeGroupIdByWorktree: nextActiveGroupIdByWorktree
+              },
+              worktreeId,
+              resolvedTargetGroupId
+            )
+          : {})
       }
     })
     return moved
@@ -1155,12 +1333,10 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
             // into the active/root group keeps existing live PTYs reachable
             // instead of making activation spawn a duplicate "Terminal 2".
             activeTabId: reconciliationGroup.activeTabId ?? restoredLegacyTabs[0]?.id ?? null,
-            tabOrder: [
+            tabOrder: dedupeTabOrder([
               ...reconciliationGroup.tabOrder,
-              ...restoredLegacyTabs
-                .map((tab) => tab.id)
-                .filter((tabId) => !reconciliationGroup.tabOrder.includes(tabId))
-            ]
+              ...restoredLegacyTabs.map((tab) => tab.id)
+            ])
           })
         : groups
     const liveTerminalIds = new Set(

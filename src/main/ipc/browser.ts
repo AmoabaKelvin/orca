@@ -7,9 +7,9 @@ import {
   pickCookieFile,
   importCookiesFromFile,
   detectInstalledBrowsers,
+  selectBrowserProfile,
   importCookiesFromBrowser
 } from '../browser/browser-cookie-import'
-import type { DetectedBrowser } from '../browser/browser-cookie-import'
 import type {
   BrowserSetGrabModeArgs,
   BrowserSetGrabModeResult,
@@ -313,18 +313,36 @@ export function registerBrowserHandlers(): void {
   ipcMain.removeHandler('browser:session:detectBrowsers')
   ipcMain.removeHandler('browser:session:importFromBrowser')
 
-  ipcMain.handle('browser:session:detectBrowsers', (event): DetectedBrowser[] => {
-    if (!isTrustedBrowserRenderer(event.sender)) {
-      return []
+  ipcMain.handle(
+    'browser:session:detectBrowsers',
+    (
+      event
+    ): {
+      family: string
+      label: string
+      profiles: { name: string; directory: string }[]
+      selectedProfile: string
+    }[] => {
+      if (!isTrustedBrowserRenderer(event.sender)) {
+        return []
+      }
+      // Why: the renderer only needs family/label/profiles for the UI picker.
+      // Strip cookiesPath, keychainService, and keychainAccount to avoid
+      // exposing filesystem paths and credential store identifiers to the renderer.
+      return detectInstalledBrowsers().map((b) => ({
+        family: b.family,
+        label: b.label,
+        profiles: b.profiles,
+        selectedProfile: b.selectedProfile
+      }))
     }
-    return detectInstalledBrowsers()
-  })
+  )
 
   ipcMain.handle(
     'browser:session:importFromBrowser',
     async (
       event,
-      args: { profileId: string; browserFamily: string }
+      args: { profileId: string; browserFamily: string; browserProfile?: string }
     ): Promise<BrowserCookieImportResult> => {
       if (!isTrustedBrowserRenderer(event.sender)) {
         return { ok: false, reason: 'Not authorized' }
@@ -334,17 +352,43 @@ export function registerBrowserHandlers(): void {
         return { ok: false, reason: 'Session profile not found.' }
       }
 
+      // Why: browserProfile comes from the renderer and is used to construct
+      // a filesystem path. Reject traversal characters to prevent a compromised
+      // renderer from reading arbitrary files via the cookie import pipeline.
+      if (
+        args.browserProfile &&
+        (/[/\\]/.test(args.browserProfile) || args.browserProfile.includes('..'))
+      ) {
+        return { ok: false, reason: 'Invalid browser profile name.' }
+      }
+
       const browsers = detectInstalledBrowsers()
-      const browser = browsers.find((b) => b.family === args.browserFamily)
+      let browser = browsers.find((b) => b.family === args.browserFamily)
       if (!browser) {
         return { ok: false, reason: 'Browser not found on this system.' }
       }
 
+      // Why: if the user selected a non-default profile from the picker,
+      // resolve the cookies path for that specific profile.
+      if (args.browserProfile && args.browserProfile !== browser.selectedProfile) {
+        const reselected = selectBrowserProfile(browser, args.browserProfile)
+        if (!reselected) {
+          return {
+            ok: false,
+            reason: `No cookies database found for profile "${args.browserProfile}".`
+          }
+        }
+        browser = reselected
+      }
+
       const result = await importCookiesFromBrowser(browser, profile.partition)
       if (result.ok) {
+        const profileName =
+          browser.profiles.find((p) => p.directory === browser.selectedProfile)?.name ??
+          browser.selectedProfile
         browserSessionRegistry.updateProfileSource(args.profileId, {
           browserFamily: browser.family,
-          profileName: 'Default',
+          profileName,
           importedAt: Date.now()
         })
         return { ...result, profileId: args.profileId }

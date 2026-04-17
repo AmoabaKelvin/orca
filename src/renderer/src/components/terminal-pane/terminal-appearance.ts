@@ -35,6 +35,7 @@ export function applyTerminalAppearance(
     pane.terminal.options.fontWeight = terminalFontWeights.fontWeight
     pane.terminal.options.fontWeightBold = terminalFontWeights.fontWeightBold
     pane.terminal.options.lineHeight = settings.terminalLineHeight
+    pane.terminal.options.macOptionIsMeta = settings.terminalMacOptionAsAlt === 'true'
     try {
       // Why: preserve scroll-to-bottom state across the reflow so appearance
       // changes (theme, font size, etc.) don't make the terminal scroll up.

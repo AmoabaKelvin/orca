@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
 import type { PtyTransport } from './pty-transport'
 import { resolveTerminalShortcutAction } from './terminal-shortcut-policy'
+import type { MacOptionAsAlt } from './terminal-shortcut-policy'
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -75,6 +76,7 @@ type KeyboardHandlersDeps = {
   onRequestClosePane: (paneId: number) => void
   searchOpenRef: React.RefObject<boolean>
   searchStateRef: React.RefObject<SearchState>
+  macOptionAsAltRef: React.RefObject<MacOptionAsAlt>
 }
 
 export function useTerminalKeyboardShortcuts({
@@ -90,7 +92,8 @@ export function useTerminalKeyboardShortcuts({
   setSearchOpen,
   onRequestClosePane,
   searchOpenRef,
-  searchStateRef
+  searchStateRef,
+  macOptionAsAltRef
 }: KeyboardHandlersDeps): void {
   useEffect(() => {
     if (!isActive) {
@@ -98,6 +101,23 @@ export function useTerminalKeyboardShortcuts({
     }
 
     const isMac = navigator.userAgent.includes('Mac')
+
+    // Why: KeyboardEvent.location on a character key (e.g. Period) always
+    // reports that key's own position (0 = standard), not which modifier is
+    // held. To distinguish left vs right Option, we record the Option key's
+    // location from its own keydown event and clear it on keyup.
+    let optionKeyLocation = 0
+    const onModifierDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Alt') {
+        optionKeyLocation = e.location
+      }
+    }
+    const onModifierUp = (e: KeyboardEvent): void => {
+      if (e.key === 'Alt') {
+        optionKeyLocation = 0
+      }
+    }
+
     const onKeyDown = (e: KeyboardEvent): void => {
       const manager = managerRef.current
       if (!manager) {
@@ -133,7 +153,12 @@ export function useTerminalKeyboardShortcuts({
         return
       }
 
-      const action = resolveTerminalShortcutAction(e, isMac)
+      const action = resolveTerminalShortcutAction(
+        e,
+        isMac,
+        macOptionAsAltRef.current,
+        optionKeyLocation
+      )
       if (!action) {
         return
       }
@@ -272,8 +297,12 @@ export function useTerminalKeyboardShortcuts({
       }
     }
 
+    window.addEventListener('keydown', onModifierDown, { capture: true })
+    window.addEventListener('keyup', onModifierUp, { capture: true })
     window.addEventListener('keydown', onKeyDown, { capture: true })
     return () => {
+      window.removeEventListener('keydown', onModifierDown, { capture: true })
+      window.removeEventListener('keyup', onModifierUp, { capture: true })
       window.removeEventListener('keydown', onKeyDown, { capture: true })
     }
   }, [
@@ -289,6 +318,7 @@ export function useTerminalKeyboardShortcuts({
     setSearchOpen,
     onRequestClosePane,
     searchOpenRef,
-    searchStateRef
+    searchStateRef,
+    macOptionAsAltRef
   ])
 }

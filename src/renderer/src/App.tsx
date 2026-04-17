@@ -16,10 +16,12 @@ import Sidebar from './components/Sidebar'
 import Terminal from './components/Terminal'
 import { shutdownBufferCaptures } from './components/terminal-pane/TerminalPane'
 import Landing from './components/Landing'
+import NewWorkspacePage from './components/NewWorkspacePage'
 import Settings from './components/settings/Settings'
 import RightSidebar from './components/right-sidebar'
 import QuickOpen from './components/QuickOpen'
 import WorktreeJumpPalette from './components/WorktreeJumpPalette'
+import NewWorkspaceComposerModal from './components/NewWorkspaceComposerModal'
 import { StatusBar } from './components/status-bar/StatusBar'
 import { UpdateCard } from './components/UpdateCard'
 import { ZoomOverlay } from './components/ZoomOverlay'
@@ -36,6 +38,7 @@ import { countWorkingAgents, getWorkingAgentsPerWorktree } from './lib/agent-sta
 import { activateAndRevealWorktree } from './lib/worktree-activation'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { findWorktreeById, getRepoIdFromWorktreeId } from '@/store/slices/worktree-helpers'
+import { dispatchClearModifierHints } from './hooks/useModifierHint'
 
 const isMac = navigator.userAgent.includes('Mac')
 
@@ -87,7 +90,8 @@ function App(): React.JSX.Element {
       toggleRightSidebar: s.toggleRightSidebar,
       setRightSidebarOpen: s.setRightSidebarOpen,
       setRightSidebarTab: s.setRightSidebarTab,
-      updateSettings: s.updateSettings
+      updateSettings: s.updateSettings,
+      openNewWorkspacePage: s.openNewWorkspacePage
     }))
   )
 
@@ -375,7 +379,7 @@ function App(): React.JSX.Element {
     ? (expandedPaneByTabId[effectiveActiveTabId] ?? false)
     : false
   const showTitlebarExpandButton =
-    activeView !== 'settings' &&
+    activeView === 'terminal' &&
     activeWorktreeId !== null &&
     !hasTabBar &&
     effectiveActiveTabExpanded
@@ -384,6 +388,9 @@ function App(): React.JSX.Element {
   // full-width titlebar is replaced by a sidebar-width left header so the
   // terminal + tab groups extend to the very top of the window.
   const workspaceActive = activeView !== 'settings' && activeWorktreeId !== null
+  // Why: suppress right sidebar controls on new-workspace page since that
+  // surface is intentionally distraction-free (no right sidebar).
+  const showRightSidebarControls = activeView !== 'settings' && activeView !== 'new-workspace'
 
   const handleToggleExpand = (): void => {
     if (!effectiveActiveTabId) {
@@ -411,11 +418,10 @@ function App(): React.JSX.Element {
       // Accept Cmd on macOS, Ctrl on other platforms
       const mod = isMac ? e.metaKey : e.ctrlKey
 
-      // Note: Cmd/Ctrl+P (quick-open) and Cmd/Ctrl+1-9 (jump-to-worktree) are
-      // handled via before-input-event in createMainWindow.ts, which forwards
-      // them as IPC events. The IPC handlers in useIpcEvents.ts apply the same
-      // view-state guards (activeView !== 'settings', etc.). This approach
-      // ensures the shortcuts work even when a browser guest has focus.
+      // Note: some app-level shortcuts are also intercepted via
+      // before-input-event in createMainWindow.ts so they still work when a
+      // browser guest has focus. The renderer keeps matching handlers for
+      // local-focus cases and to preserve the same guards in one place.
 
       if (isEditableTarget(e.target)) {
         return
@@ -426,30 +432,40 @@ function App(): React.JSX.Element {
 
       // Cmd/Ctrl+B — toggle left sidebar
       if (!e.altKey && !e.shiftKey && e.key.toLowerCase() === 'b') {
+        dispatchClearModifierHints()
         e.preventDefault()
         actions.toggleSidebar()
         return
       }
 
+      // Why: the new-workspace composer should not be able to reveal the right
+      // sidebar at all, because that surface is intentionally distraction-free.
+      if (activeView === 'new-workspace') {
+        return
+      }
+
       // Cmd/Ctrl+L — toggle right sidebar
       if (!e.altKey && !e.shiftKey && e.key.toLowerCase() === 'l') {
+        dispatchClearModifierHints()
         e.preventDefault()
         actions.toggleRightSidebar()
         return
       }
 
-      // Cmd/Ctrl+N — create worktree
+      // Cmd/Ctrl+N — new workspace
       if (!e.altKey && !e.shiftKey && e.key.toLowerCase() === 'n') {
         if (!repos.some((repo) => isGitRepoKind(repo))) {
           return
         }
+        dispatchClearModifierHints()
         e.preventDefault()
-        actions.openModal('create-worktree')
+        actions.openNewWorkspacePage()
         return
       }
 
       // Cmd/Ctrl+Shift+E — toggle right sidebar / explorer tab
       if (e.shiftKey && !e.altKey && e.key.toLowerCase() === 'e') {
+        dispatchClearModifierHints()
         e.preventDefault()
         actions.setRightSidebarTab('explorer')
         actions.setRightSidebarOpen(true)
@@ -458,6 +474,7 @@ function App(): React.JSX.Element {
 
       // Cmd/Ctrl+Shift+F — toggle right sidebar / search tab
       if (e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+        dispatchClearModifierHints()
         e.preventDefault()
         actions.setRightSidebarTab('search')
         actions.setRightSidebarOpen(true)
@@ -473,6 +490,7 @@ function App(): React.JSX.Element {
         if (document.querySelector('[data-terminal-search-root]')) {
           return
         }
+        dispatchClearModifierHints()
         e.preventDefault()
         actions.setRightSidebarTab('source-control')
         actions.setRightSidebarOpen(true)
@@ -643,7 +661,7 @@ function App(): React.JSX.Element {
     </div>
   )
 
-  const rightSidebarToggle = showSidebar ? (
+  const rightSidebarToggle = showRightSidebarControls ? (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
@@ -660,6 +678,14 @@ function App(): React.JSX.Element {
     </Tooltip>
   ) : null
 
+  useEffect(() => {
+    if (activeView === 'new-workspace' && rightSidebarOpen) {
+      // Why: hide the right sidebar immediately when entering the composer so
+      // a previous open state can't bleed into the dedicated workspace flow.
+      actions.setRightSidebarOpen(false)
+    }
+  }, [activeView, rightSidebarOpen, actions])
+
   return (
     <div
       className="flex flex-col h-screen w-screen overflow-hidden"
@@ -673,7 +699,7 @@ function App(): React.JSX.Element {
         {/* Why: in workspace view (split groups always enabled), the full-width
             titlebar is removed so tab groups + terminal extend to the top of
             the window. Left titlebar controls move to a header above the sidebar.
-            Settings and landing views keep the full-width titlebar. */}
+            Settings, landing, and new-workspace views keep the full-width titlebar. */}
         {!workspaceActive ? (
           <div className="titlebar">
             <div
@@ -684,7 +710,7 @@ function App(): React.JSX.Element {
             </div>
             <div
               id="titlebar-tabs"
-              className={`flex flex-1 min-w-0 self-stretch${activeView === 'settings' || !activeWorktreeId ? ' invisible pointer-events-none' : ''}`}
+              className={`flex flex-1 min-w-0 self-stretch${activeView !== 'terminal' || !activeWorktreeId ? ' invisible pointer-events-none' : ''}`}
             />
             {showTitlebarExpandButton && (
               <Tooltip>
@@ -759,23 +785,31 @@ function App(): React.JSX.Element {
             <div className="flex flex-1 min-w-0 min-h-0 flex-col">
               <div
                 className={
-                  activeView === 'settings' || !activeWorktreeId
+                  activeView !== 'terminal' || !activeWorktreeId
                     ? 'hidden flex-1 min-w-0 min-h-0'
                     : 'flex flex-1 min-w-0 min-h-0'
                 }
               >
                 <Terminal />
               </div>
-              {activeView === 'settings' ? <Settings /> : !activeWorktreeId ? <Landing /> : null}
+              {activeView === 'settings' ? <Settings /> : null}
+              {activeView === 'new-workspace' ? <NewWorkspacePage /> : null}
+              {activeView === 'terminal' && !activeWorktreeId ? <Landing /> : null}
             </div>
           </div>
           {/* Why: keep RightSidebar mounted even when closed so that its
               child components (FileExplorer, SourceControl, etc.) and their
               filesystem watchers + cached directory trees survive across
-              open/close toggles. */}
-          {showSidebar ? <RightSidebar /> : null}
+              open/close toggles. Unmount on new-workspace view since that
+              surface is intentionally distraction-free. */}
+          {showRightSidebarControls ? <RightSidebar /> : null}
         </div>
         <StatusBar />
+        {/* Why: NewWorkspaceComposerCard renders Radix <Tooltip>s that crash
+            when mounted outside a TooltipProvider ancestor. Keep the global
+            composer modal inside this provider so the card renders safely
+            whether triggered from Cmd+J or any future entry point. */}
+        <NewWorkspaceComposerModal />
       </TooltipProvider>
       <QuickOpen />
       <WorktreeJumpPalette />

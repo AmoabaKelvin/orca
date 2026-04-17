@@ -3,10 +3,12 @@ import type React from 'react'
 import { toast } from 'sonner'
 import { useAppStore } from '@/store'
 import { detectLanguage } from '@/lib/language-detect'
-import { dirname, joinPath } from '@/lib/path'
+import { basename, dirname, joinPath } from '@/lib/path'
 import { getConnectionId } from '@/lib/connection-context'
 import type { InlineInput } from './FileExplorerRow'
 import type { TreeNode } from './file-explorer-types'
+import { requestEditorSaveQuiesce } from '@/components/editor/editor-autosave'
+import { commitFileExplorerOp } from './fileExplorerUndoRedo'
 
 /**
  * Electron's ipcRenderer.invoke wraps errors as:
@@ -120,14 +122,82 @@ export function useFileExplorerInlineInput({
         return
       }
       const run = async (): Promise<void> => {
+        const remapOpenTabsForRenamedPath = (fromPath: string, toPath: string): void => {
+          const state = useAppStore.getState()
+          const filesToMove = state.openFiles.filter((file) => {
+            if (file.filePath === fromPath) {
+              return true
+            }
+            return (
+              file.filePath.startsWith(`${fromPath}/`) || file.filePath.startsWith(`${fromPath}\\`)
+            )
+          })
+
+          for (const file of filesToMove) {
+            const oldFilePath = file.filePath
+            const suffix = oldFilePath.slice(fromPath.length)
+            const updatedPath = toPath + suffix
+            const updatedRelative = updatedPath.slice(worktreePath.length + 1)
+            const draft = state.editorDrafts[file.id]
+            const wasDirty = file.isDirty
+
+            state.closeFile(oldFilePath)
+            if (file.mode !== 'edit') {
+              continue
+            }
+
+            state.openFile({
+              filePath: updatedPath,
+              relativePath: updatedRelative,
+              worktreeId: file.worktreeId,
+              language: detectLanguage(basename(updatedPath)),
+              mode: 'edit'
+            })
+
+            if (draft !== undefined) {
+              state.setEditorDraft(updatedPath, draft)
+            }
+            if (wasDirty) {
+              state.markFileDirty(updatedPath, true)
+            }
+          }
+        }
+
         const connectionId = getConnectionId(activeWorktreeId ?? null) ?? undefined
         if (inlineInput.type === 'rename' && inlineInput.existingPath) {
           const parentDir = dirname(inlineInput.existingPath)
+          const oldPath = inlineInput.existingPath
+          const newPath = joinPath(parentDir, name)
+          // Why: a rename changes the file's path. Let any in-flight autosave
+          // finish first so a trailing write to the old path cannot recreate it.
+          const state = useAppStore.getState()
+          const filesToQuiesce = state.openFiles.filter(
+            (file) =>
+              file.filePath === oldPath ||
+              file.filePath.startsWith(`${oldPath}/`) ||
+              file.filePath.startsWith(`${oldPath}\\`)
+          )
+          await Promise.all(
+            filesToQuiesce.map((file) => requestEditorSaveQuiesce({ fileId: file.id }))
+          )
           try {
             await window.api.fs.rename({
-              oldPath: inlineInput.existingPath,
-              newPath: joinPath(parentDir, name),
+              oldPath,
+              newPath,
               connectionId
+            })
+            remapOpenTabsForRenamedPath(oldPath, newPath)
+            commitFileExplorerOp({
+              undo: async () => {
+                await window.api.fs.rename({ oldPath: newPath, newPath: oldPath, connectionId })
+                await refreshDir(parentDir)
+                remapOpenTabsForRenamedPath(newPath, oldPath)
+              },
+              redo: async () => {
+                await window.api.fs.rename({ oldPath: oldPath, newPath: newPath, connectionId })
+                await refreshDir(parentDir)
+                remapOpenTabsForRenamedPath(oldPath, newPath)
+              }
             })
           } catch (err) {
             toast.error(
@@ -141,6 +211,30 @@ export function useFileExplorerInlineInput({
             await (inlineInput.type === 'folder'
               ? window.api.fs.createDir({ dirPath: fullPath, connectionId })
               : window.api.fs.createFile({ filePath: fullPath, connectionId }))
+            const parentForRefresh = inlineInput.parentPath
+            if (inlineInput.type === 'folder') {
+              commitFileExplorerOp({
+                undo: async () => {
+                  await window.api.fs.deletePath({ targetPath: fullPath, connectionId })
+                  await refreshDir(parentForRefresh)
+                },
+                redo: async () => {
+                  await window.api.fs.createDir({ dirPath: fullPath, connectionId })
+                  await refreshDir(parentForRefresh)
+                }
+              })
+            } else {
+              commitFileExplorerOp({
+                undo: async () => {
+                  await window.api.fs.deletePath({ targetPath: fullPath, connectionId })
+                  await refreshDir(parentForRefresh)
+                },
+                redo: async () => {
+                  await window.api.fs.createFile({ filePath: fullPath, connectionId })
+                  await refreshDir(parentForRefresh)
+                }
+              })
+            }
             await refreshDir(inlineInput.parentPath)
             if (inlineInput.type === 'file') {
               openFile({

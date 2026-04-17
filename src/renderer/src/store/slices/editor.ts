@@ -106,6 +106,11 @@ export type ActivityBarPosition = 'top' | 'side'
 
 export type MarkdownViewMode = 'source' | 'rich'
 
+/** Enough state to restore a tab via `openFile` after `closeFile` (id is always filePath). */
+export type ClosedEditorTabSnapshot = Omit<OpenFile, 'id' | 'isDirty'>
+
+const MAX_RECENT_CLOSED_EDITOR_TABS = 10
+
 export type EditorSlice = {
   // Why: #300 originally kept EditorPanel mounted while hidden so unsaved
   // drafts and autosave timers could survive tab switches. Drafts live in the
@@ -157,6 +162,9 @@ export type EditorSlice = {
   pinFile: (fileId: string, tabId?: string) => void
   closeFile: (fileId: string) => void
   closeAllFiles: () => void
+  /** Most recently closed editor tabs per worktree (for Cmd/Ctrl+Shift+T). */
+  recentlyClosedEditorTabsByWorktree: Record<string, ClosedEditorTabSnapshot[]>
+  reopenClosedEditorTab: (worktreeId: string) => boolean
   setActiveFile: (fileId: string) => void
   reorderFiles: (fileIds: string[]) => void
   markFileDirty: (fileId: string, dirty: boolean) => void
@@ -368,6 +376,7 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
   activeFileIdByWorktree: {},
   activeTabTypeByWorktree: {},
   activeTabType: 'terminal',
+  recentlyClosedEditorTabsByWorktree: {},
   setActiveTabType: (type) =>
     set((s) => {
       const worktreeId = s.activeWorktreeId
@@ -664,6 +673,20 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
             }
           : s.tabBarOrderByWorktree
 
+      let nextRecentlyClosed = s.recentlyClosedEditorTabsByWorktree
+      const wtRecent = closedFile?.worktreeId
+      if (closedFile && wtRecent) {
+        const { id: _id, isDirty: _dirty, ...snap } = closedFile
+        const stack = s.recentlyClosedEditorTabsByWorktree[wtRecent] ?? []
+        nextRecentlyClosed = {
+          ...s.recentlyClosedEditorTabsByWorktree,
+          [wtRecent]: [snap as ClosedEditorTabSnapshot, ...stack].slice(
+            0,
+            MAX_RECENT_CLOSED_EDITOR_TABS
+          )
+        }
+      }
+
       return {
         openFiles: newFiles,
         editorDrafts: newEditorDrafts,
@@ -684,7 +707,8 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         activeTabTypeByWorktree: newActiveTabTypeByWorktree,
         markdownViewMode: newMarkdownViewMode,
         tabBarOrderByWorktree: nextTabBarOrderByWorktree,
-        pendingEditorReveal: null
+        pendingEditorReveal: null,
+        recentlyClosedEditorTabsByWorktree: nextRecentlyClosed
       }
     })
 
@@ -706,6 +730,22 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         break
       }
     }
+  },
+
+  reopenClosedEditorTab: (worktreeId) => {
+    const stack = get().recentlyClosedEditorTabsByWorktree[worktreeId] ?? []
+    const next = stack[0]
+    if (!next) {
+      return false
+    }
+    set((s) => ({
+      recentlyClosedEditorTabsByWorktree: {
+        ...s.recentlyClosedEditorTabsByWorktree,
+        [worktreeId]: (s.recentlyClosedEditorTabsByWorktree[worktreeId] ?? []).slice(1)
+      }
+    }))
+    get().openFile(next)
+    return true
   },
 
   closeAllFiles: () => {
@@ -770,6 +810,16 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
           }
         : s.tabBarOrderByWorktree
 
+      const closingFiles = s.openFiles.filter((f) => f.worktreeId === activeWorktreeId)
+      let nextRecentClosed = s.recentlyClosedEditorTabsByWorktree[activeWorktreeId] ?? []
+      for (const f of [...closingFiles].reverse()) {
+        const { id: _id, isDirty: _dirty, ...snap } = f
+        nextRecentClosed = [snap as ClosedEditorTabSnapshot, ...nextRecentClosed].slice(
+          0,
+          MAX_RECENT_CLOSED_EDITOR_TABS
+        )
+      }
+
       return {
         openFiles: newFiles,
         editorDrafts: newEditorDrafts,
@@ -795,7 +845,11 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         // editor mount. If the worktree closes all editor tabs before that
         // reveal is consumed, keeping it around would make a later reopen jump
         // to an old match unexpectedly.
-        pendingEditorReveal: null
+        pendingEditorReveal: null,
+        recentlyClosedEditorTabsByWorktree: {
+          ...s.recentlyClosedEditorTabsByWorktree,
+          [activeWorktreeId]: nextRecentClosed
+        }
       }
     })
     for (const itemId of closingItemIds) {

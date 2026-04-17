@@ -10,7 +10,11 @@ import {
   handleOscLink
 } from './terminal-link-handlers'
 import type { LinkHandlerDeps } from './terminal-link-handlers'
-import type { GlobalSettings, TerminalLayoutSnapshot } from '../../../../shared/types'
+import type {
+  GlobalSettings,
+  SetupSplitDirection,
+  TerminalLayoutSnapshot
+} from '../../../../shared/types'
 import { resolveTerminalFontWeights } from '../../../../shared/terminal-fonts'
 import {
   buildFontFamily,
@@ -30,9 +34,14 @@ type UseTerminalPaneLifecycleDeps = {
   worktreeId: string
   cwd?: string
   startup?: { command: string; env?: Record<string, string> } | null
-  /** When present, the initial pane boots clean and a right-side split pane is
-   *  created to run the setup command — keeping the main terminal interactive. */
-  setupSplit?: { command: string; env?: Record<string, string> } | null
+  /** When present, the initial pane boots clean and a split pane is created
+   *  (vertical or horizontal per the user setting) to run the setup command —
+   *  keeping the main terminal interactive. */
+  setupSplit?: {
+    command: string
+    env?: Record<string, string>
+    direction: SetupSplitDirection
+  } | null
   /** When present, a split pane is created to run the repo's configured
    *  issue-automation command with the linked issue number interpolated. */
   issueCommandSplit?: { command: string; env?: Record<string, string> } | null
@@ -75,6 +84,34 @@ type UseTerminalPaneLifecycleDeps = {
   setPaneTitles: React.Dispatch<React.SetStateAction<Record<number, string>>>
   paneTitlesRef: React.RefObject<Record<number, string>>
   setRenamingPaneId: React.Dispatch<React.SetStateAction<number | null>>
+}
+
+type SplitStartupPayload = { command: string; env?: Record<string, string> }
+
+type SplitWithStartupDeps = {
+  startup?: SplitStartupPayload | null
+}
+
+/** Scopes `deps.startup` to a single call of `splitPane()`, clearing it in `finally` so later splits do not replay the payload. */
+export function splitPaneWithOneShotStartup<TPane>(
+  deps: SplitWithStartupDeps,
+  startup: SplitStartupPayload,
+  splitPane: () => TPane
+): TPane {
+  // Why: the startup payload is only for the pane created by this split.
+  // Pane creation fans out through onPaneCreated using a spread copy of `deps`,
+  // so connectPanePty cannot clear the caller's original object for us.
+  // Reset the shared field in finally so later user-driven splits never replay
+  // setup/issue commands, even if splitPane throws during creation.
+  // Relies on manager.splitPane → onPaneCreated → connectPanePty reading
+  // `deps.startup` synchronously before returning; if that chain ever becomes
+  // async, this helper must switch to awaiting the split before clearing.
+  deps.startup = startup
+  try {
+    return splitPane()
+  } finally {
+    deps.startup = null
+  }
 }
 
 export function useTerminalPaneLifecycle({
@@ -359,7 +396,8 @@ export function useTerminalPaneLifecycle({
           ),
           cursorStyle: currentSettings?.terminalCursorStyle ?? 'bar',
           cursorBlink: currentSettings?.terminalCursorBlink ?? true,
-          lineHeight: currentSettings?.terminalLineHeight ?? 1
+          lineHeight: currentSettings?.terminalLineHeight ?? 1,
+          macOptionIsMeta: currentSettings?.terminalMacOptionAsAlt === 'true'
         }
       },
       onLinkClick: (event, url) => {
@@ -422,9 +460,11 @@ export function useTerminalPaneLifecycle({
     }
     // Why: setup split creates a right-side pane for the setup script so the
     // main (left) terminal stays immediately usable. We inject the setup command
-    // into ptyDeps.startup right before splitting — connectPanePty (called from
-    // onPaneCreated) reads it synchronously and clears it, so only the new pane
-    // gets the command. The initial pane already consumed startup=null above.
+    // into ptyDeps.startup right before splitting and clear it immediately after
+    // — connectPanePty receives a spread copy (`{...ptyDeps}`), so mutations
+    // inside connectPanePty don't propagate back to ptyDeps. Without clearing
+    // here, any later user-initiated split (e.g. Cmd+D) would re-run the setup
+    // command in the newly created pane.
     let issueAutomationAnchorPaneId: number | null = null
     // Why: capture the main shell pane *before* any splits mutate the pane list.
     // Both the setup and issue-command paths need to restore focus back to this
@@ -434,11 +474,14 @@ export function useTerminalPaneLifecycle({
 
     if (setupSplit) {
       if (initialPane) {
-        ptyDeps.startup = { command: setupSplit.command, env: setupSplit.env }
-        const setupPane = manager.splitPane(initialPane.id, 'vertical')
+        const setupPane = splitPaneWithOneShotStartup(
+          ptyDeps,
+          { command: setupSplit.command, env: setupSplit.env },
+          () => manager.splitPane(initialPane.id, setupSplit.direction)
+        )
         issueAutomationAnchorPaneId = setupPane?.id ?? null
-        // Restore focus to the main (left) pane so the user's terminal
-        // receives keyboard input — the setup pane runs unattended.
+        // Restore focus to the main pane so the user's terminal receives
+        // keyboard input — the setup pane runs unattended.
         manager.setActivePane(initialPane.id, { focus: isActive })
       }
     }
@@ -456,8 +499,11 @@ export function useTerminalPaneLifecycle({
         manager.getActivePane() ??
         manager.getPanes()[0]
       if (targetPane) {
-        ptyDeps.startup = { command: issueCommandSplit.command, env: issueCommandSplit.env }
-        manager.splitPane(targetPane.id, 'vertical')
+        splitPaneWithOneShotStartup(
+          ptyDeps,
+          { command: issueCommandSplit.command, env: issueCommandSplit.env },
+          () => manager.splitPane(targetPane.id, 'vertical')
+        )
         // Why: if setup already claimed the right half, nest issue automation
         // inside that automation area instead of splitting the main shell again.
         // This preserves the primary terminal as the dominant pane while setup

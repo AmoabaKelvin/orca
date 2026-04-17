@@ -254,7 +254,16 @@ const api = {
       command?: string
       connectionId?: string | null
       worktreeId?: string
-    }): Promise<{ id: string }> => ipcRenderer.invoke('pty:spawn', opts),
+      sessionId?: string
+    }): Promise<{
+      id: string
+      snapshot?: string
+      snapshotCols?: number
+      snapshotRows?: number
+      isReattach?: boolean
+      isAlternateScreen?: boolean
+      coldRestore?: { scrollback: string; cwd: string }
+    }> => ipcRenderer.invoke('pty:spawn', opts),
 
     write: (id: string, data: string): void => {
       ipcRenderer.send('pty:write', { id, data })
@@ -264,7 +273,18 @@ const api = {
       ipcRenderer.send('pty:resize', { id, cols, rows })
     },
 
+    signal: (id: string, signal: string): void => {
+      ipcRenderer.send('pty:signal', { id, signal })
+    },
+
+    ackColdRestore: (id: string): void => {
+      ipcRenderer.send('pty:ackColdRestore', { id })
+    },
+
     kill: (id: string): Promise<void> => ipcRenderer.invoke('pty:kill', { id }),
+
+    listSessions: (): Promise<{ id: string; cwd: string; title: string }[]> =>
+      ipcRenderer.invoke('pty:listSessions'),
 
     /** Check if a PTY's shell has child processes (e.g. a running command).
      *  Returns false for an idle shell prompt. */
@@ -300,14 +320,39 @@ const api = {
   gh: {
     viewer: (): Promise<unknown> => ipcRenderer.invoke('gh:viewer'),
 
+    repoSlug: (args: { repoPath: string }): Promise<unknown> =>
+      ipcRenderer.invoke('gh:repoSlug', args),
+
     prForBranch: (args: { repoPath: string; branch: string }): Promise<unknown> =>
       ipcRenderer.invoke('gh:prForBranch', args),
 
     issue: (args: { repoPath: string; number: number }): Promise<unknown> =>
       ipcRenderer.invoke('gh:issue', args),
 
+    workItem: (args: { repoPath: string; number: number }): Promise<unknown> =>
+      ipcRenderer.invoke('gh:workItem', args),
+
+    workItemDetails: (args: { repoPath: string; number: number }): Promise<unknown> =>
+      ipcRenderer.invoke('gh:workItemDetails', args),
+
+    prFileContents: (args: {
+      repoPath: string
+      prNumber: number
+      path: string
+      oldPath?: string
+      status: string
+      headSha: string
+      baseSha: string
+    }): Promise<unknown> => ipcRenderer.invoke('gh:prFileContents', args),
+
     listIssues: (args: { repoPath: string; limit?: number }): Promise<unknown[]> =>
       ipcRenderer.invoke('gh:listIssues', args),
+
+    listWorkItems: (args: {
+      repoPath: string
+      limit?: number
+      query?: string
+    }): Promise<unknown[]> => ipcRenderer.invoke('gh:listWorkItems', args),
 
     prChecks: (args: {
       repoPath: string
@@ -377,7 +422,8 @@ const api = {
     }): Promise<{
       git: { installed: boolean }
       gh: { installed: boolean; authenticated: boolean }
-    }> => ipcRenderer.invoke('preflight:check', args)
+    }> => ipcRenderer.invoke('preflight:check', args),
+    detectAgents: (): Promise<string[]> => ipcRenderer.invoke('preflight:detectAgents')
   },
 
   notifications: {
@@ -396,6 +442,8 @@ const api = {
     openFileUri: (uri: string): Promise<void> => ipcRenderer.invoke('shell:openFileUri', uri),
 
     pathExists: (path: string): Promise<boolean> => ipcRenderer.invoke('shell:pathExists', path),
+
+    pickAttachment: (): Promise<string | null> => ipcRenderer.invoke('shell:pickAttachment'),
 
     pickImage: (): Promise<string | null> => ipcRenderer.invoke('shell:pickImage'),
 

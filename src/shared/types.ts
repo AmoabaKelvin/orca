@@ -119,6 +119,14 @@ export type TerminalTab = {
   generation?: number
 }
 
+export type BrowserHistoryEntry = {
+  url: string
+  normalizedUrl: string
+  title: string
+  lastVisitedAt: number
+  visitCount: number
+}
+
 export type BrowserLoadError = {
   code: number
   description: string
@@ -173,7 +181,7 @@ export type BrowserTab = BrowserWorkspace
 export type BrowserSessionProfileScope = 'default' | 'isolated' | 'imported'
 
 export type BrowserSessionProfileSource = {
-  browserFamily: 'chrome' | 'chromium' | 'arc' | 'edge' | 'manual'
+  browserFamily: 'chrome' | 'chromium' | 'arc' | 'edge' | 'firefox' | 'safari' | 'manual'
   profileName?: string
   importedAt: number
 }
@@ -262,6 +270,8 @@ export type WorkspaceSessionState = {
   activeBrowserTabIdByWorktree?: Record<string, string | null>
   /** Per-worktree active tab type (terminal vs editor vs browser) at shutdown. */
   activeTabTypeByWorktree?: Record<string, WorkspaceVisibleTabType>
+  /** Global browser URL history for address bar autocomplete. */
+  browserUrlHistory?: BrowserHistoryEntry[]
   /** Per-worktree last-active terminal tab ID at shutdown. */
   activeTabIdByWorktree?: Record<string, string | null>
   /** Unified tab model — present when saved by a build that includes TabsSlice.
@@ -350,6 +360,48 @@ export type IssueInfo = {
 export type GitHubViewer = {
   login: string
   email: string | null
+}
+
+export type GitHubWorkItem = {
+  id: string
+  type: 'issue' | 'pr'
+  number: number
+  title: string
+  state: 'open' | 'closed' | 'merged' | 'draft'
+  url: string
+  labels: string[]
+  updatedAt: string
+  author: string | null
+  branchName?: string
+  baseRefName?: string
+}
+
+export type GitHubPRFile = {
+  path: string
+  oldPath?: string
+  status: 'added' | 'modified' | 'removed' | 'renamed' | 'copied' | 'changed' | 'unchanged'
+  additions: number
+  deletions: number
+  /** GitHub marks files above its diff size limit as binary-like; we skip content fetches for these. */
+  isBinary: boolean
+}
+
+export type GitHubPRFileContents = {
+  original: string
+  modified: string
+  originalIsBinary: boolean
+  modifiedIsBinary: boolean
+}
+
+export type GitHubWorkItemDetails = {
+  item: GitHubWorkItem
+  body: string
+  comments: PRComment[]
+  /** Only set for PRs. Head/base SHAs used by the Files tab to fetch per-file content. */
+  headSha?: string
+  baseSha?: string
+  checks?: PRCheckDetail[]
+  files?: GitHubPRFile[]
 }
 
 // ─── Hooks (orca.yaml) ──────────────────────────────────────────────
@@ -466,6 +518,43 @@ export type CodexRateLimitAccountsState = {
   activeAccountId: string | null
 }
 
+/** All AI coding agents Orca knows how to launch. Used for the agent picker in the new-workspace
+ *  flow and for the default-agent setting. Extend this union as new agents are added. */
+export type TuiAgent =
+  | 'claude' // Claude Code
+  | 'codex' // OpenAI Codex
+  | 'opencode' // OpenCode
+  | 'pi' // Pi (pi.dev)
+  | 'gemini' // Gemini CLI
+  | 'aider' // Aider
+  | 'goose' // Goose
+  | 'amp' // Amp
+  | 'kilo' // Kilocode
+  | 'kiro' // Kiro
+  | 'crush' // Charm/Crush
+  | 'aug' // Augment/Auggie
+  | 'cline' // Cline
+  | 'codebuff' // Codebuff
+  | 'continue' // Continue
+  | 'cursor' // Cursor
+  | 'droid' // Factory Droid
+  | 'kimi' // Kimi
+  | 'mistral-vibe' // Mistral Vibe
+  | 'qwen-code' // Qwen Code
+  | 'rovo' // Rovo Dev
+  | 'hermes' // Hermes Agent
+
+export type TaskViewPresetId = 'all' | 'issues' | 'review' | 'my-issues' | 'my-prs' | 'prs'
+
+/** Where the repo setup script runs when a worktree is created.
+ *  - 'split-vertical': split the initial terminal pane with a vertical divider (default).
+ *  - 'split-horizontal': split the initial terminal pane with a horizontal divider.
+ *  - 'new-tab': open a background tab titled "Setup" and leave focus on the first tab. */
+export type SetupScriptLaunchMode = 'split-vertical' | 'split-horizontal' | 'new-tab'
+
+/** Direction used when the setup script launch mode is a split. */
+export type SetupSplitDirection = 'vertical' | 'horizontal'
+
 export type GlobalSettings = {
   workspaceDir: string
   nestWorkspaces: boolean
@@ -495,6 +584,9 @@ export type GlobalSettings = {
    *  menu behavior and users can still reach the menu with Ctrl+right-click. */
   terminalRightClickToPaste: boolean
   terminalFocusFollowsMouse: boolean
+  /** Where the repo setup script runs on workspace create. Defaults to a
+   *  vertical split so the user's main terminal stays immediately usable. */
+  setupScriptLaunchMode: SetupScriptLaunchMode
   terminalScrollbackBytes: number
   /** Why: opening arbitrary links inside Orca uses an isolated guest browser surface.
    *  The setting stays opt-in so existing workflows continue to use the system browser
@@ -523,6 +615,19 @@ export type GlobalSettings = {
    *  does not surface commands from other worktrees. Defaults to true.
    *  Disable to revert to shared global shell history. */
   terminalScopeHistoryByWorktree: boolean
+  /** Which agent to pre-select in the new-workspace composer. null = auto (first detected). */
+  defaultTuiAgent: TuiAgent | null
+  /** Default preset in the new-workspace GitHub task view. */
+  defaultTaskViewPreset: TaskViewPresetId
+  /** Per-agent CLI command overrides. A missing key means use the catalog default binary name. */
+  agentCmdOverrides: Partial<Record<TuiAgent, string>>
+  /** Why: macOS terminals must choose between letting Option compose layout
+   *  characters (@ on German, € on French) or treating Option as Meta/Esc for
+   *  readline shortcuts. Mirrors Ghostty's macos-option-as-alt setting.
+   *  'false' = compose (default, for non-US keyboards);
+   *  'true' = full Meta on both Option keys;
+   *  'left' / 'right' = only that Option key acts as Meta, the other composes. */
+  terminalMacOptionAsAlt: 'true' | 'false' | 'left' | 'right'
 }
 
 export type NotificationEventSource = 'agent-task-complete' | 'terminal-bell' | 'test'
@@ -552,7 +657,7 @@ export type OpenCodeStatusEvent = {
 
 export type WorktreeCardProperty = 'status' | 'unread' | 'ci' | 'issue' | 'pr' | 'comment'
 
-export type StatusBarItem = 'claude' | 'codex' | 'ssh'
+export type StatusBarItem = 'claude' | 'codex' | 'ssh' | 'sessions'
 
 export type PersistedUIState = {
   lastActiveRepoId: string | null

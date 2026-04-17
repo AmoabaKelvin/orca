@@ -4,6 +4,7 @@
 
 import type { BrowserWindow } from 'electron'
 import { join } from 'path'
+import { existsSync } from 'fs'
 import type { Store } from '../persistence'
 import type {
   CreateWorktreeArgs,
@@ -136,38 +137,9 @@ export async function createLocalWorktree(
 ): Promise<CreateWorktreeResult> {
   const settings = store.getSettings()
 
+  const username = getGitUsername(repo.path)
   const requestedName = args.name
   const sanitizedName = sanitizeWorktreeName(args.name)
-
-  // Compute branch name with prefix
-  const username = getGitUsername(repo.path)
-  const branchName = computeBranchName(sanitizedName, settings, username)
-
-  const branchConflictKind = await getBranchConflictKind(repo.path, branchName)
-  if (branchConflictKind) {
-    throw new Error(
-      `Branch "${branchName}" already exists ${branchConflictKind === 'local' ? 'locally' : 'on a remote'}. Pick a different worktree name.`
-    )
-  }
-
-  // Why: the UI resolves PR status by branch name alone. Reusing a historical
-  // PR head name would make a fresh worktree inherit that old merged/closed PR
-  // immediately, so we reject the name instead of silently suffixing it.
-  // The lookup is best-effort — don't block creation if GitHub is unreachable.
-  let existingPR: Awaited<ReturnType<typeof getPRForBranch>> | null = null
-  try {
-    existingPR = await getPRForBranch(repo.path, branchName)
-  } catch {
-    // GitHub API may be unreachable, rate-limited, or token missing
-  }
-  if (existingPR) {
-    throw new Error(
-      `Branch "${branchName}" already has PR #${existingPR.number}. Pick a different worktree name.`
-    )
-  }
-
-  // Compute worktree path
-  let worktreePath = computeWorktreePath(sanitizedName, repo.path, settings)
   // Why: WSL worktrees live under ~/orca/workspaces inside the WSL
   // filesystem. Validate against that root, not the Windows workspace dir.
   // If WSL home lookup fails, keep using the configured workspace root so
@@ -175,7 +147,79 @@ export async function createLocalWorktree(
   const wslInfo = isWslPath(repo.path) ? parseWslPath(repo.path) : null
   const wslHome = wslInfo ? getWslHome(wslInfo.distro) : null
   const workspaceRoot = wslHome ? join(wslHome, 'orca', 'workspaces') : settings.workspaceDir
-  worktreePath = ensurePathWithinWorkspace(worktreePath, workspaceRoot)
+  let effectiveRequestedName = requestedName
+  let effectiveSanitizedName = sanitizedName
+  let branchName = ''
+  let worktreePath = ''
+
+  // Why: silently resolve branch/path/PR name collisions by appending -2/-3/etc.
+  // instead of failing and forcing the user back to the name picker. This is
+  // especially important for the new-workspace flow where the user may not have
+  // direct control over the branch name. Bounded by MAX_SUFFIX_ATTEMPTS so a
+  // misconfigured environment (e.g. a mock or stub that always reports a
+  // conflict) cannot spin this loop indefinitely.
+  const MAX_SUFFIX_ATTEMPTS = 100
+  let resolved = false
+  let lastBranchConflictKind: 'local' | 'remote' | null = null
+  let lastExistingPR: Awaited<ReturnType<typeof getPRForBranch>> | null = null
+  for (let suffix = 1; suffix <= MAX_SUFFIX_ATTEMPTS; suffix += 1) {
+    effectiveSanitizedName = suffix === 1 ? sanitizedName : `${sanitizedName}-${suffix}`
+    effectiveRequestedName =
+      suffix === 1
+        ? requestedName
+        : requestedName.trim()
+          ? `${requestedName}-${suffix}`
+          : effectiveSanitizedName
+
+    branchName = computeBranchName(effectiveSanitizedName, settings, username)
+    lastBranchConflictKind = await getBranchConflictKind(repo.path, branchName)
+    if (lastBranchConflictKind) {
+      continue
+    }
+
+    // Why: the UI resolves PR status by branch name alone. Reusing a historical
+    // PR head name would make a fresh worktree inherit that old merged/closed PR
+    // immediately, so auto-suffix until we land on a fresh branch identity.
+    lastExistingPR = null
+    try {
+      lastExistingPR = await getPRForBranch(repo.path, branchName)
+    } catch {
+      // GitHub API may be unreachable, rate-limited, or token missing
+    }
+    if (lastExistingPR) {
+      continue
+    }
+
+    worktreePath = ensurePathWithinWorkspace(
+      computeWorktreePath(effectiveSanitizedName, repo.path, settings),
+      workspaceRoot
+    )
+    if (existsSync(worktreePath)) {
+      continue
+    }
+
+    resolved = true
+    break
+  }
+
+  if (!resolved) {
+    // Why: if every suffix in range collides, fall back to the original
+    // "reject with a specific reason" behavior so the user sees why creation
+    // failed instead of a generic error or (worse) an infinite spinner.
+    if (lastExistingPR) {
+      throw new Error(
+        `Branch "${branchName}" already has PR #${lastExistingPR.number}. Pick a different worktree name.`
+      )
+    }
+    if (lastBranchConflictKind) {
+      throw new Error(
+        `Branch "${branchName}" already exists ${lastBranchConflictKind === 'local' ? 'locally' : 'on a remote'}. Pick a different worktree name.`
+      )
+    }
+    throw new Error(
+      `Could not find an available worktree name for "${sanitizedName}". Pick a different worktree name.`
+    )
+  }
 
   // Determine base branch
   const baseBranch = args.baseBranch || repo.worktreeBaseRef || getDefaultBaseRef(repo.path)
@@ -214,8 +258,8 @@ export async function createLocalWorktree(
     // immediately — prevents scroll-to-reveal racing with a later
     // bumpWorktreeActivity that would re-sort the list.
     lastActivityAt: Date.now(),
-    ...(shouldSetDisplayName(requestedName, branchName, sanitizedName)
-      ? { displayName: requestedName }
+    ...(shouldSetDisplayName(effectiveRequestedName, branchName, effectiveSanitizedName)
+      ? { displayName: effectiveRequestedName }
       : {})
   }
   const meta = store.setWorktreeMeta(worktreeId, metaUpdates)

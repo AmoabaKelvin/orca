@@ -1,41 +1,15 @@
+/* oxlint-disable max-lines */
 import type { PaneManager, ManagedPane } from '@/lib/pane-manager/pane-manager'
 import type { IDisposable } from '@xterm/xterm'
 import { isGeminiTerminalTitle, isClaudeAgent } from '@/lib/agent-status'
 import { scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
 import { useAppStore } from '@/store'
-import type { PtyTransport } from './pty-transport'
+import type { PtyConnectResult } from './pty-transport'
 import { createIpcPtyTransport } from './pty-transport'
 import { shouldSeedCacheTimerOnInitialTitle } from './cache-timer-seeding'
+import type { PtyConnectionDeps } from './pty-connection-types'
 
 const pendingSpawnByTabId = new Map<string, Promise<string | null>>()
-
-type PtyConnectionDeps = {
-  tabId: string
-  worktreeId: string
-  cwd?: string
-  startup?: { command: string; env?: Record<string, string> } | null
-  restoredLeafId?: string | null
-  restoredPtyIdByLeafId?: Record<string, string>
-  paneTransportsRef: React.RefObject<Map<number, PtyTransport>>
-  pendingWritesRef: React.RefObject<Map<number, string>>
-  isActiveRef: React.RefObject<boolean>
-  isVisibleRef: React.RefObject<boolean>
-  onPtyExitRef: React.RefObject<(ptyId: string) => void>
-  onPtyErrorRef?: React.RefObject<(paneId: number, message: string) => void>
-  clearTabPtyId: (tabId: string, ptyId: string) => void
-  consumeSuppressedPtyExit: (ptyId: string) => boolean
-  updateTabTitle: (tabId: string, title: string) => void
-  setRuntimePaneTitle: (tabId: string, paneId: number, title: string) => void
-  clearRuntimePaneTitle: (tabId: string, paneId: number) => void
-  updateTabPtyId: (tabId: string, ptyId: string) => void
-  markWorktreeUnread: (worktreeId: string) => void
-  dispatchNotification: (event: {
-    source: 'agent-task-complete' | 'terminal-bell'
-    terminalTitle?: string
-  }) => void
-  setCacheTimerStartedAt: (key: string, ts: number | null) => void
-  syncPanePtyLayoutBinding: (paneId: number, ptyId: string | null) => void
-}
 
 export function connectPanePty(
   pane: ManagedPane,
@@ -44,6 +18,7 @@ export function connectPanePty(
 ): IDisposable {
   let disposed = false
   let connectFrame: number | null = null
+  let startupInjectTimer: ReturnType<typeof setTimeout> | null = null
   // Why: setup commands must only run once — in the initial pane of the tab.
   // Capture and clear the startup reference synchronously so that panes
   // created later by splits or layout restoration cannot re-execute the
@@ -232,6 +207,14 @@ export function connectPanePty(
     // terminal state is preserved.  This matches the MAX_BUFFER_BYTES
     // constant used for serialized scrollback capture.
     const MAX_PENDING_BYTES = 512 * 1024
+
+    // Why: for local connections (connectionId === null) the local PTY provider
+    // already writes the startup command via writeStartupCommandWhenShellReady,
+    // which is shell-ready-aware and reliable. Re-sending it here would cause
+    // the command to appear twice in the terminal. For SSH connections the relay
+    // has no equivalent mechanism, so the renderer must inject it via sendInput.
+    let pendingStartupCommand = connectionId ? (paneStartup?.command ?? null) : null
+
     const startFreshSpawn = (): void => {
       const spawnPromise = Promise.resolve(
         transport.connect({
@@ -278,12 +261,25 @@ export function connectPanePty(
         }
         pending.set(pane.id, buf)
       }
+
+      if (pendingStartupCommand) {
+        if (startupInjectTimer !== null) {
+          clearTimeout(startupInjectTimer)
+        }
+        startupInjectTimer = setTimeout(() => {
+          startupInjectTimer = null
+          if (!pendingStartupCommand || disposed) {
+            return
+          }
+          transport.sendInput(`${pendingStartupCommand}\r`)
+          pendingStartupCommand = null
+        }, 50)
+      }
     }
 
-    // Why: re-read ptyId inside the rAF instead of capturing it before.
-    // The eagerly-spawned PTY could exit during the one-frame gap (e.g.,
-    // broken .bashrc), clearing the tab's ptyId. Reading it stale would
-    // cause attach() on a dead process, leaving the pane frozen.
+    // Why: re-read session IDs inside the rAF instead of capturing before.
+    // The session could be cleaned up during the one-frame gap, and
+    // reading stale IDs would cause a reattach to a dead session.
     const restoredPtyId =
       deps.restoredLeafId && deps.restoredPtyIdByLeafId
         ? (deps.restoredPtyIdByLeafId[deps.restoredLeafId] ?? null)
@@ -292,42 +288,72 @@ export function connectPanePty(
       .getState()
       .tabsByWorktree[deps.worktreeId]?.find((t) => t.id === deps.tabId)?.ptyId
 
-    // Why: remounting a multi-pane terminal tab (for example after closing or
-    // moving a split group) must preserve each pane's own live PTY. The saved
-    // leaf→PTY mapping takes precedence over the tab-level PTY owner.
-    if (restoredPtyId) {
+    // Why: deferred reattach (Option 2). Instead of eagerly spawning PTYs at
+    // default 80×24 during reconnectPersistedTerminals (which fills eager
+    // buffers with content at wrong dimensions), we defer the daemon's
+    // createOrAttach to this point where fitAddon provides real dimensions.
+    // The daemon returns snapshot/coldRestore data in the spawn result.
+    const reattachSessionId =
+      restoredPtyId ?? (existingPtyId && !hasExistingPaneTransport ? existingPtyId : null)
+    if (reattachSessionId) {
       allowInitialIdleCacheSeed = true
-      deps.syncPanePtyLayoutBinding(pane.id, restoredPtyId)
-      transport.attach({
-        existingPtyId: restoredPtyId,
+
+      const reattachPromise = transport.connect({
+        url: '',
         cols,
         rows,
+        sessionId: reattachSessionId,
         callbacks: {
           onData: dataCallback,
           onError: reportError
         }
       })
-    } else if (existingPtyId && !hasExistingPaneTransport) {
-      // Why: only the first pane in a tab may reattach to the tab-level PTY.
-      // Additional panes created by in-tab splits need their own fresh PTYs; if
-      // they attach to the tab's existing ptyId, both panes end up sharing one
-      // session and the last-attached pane steals the live transport handlers.
-      // Group moves/remounts still reattach correctly because they recreate the
-      // whole TerminalPane with no surviving pane transports yet.
-      allowInitialIdleCacheSeed = true
-      deps.syncPanePtyLayoutBinding(pane.id, existingPtyId)
-      // Why: this tab already owns a PTY. Attach to it instead of spawning a
-      // duplicate. Startup commands are intentionally skipped — the PTY was
-      // already spawned with a fresh shell.
-      transport.attach({
-        existingPtyId,
-        cols,
-        rows,
-        callbacks: {
-          onData: dataCallback,
-          onError: reportError
-        }
-      })
+
+      void Promise.resolve(reattachPromise)
+        .then((result) => {
+          if (disposed) {
+            return
+          }
+          const connectResult =
+            result && typeof result === 'object' && 'id' in result
+              ? (result as PtyConnectResult)
+              : null
+
+          const ptyId =
+            connectResult?.id ?? (typeof result === 'string' ? result : transport.getPtyId())
+          if (ptyId) {
+            deps.syncPanePtyLayoutBinding(pane.id, ptyId)
+            deps.updateTabPtyId(deps.tabId, ptyId)
+          }
+
+          if (connectResult?.coldRestore) {
+            pane.terminal.write(connectResult.coldRestore.scrollback)
+            pane.terminal.write('\r\n\x1b[2m--- session restored ---\x1b[0m\r\n\r\n')
+            window.api.pty.ackColdRestore(ptyId!)
+          } else if (connectResult?.snapshot) {
+            if (!connectResult.isAlternateScreen) {
+              pane.terminal.write('\x1b[2J\x1b[3J\x1b[H')
+            }
+            pane.terminal.write(connectResult.snapshot)
+          }
+
+          if (ptyId) {
+            transport.resize(cols, rows)
+            // Why: POSIX only delivers SIGWINCH when terminal dimensions
+            // actually change. If the pane dimensions match the daemon
+            // session's stored dimensions (common for split panes across
+            // restarts), the resize above is a no-op and inline-viewport
+            // TUIs (Claude Code/Ink) never redraw. Sending SIGWINCH
+            // explicitly guarantees the TUI repaints at the correct cursor
+            // position, correcting any snapshot-vs-PTY cursor divergence.
+            window.api.pty.signal(ptyId, 'SIGWINCH')
+          }
+
+          scheduleRuntimeGraphSync()
+        })
+        .catch((err) => {
+          reportError(err instanceof Error ? err.message : String(err))
+        })
     } else {
       allowInitialIdleCacheSeed = false
       const pendingSpawn = hasExistingPaneTransport
@@ -382,6 +408,10 @@ export function connectPanePty(
   return {
     dispose() {
       disposed = true
+      if (startupInjectTimer !== null) {
+        clearTimeout(startupInjectTimer)
+        startupInjectTimer = null
+      }
       if (connectFrame !== null) {
         // Why: StrictMode and split-group remounts can dispose a pane binding
         // before its deferred PTY attach/spawn work runs. Cancel that queued

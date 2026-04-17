@@ -52,7 +52,7 @@ export const DEFAULT_WORKTREE_CARD_PROPERTIES: WorktreeCardProperty[] = [
   'comment'
 ]
 
-export const DEFAULT_STATUS_BAR_ITEMS: StatusBarItem[] = ['claude', 'codex', 'ssh']
+export const DEFAULT_STATUS_BAR_ITEMS: StatusBarItem[] = ['claude', 'codex', 'ssh', 'sessions']
 
 export const REPO_COLORS = [
   '#737373', // neutral
@@ -108,6 +108,7 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     // { ...defaults.settings, ...parsed.settings } merge, so enabling
     // focus-follows-mouse never happens unexpectedly.
     terminalFocusFollowsMouse: false,
+    setupScriptLaunchMode: 'split-vertical',
     terminalScrollbackBytes: 10_000_000,
     openLinksInApp: true,
     rightSidebarOpenByDefault: true,
@@ -118,7 +119,11 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     promptCacheTtlMs: 300_000,
     codexManagedAccounts: [],
     activeCodexManagedAccountId: null,
-    terminalScopeHistoryByWorktree: true
+    terminalScopeHistoryByWorktree: true,
+    defaultTuiAgent: null,
+    defaultTaskViewPreset: 'all',
+    agentCmdOverrides: {},
+    terminalMacOptionAsAlt: 'true'
   }
 }
 
@@ -179,6 +184,7 @@ export function getDefaultWorkspaceSession(): WorkspaceSessionState {
     browserPagesByWorkspace: {},
     activeBrowserTabIdByWorktree: {},
     activeFileIdByWorktree: {},
-    activeTabTypeByWorktree: {}
+    activeTabTypeByWorktree: {},
+    browserUrlHistory: []
   }
 }

@@ -2,7 +2,7 @@
    splitting individual settings into separate files would scatter related controls without a
    meaningful abstraction boundary. Mirrors the same decision made for GeneralPane.tsx. */
 import { useState } from 'react'
-import type { GlobalSettings } from '../../../../shared/types'
+import type { GlobalSettings, SetupScriptLaunchMode } from '../../../../shared/types'
 import {
   DEFAULT_TERMINAL_FONT_WEIGHT,
   TERMINAL_FONT_WEIGHT_MAX,
@@ -26,14 +26,16 @@ import { SCROLLBACK_PRESETS_MB } from './SettingsConstants'
 import { SearchableSetting } from './SearchableSetting'
 import { matchesSettingsSearch } from './settings-search'
 import { useAppStore } from '../../store'
-import { isWindowsUserAgent } from '@/components/terminal-pane/pane-helpers'
+import { isMacUserAgent, isWindowsUserAgent } from '@/components/terminal-pane/pane-helpers'
 import {
   TERMINAL_ADVANCED_SEARCH_ENTRIES,
   TERMINAL_CURSOR_SEARCH_ENTRIES,
   TERMINAL_DARK_THEME_SEARCH_ENTRIES,
   TERMINAL_LIGHT_THEME_SEARCH_ENTRIES,
+  TERMINAL_MAC_OPTION_SEARCH_ENTRIES,
   TERMINAL_PANE_STYLE_SEARCH_ENTRIES,
   TERMINAL_RIGHT_CLICK_TO_PASTE_SEARCH_ENTRY,
+  TERMINAL_SETUP_SCRIPT_SEARCH_ENTRIES,
   TERMINAL_TYPOGRAPHY_SEARCH_ENTRIES
 } from './terminal-search'
 import { DarkTerminalThemeSection, LightTerminalThemeSection } from './TerminalThemeSections'
@@ -57,6 +59,7 @@ export function TerminalPane({
 }: TerminalPaneProps): React.JSX.Element {
   const searchQuery = useAppStore((state) => state.settingsSearchQuery)
   const isWindows = isWindowsUserAgent()
+  const isMac = isMacUserAgent()
   const [themeSearchDark, setThemeSearchDark] = useState('')
   const [themeSearchLight, setThemeSearchLight] = useState('')
 
@@ -412,7 +415,79 @@ export function TerminalPane({
         lightPreviewAppearance={lightPreviewAppearance}
       />
     ) : null,
-    matchesSettingsSearch(searchQuery, TERMINAL_ADVANCED_SEARCH_ENTRIES) ? (
+    matchesSettingsSearch(searchQuery, TERMINAL_SETUP_SCRIPT_SEARCH_ENTRIES) ? (
+      <section key="setup-script" className="space-y-4">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold">Workspace Setup Script</h3>
+          <p className="text-xs text-muted-foreground">
+            Where the repository setup script runs when a new workspace is created.
+          </p>
+        </div>
+
+        <SearchableSetting
+          title="Setup Script Location"
+          description="Where the repository setup script runs when a new workspace is created."
+          keywords={[
+            'setup',
+            'script',
+            'workspace',
+            'split',
+            'horizontal',
+            'vertical',
+            'tab',
+            'new',
+            'location',
+            'launch'
+          ]}
+          className="space-y-2"
+        >
+          <Label>Setup Script Location</Label>
+          <ToggleGroup
+            type="single"
+            value={settings.setupScriptLaunchMode}
+            onValueChange={(value) => {
+              if (!value) {
+                return
+              }
+              updateSettings({
+                setupScriptLaunchMode: value as SetupScriptLaunchMode
+              })
+            }}
+            variant="outline"
+            size="sm"
+            className="h-8 flex-wrap"
+          >
+            <ToggleGroupItem
+              value="split-vertical"
+              className="h-8 px-3 text-xs"
+              aria-label="Split vertically"
+            >
+              Split Vertically
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="split-horizontal"
+              className="h-8 px-3 text-xs"
+              aria-label="Split horizontally"
+            >
+              Split Horizontally
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="new-tab"
+              className="h-8 px-3 text-xs"
+              aria-label="Run in a new tab"
+            >
+              New Tab
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <p className="text-xs text-muted-foreground">
+            &quot;New Tab&quot; opens the setup command in a background tab titled &quot;Setup&quot;
+            without stealing focus from your main terminal.
+          </p>
+        </SearchableSetting>
+      </section>
+    ) : null,
+    matchesSettingsSearch(searchQuery, TERMINAL_ADVANCED_SEARCH_ENTRIES) ||
+    (isMac && matchesSettingsSearch(searchQuery, TERMINAL_MAC_OPTION_SEARCH_ENTRIES)) ? (
       <section key="advanced" className="space-y-4">
         <div className="space-y-1">
           <h3 className="text-sm font-semibold">Advanced</h3>
@@ -482,6 +557,59 @@ export function TerminalPane({
             />
           ) : null}
         </SearchableSetting>
+
+        {isMac ? (
+          <SearchableSetting
+            title="Option as Alt"
+            description="Controls whether the macOS Option key sends Alt/Esc sequences or composes characters. Mirrors Ghostty's macos-option-as-alt."
+            keywords={[
+              'terminal',
+              'option',
+              'alt',
+              'key',
+              'meta',
+              'compose',
+              'mac',
+              'macos',
+              'keyboard',
+              'german',
+              'international',
+              'readline',
+              'ghostty'
+            ]}
+            className="space-y-2"
+          >
+            <Label>Option as Alt</Label>
+            <div className="flex w-fit gap-1 rounded-md border border-border/50 p-1">
+              {(['true', 'left', 'right', 'false'] as const).map((option) => (
+                <button
+                  key={option}
+                  onClick={() => updateSettings({ terminalMacOptionAsAlt: option })}
+                  className={`rounded-sm px-3 py-1 text-sm transition-colors ${
+                    settings.terminalMacOptionAsAlt === option
+                      ? 'bg-accent font-medium text-accent-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {option === 'false'
+                    ? 'Off'
+                    : option === 'true'
+                      ? 'Both'
+                      : option === 'left'
+                        ? 'Left'
+                        : 'Right'}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {settings.terminalMacOptionAsAlt === 'false'
+                ? 'Option composes special characters for your keyboard layout. Core readline shortcuts (Option+B/F/D) are handled automatically.'
+                : settings.terminalMacOptionAsAlt === 'true'
+                  ? 'Both Option keys send Alt/Esc sequences for full readline and shell support. Special character input via Option is unavailable.'
+                  : `The ${settings.terminalMacOptionAsAlt} Option key sends Alt/Esc sequences; the other composes special characters.`}
+            </p>
+          </SearchableSetting>
+        ) : null}
       </section>
     ) : null
   ].filter(Boolean)

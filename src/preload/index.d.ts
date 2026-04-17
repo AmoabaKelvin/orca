@@ -1,6 +1,10 @@
 import type { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   CreateWorktreeResult,
+  GitHubPRFile,
+  GitHubPRFileContents,
+  GitHubWorkItem,
+  GitHubWorkItemDetails,
   GitHubViewer,
   CreateWorktreeArgs,
   OpenCodeStatusEvent
@@ -10,7 +14,10 @@ import type { PreloadApi } from './api-types'
 
 type ReposApi = {
   list: () => Promise<Repo[]>
-  add: (args: { path: string; kind?: 'git' | 'folder' }) => Promise<{ repo: Repo } | { error: string }>
+  add: (args: {
+    path: string
+    kind?: 'git' | 'folder'
+  }) => Promise<{ repo: Repo } | { error: string }>
   addRemote: (args: {
     connectionId: string
     remotePath: string
@@ -54,11 +61,24 @@ type PtyApi = {
     command?: string
     connectionId?: string | null
     worktreeId?: string
-  }) => Promise<{ id: string }>
+    sessionId?: string
+  }) => Promise<{
+    id: string
+    snapshot?: string
+    snapshotCols?: number
+    snapshotRows?: number
+    isReattach?: boolean
+    isAlternateScreen?: boolean
+    coldRestore?: { scrollback: string; cwd: string }
+  }>
   write: (id: string, data: string) => void
   resize: (id: string, cols: number, rows: number) => void
+  signal: (id: string, signal: string) => void
   kill: (id: string) => Promise<void>
+  ackColdRestore: (id: string) => void
   hasChildProcesses: (id: string) => Promise<boolean>
+  getForegroundProcess: (id: string) => Promise<string | null>
+  listSessions: () => Promise<{ id: string; cwd: string; title: string }[]>
   onData: (callback: (data: { id: string; data: string }) => void) => () => void
   onExit: (callback: (data: { id: string; code: number }) => void) => () => void
   onOpenCodeStatus: (callback: (event: OpenCodeStatusEvent) => void) => () => void
@@ -66,9 +86,29 @@ type PtyApi = {
 
 type GhApi = {
   viewer: () => Promise<GitHubViewer | null>
+  repoSlug: (args: { repoPath: string }) => Promise<{ owner: string; repo: string } | null>
   prForBranch: (args: { repoPath: string; branch: string }) => Promise<PRInfo | null>
   issue: (args: { repoPath: string; number: number }) => Promise<IssueInfo | null>
+  workItem: (args: { repoPath: string; number: number }) => Promise<GitHubWorkItem | null>
+  workItemDetails: (args: {
+    repoPath: string
+    number: number
+  }) => Promise<GitHubWorkItemDetails | null>
+  prFileContents: (args: {
+    repoPath: string
+    prNumber: number
+    path: string
+    oldPath?: string
+    status: GitHubPRFile['status']
+    headSha: string
+    baseSha: string
+  }) => Promise<GitHubPRFileContents>
   listIssues: (args: { repoPath: string; limit?: number }) => Promise<IssueInfo[]>
+  listWorkItems: (args: {
+    repoPath: string
+    limit?: number
+    query?: string
+  }) => Promise<GitHubWorkItem[]>
   prChecks: (args: {
     repoPath: string
     prNumber: number
@@ -118,6 +158,7 @@ type ShellApi = {
   openFilePath: (path: string) => Promise<void>
   openFileUri: (uri: string) => Promise<void>
   pathExists: (path: string) => Promise<boolean>
+  pickAttachment: () => Promise<string | null>
   pickImage: () => Promise<string | null>
   pickDirectory: (args: { defaultPath?: string }) => Promise<string | null>
   copyFile: (args: { srcPath: string; destPath: string }) => Promise<void>

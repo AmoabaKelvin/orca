@@ -1,7 +1,34 @@
 import { useState, useEffect, useRef } from 'react'
 
-const isMac = navigator.userAgent.includes('Mac')
+const isMac = typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac')
 const MOD_KEY = isMac ? 'Meta' : 'Control'
+export const CLEAR_MODIFIER_HINTS_EVENT = 'orca:clear-modifier-hints'
+
+type ModifierHintKeyboardEvent = Pick<
+  KeyboardEvent,
+  'key' | 'altKey' | 'shiftKey' | 'ctrlKey' | 'metaKey' | 'repeat'
+>
+
+export function dispatchClearModifierHints(): void {
+  window.dispatchEvent(new Event(CLEAR_MODIFIER_HINTS_EVENT))
+}
+
+export function shouldStartModifierHintTimer(e: ModifierHintKeyboardEvent): boolean {
+  return e.key === MOD_KEY && !e.altKey && !e.shiftKey && (isMac ? !e.ctrlKey : !e.metaKey)
+}
+
+export function shouldClearModifierHintOnKeyUp(
+  e: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey'>
+): boolean {
+  if (e.key === MOD_KEY) {
+    return true
+  }
+
+  // Why: some app-level shortcuts are intercepted outside the renderer's
+  // normal keydown path, so the combo key's keyup can be our first signal that
+  // a completed Cmd/Ctrl chord is no longer a "show hints" gesture.
+  return isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
+}
 
 /**
  * Tracks whether the user is holding the platform modifier key (Cmd on Mac,
@@ -45,7 +72,7 @@ export function useModifierHint(enabled: boolean = true): { showHints: boolean }
       // (e.g. Ctrl+Cmd+Q to lock screen); on non-Mac, Meta+Ctrl is similarly not
       // an intentional hint request. Exclude the other platform modifier to avoid
       // false-positive hint activation during these combos.
-      if (e.key === MOD_KEY && !e.altKey && !e.shiftKey && (isMac ? !e.ctrlKey : !e.metaKey)) {
+      if (shouldStartModifierHintTimer(e)) {
         if (!timerRef.current) {
           timerRef.current = setTimeout(() => setShowHints(true), 750)
         }
@@ -59,13 +86,14 @@ export function useModifierHint(enabled: boolean = true): { showHints: boolean }
     }
 
     const onKeyUp = (e: KeyboardEvent): void => {
-      if (e.key === MOD_KEY) {
+      if (shouldClearModifierHintOnKeyUp(e)) {
         clear()
       }
     }
 
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
+    window.addEventListener(CLEAR_MODIFIER_HINTS_EVENT, clear)
     // Why blur: if the user Cmd+Tabs away, the keyup event may never fire
     // inside this window, leaving hints stuck in the visible state.
     window.addEventListener('blur', clear)
@@ -74,6 +102,7 @@ export function useModifierHint(enabled: boolean = true): { showHints: boolean }
       clear()
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener(CLEAR_MODIFIER_HINTS_EVENT, clear)
       window.removeEventListener('blur', clear)
     }
   }, [enabled])

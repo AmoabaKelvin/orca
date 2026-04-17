@@ -6,7 +6,10 @@ import type { StatsCollector } from '../stats/collector'
 import {
   getPRForBranch,
   getIssue,
+  getRepoSlug,
   listIssues,
+  listWorkItems,
+  getWorkItem,
   getAuthenticatedViewer,
   getPRChecks,
   getPRComments,
@@ -16,6 +19,8 @@ import {
   checkOrcaStarred,
   starOrca
 } from '../github/client'
+import { getWorkItemDetails, getPRFileContents } from '../github/work-item-details'
+import type { GitHubPRFile } from '../../shared/types'
 
 // Why: returns the full Repo object instead of just the path string so that
 // callers have access to repo.id for stat tracking and other context.
@@ -54,6 +59,56 @@ export function registerGitHubHandlers(store: Store, stats: StatsCollector): voi
   ipcMain.handle('gh:listIssues', (_event, args: { repoPath: string; limit?: number }) => {
     const repo = assertRegisteredRepo(args.repoPath, store)
     return listIssues(repo.path, args.limit)
+  })
+
+  ipcMain.handle(
+    'gh:listWorkItems',
+    (_event, args: { repoPath: string; limit?: number; query?: string }) => {
+      const repo = assertRegisteredRepo(args.repoPath, store)
+      return listWorkItems(repo.path, args.limit, args.query)
+    }
+  )
+
+  ipcMain.handle('gh:workItem', (_event, args: { repoPath: string; number: number }) => {
+    const repo = assertRegisteredRepo(args.repoPath, store)
+    return getWorkItem(repo.path, args.number)
+  })
+
+  ipcMain.handle('gh:workItemDetails', (_event, args: { repoPath: string; number: number }) => {
+    const repo = assertRegisteredRepo(args.repoPath, store)
+    return getWorkItemDetails(repo.path, args.number)
+  })
+
+  ipcMain.handle(
+    'gh:prFileContents',
+    (
+      _event,
+      args: {
+        repoPath: string
+        prNumber: number
+        path: string
+        oldPath?: string
+        status: GitHubPRFile['status']
+        headSha: string
+        baseSha: string
+      }
+    ) => {
+      const repo = assertRegisteredRepo(args.repoPath, store)
+      return getPRFileContents({
+        repoPath: repo.path,
+        prNumber: args.prNumber,
+        path: args.path,
+        oldPath: args.oldPath,
+        status: args.status,
+        headSha: args.headSha,
+        baseSha: args.baseSha
+      })
+    }
+  )
+
+  ipcMain.handle('gh:repoSlug', (_event, args: { repoPath: string }) => {
+    const repo = assertRegisteredRepo(args.repoPath, store)
+    return getRepoSlug(repo.path)
   })
 
   ipcMain.handle(

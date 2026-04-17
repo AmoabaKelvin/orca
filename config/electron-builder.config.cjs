@@ -2,8 +2,8 @@ const isMacRelease = process.env.ORCA_MAC_RELEASE === '1'
 
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
-  appId: 'com.stablyai.orca',
-  productName: 'Orca',
+  appId: 'com.stablyai.orca.personal',
+  productName: 'Orca Personal',
   directories: {
     buildResources: 'resources/build'
   },

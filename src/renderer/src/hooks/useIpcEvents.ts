@@ -17,6 +17,7 @@ import { resolveZoomTarget } from './resolve-zoom-target'
 import { handleSwitchTab } from './ipc-tab-switch'
 import { resolveActiveEntityId } from '@/components/terminal/active-entity'
 import { placeIdAfter } from '@/components/tab-bar/reconcile-order'
+import { dispatchClearModifierHints } from './useModifierHint'
 
 export { resolveZoomTarget } from './resolve-zoom-target'
 
@@ -40,24 +41,27 @@ export function useIpcEvents(): void {
 
     unsubs.push(
       window.api.ui.onOpenSettings(() => {
-        useAppStore.getState().setActiveView('settings')
+        useAppStore.getState().openSettingsPage()
       })
     )
 
     unsubs.push(
       window.api.ui.onToggleLeftSidebar(() => {
+        dispatchClearModifierHints()
         useAppStore.getState().toggleSidebar()
       })
     )
 
     unsubs.push(
       window.api.ui.onToggleRightSidebar(() => {
+        dispatchClearModifierHints()
         useAppStore.getState().toggleRightSidebar()
       })
     )
 
     unsubs.push(
       window.api.ui.onToggleWorktreePalette(() => {
+        dispatchClearModifierHints()
         const store = useAppStore.getState()
         if (store.activeModal === 'worktree-palette') {
           store.closeModal()
@@ -69,8 +73,9 @@ export function useIpcEvents(): void {
 
     unsubs.push(
       window.api.ui.onOpenQuickOpen(() => {
+        dispatchClearModifierHints()
         const store = useAppStore.getState()
-        if (store.activeView !== 'settings' && store.activeWorktreeId !== null) {
+        if (store.activeView === 'terminal' && store.activeWorktreeId !== null) {
           store.openModal('quick-open')
         }
       })
@@ -78,8 +83,9 @@ export function useIpcEvents(): void {
 
     unsubs.push(
       window.api.ui.onJumpToWorktreeIndex((index) => {
+        dispatchClearModifierHints()
         const store = useAppStore.getState()
-        if (store.activeView === 'settings') {
+        if (store.activeView !== 'terminal') {
           return
         }
         const visibleIds = getVisibleWorktreeIds()

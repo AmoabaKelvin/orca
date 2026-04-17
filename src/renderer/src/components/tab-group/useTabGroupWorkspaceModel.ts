@@ -17,6 +17,7 @@ import { extractIpcErrorMessage } from '../../lib/ipc-error'
 import { destroyPersistentWebview } from '../browser-pane/BrowserPane'
 
 export type GroupEditorItem = OpenFile & { tabId: string }
+export type GroupBrowserItem = BrowserTabState & { tabId: string }
 
 const EMPTY_GROUPS: readonly TabGroup[] = []
 const EMPTY_UNIFIED_TABS: readonly Tab[] = []
@@ -25,6 +26,7 @@ const EMPTY_RUNTIME_TERMINAL_TABS: readonly TerminalTab[] = []
 
 type TerminalTabItem = {
   id: string
+  unifiedTabId: string
   ptyId: null
   worktreeId: string
   title: string
@@ -66,7 +68,6 @@ export function useTabGroupWorkspaceModel({
   const closeUnifiedTab = useAppStore((state) => state.closeUnifiedTab)
   const closeOtherTabs = useAppStore((state) => state.closeOtherTabs)
   const closeTabsToRight = useAppStore((state) => state.closeTabsToRight)
-  const reorderUnifiedTabs = useAppStore((state) => state.reorderUnifiedTabs)
   const createEmptySplitGroup = useAppStore((state) => state.createEmptySplitGroup)
   const closeEmptyGroup = useAppStore((state) => state.closeEmptyGroup)
   const createTab = useAppStore((state) => state.createTab)
@@ -103,6 +104,7 @@ export function useTabGroupWorkspaceModel({
         .filter((item) => item.contentType === 'terminal')
         .map((item) => ({
           id: item.entityId,
+          unifiedTabId: item.id,
           ptyId: null,
           worktreeId,
           title: item.label,
@@ -131,15 +133,15 @@ export function useTabGroupWorkspaceModel({
     [groupTabs, worktreeState.openFiles]
   )
 
-  const browserItems = useMemo(
+  const browserItems = useMemo<GroupBrowserItem[]>(
     () =>
       groupTabs
         .filter((item) => item.contentType === 'browser')
         .map((item) => {
           const bt = worktreeState.browserTabs.find((candidate) => candidate.id === item.entityId)
-          return bt ?? null
+          return bt ? { ...bt, tabId: item.id } : null
         })
-        .filter((item): item is BrowserTabState => item !== null),
+        .filter((item): item is GroupBrowserItem => item !== null),
     [groupTabs, worktreeState.browserTabs]
   )
 
@@ -376,28 +378,6 @@ export function useTabGroupWorkspaceModel({
     }
   }, [closeItem, groupTabs])
 
-  const reorderTabBar = useCallback(
-    (order: string[]) => {
-      if (!group) {
-        return
-      }
-      const itemOrder = order
-        .map(
-          (visibleId) =>
-            groupTabs.find((item) =>
-              item.contentType === 'terminal' || item.contentType === 'browser'
-                ? item.entityId === visibleId
-                : item.id === visibleId
-            )?.id
-        )
-        .filter((value): value is string => Boolean(value))
-      const orderedIds = new Set(itemOrder)
-      const remainingIds = group.tabOrder.filter((itemId) => !orderedIds.has(itemId))
-      reorderUnifiedTabs(groupId, itemOrder.concat(remainingIds))
-    },
-    [group, groupId, groupTabs, reorderUnifiedTabs]
-  )
-
   const tabBarOrder = useMemo(
     () =>
       (group?.tabOrder ?? []).map((itemId) => {
@@ -464,7 +444,6 @@ export function useTabGroupWorkspaceModel({
         setActiveTabType('terminal')
       },
       pinFile,
-      reorderTabBar,
       setTabColor,
       setTabCustomTitle
     }

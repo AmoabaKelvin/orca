@@ -1,13 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react'
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent
-} from '@dnd-kit/core'
-import { SortableContext, horizontalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable'
 import { FilePlus, Globe, Plus, TerminalSquare } from 'lucide-react'
 import type {
   BrowserTab as BrowserTabState,
@@ -21,6 +13,7 @@ import SortableTab from './SortableTab'
 import EditorFileTab from './EditorFileTab'
 import BrowserTab from './BrowserTab'
 import { reconcileTabOrder } from './reconcile-order'
+import type { TabDragItemData } from '../tab-group/useTabDragSplit'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,18 +25,18 @@ import {
 const isMac = navigator.userAgent.includes('Mac')
 const NEW_TERMINAL_SHORTCUT = isMac ? '⌘T' : 'Ctrl+T'
 const NEW_BROWSER_SHORTCUT = isMac ? '⌘⇧B' : 'Ctrl+Shift+B'
-const NEW_FILE_SHORTCUT = isMac ? '⌘⇧N' : 'Ctrl+Shift+N'
+const NEW_FILE_SHORTCUT = isMac ? '⌘⇧M' : 'Ctrl+Shift+M'
 
 type TabBarProps = {
-  tabs: TerminalTab[]
+  tabs: (TerminalTab & { unifiedTabId?: string })[]
   activeTabId: string | null
+  groupId?: string
   worktreeId: string
   expandedPaneByTabId: Record<string, boolean>
   onActivate: (tabId: string) => void
   onClose: (tabId: string) => void
   onCloseOthers: (tabId: string) => void
   onCloseToRight: (tabId: string) => void
-  onReorder: (worktreeId: string, order: string[]) => void
   onNewTerminalTab: () => void
   onNewBrowserTab: () => void
   onNewFileTab?: () => void
@@ -51,7 +44,7 @@ type TabBarProps = {
   onSetTabColor: (tabId: string, color: string | null) => void
   onTogglePaneExpand: (tabId: string) => void
   editorFiles?: (OpenFile & { tabId?: string })[]
-  browserTabs?: BrowserTabState[]
+  browserTabs?: (BrowserTabState & { tabId?: string })[]
   activeFileId?: string | null
   activeBrowserTabId?: string | null
   activeTabType?: WorkspaceVisibleTabType
@@ -69,20 +62,30 @@ type TabBarProps = {
 }
 
 type TabItem =
-  | { type: 'terminal'; id: string; data: TerminalTab }
-  | { type: 'editor'; id: string; data: OpenFile & { tabId?: string } }
-  | { type: 'browser'; id: string; data: BrowserTabState }
+  | {
+      type: 'terminal'
+      id: string
+      unifiedTabId: string
+      data: TerminalTab & { unifiedTabId?: string }
+    }
+  | { type: 'editor'; id: string; unifiedTabId: string; data: OpenFile & { tabId?: string } }
+  | {
+      type: 'browser'
+      id: string
+      unifiedTabId: string
+      data: BrowserTabState & { tabId?: string }
+    }
 
 function TabBarInner({
   tabs,
   activeTabId,
+  groupId,
   worktreeId,
   expandedPaneByTabId,
   onActivate,
   onClose,
   onCloseOthers,
   onCloseToRight,
-  onReorder,
   onNewTerminalTab,
   onNewBrowserTab,
   onNewFileTab,
@@ -103,13 +106,8 @@ function TabBarInner({
   tabBarOrder,
   onCreateSplitGroup
 }: TabBarProps): React.JSX.Element {
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 5 }
-    })
-  )
-
   const gitStatusByWorktree = useAppStore((s) => s.gitStatusByWorktree)
+  const resolvedGroupId = groupId ?? worktreeId
   const statusByRelativePath = useMemo(
     () => buildStatusMap(gitStatusByWorktree[worktreeId] ?? []),
     [worktreeId, gitStatusByWorktree]
@@ -136,42 +134,33 @@ function TabBarInner({
     for (const id of ids) {
       const terminal = terminalMap.get(id)
       if (terminal) {
-        items.push({ type: 'terminal', id, data: terminal })
+        items.push({
+          type: 'terminal',
+          id,
+          unifiedTabId: terminal.unifiedTabId ?? terminal.id,
+          data: terminal
+        })
         continue
       }
       const file = editorMap.get(id)
       if (file) {
-        items.push({ type: 'editor', id, data: file })
+        items.push({ type: 'editor', id, unifiedTabId: file.tabId ?? file.id, data: file })
         continue
       }
       const browserTab = browserMap.get(id)
       if (browserTab) {
-        items.push({ type: 'browser', id, data: browserTab })
+        items.push({
+          type: 'browser',
+          id,
+          unifiedTabId: browserTab.tabId ?? browserTab.id,
+          data: browserTab
+        })
       }
     }
     return items
   }, [tabBarOrder, terminalIds, editorFileIds, browserTabIds, terminalMap, editorMap, browserMap])
 
   const sortableIds = useMemo(() => orderedItems.map((item) => item.id), [orderedItems])
-
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event
-      if (!over || active.id === over.id) {
-        return
-      }
-
-      const oldIndex = sortableIds.indexOf(active.id as string)
-      const newIndex = sortableIds.indexOf(over.id as string)
-      if (oldIndex === -1 || newIndex === -1) {
-        return
-      }
-
-      const newOrder = arrayMove(sortableIds, oldIndex, newIndex)
-      onReorder(worktreeId, newOrder)
-    },
-    [sortableIds, worktreeId, onReorder]
-  )
 
   const focusTerminalTabSurface = useCallback((tabId: string) => {
     // Why: creating a terminal from the "+" menu is a two-step focus race:
@@ -196,6 +185,9 @@ function TabBarInner({
 
   // Horizontal wheel scrolling for the tab strip
   const tabStripRef = useRef<HTMLDivElement>(null)
+  const prevStripLenRef = useRef<{ worktreeId: string; len: number } | null>(null)
+  const stickToEndRef = useRef(false)
+
   useEffect(() => {
     const el = tabStripRef.current
     if (!el) {
@@ -211,6 +203,84 @@ function TabBarInner({
     return () => el.removeEventListener('wheel', onWheel)
   }, [])
 
+  useEffect(() => {
+    const el = tabStripRef.current
+    if (!el) {
+      return
+    }
+    const isAtEnd = (): boolean => {
+      const max = Math.max(0, el.scrollWidth - el.clientWidth)
+      return el.scrollLeft >= max - 2
+    }
+    const onScroll = (): void => {
+      // Only keep sticking while the user hasn't intentionally scrolled away.
+      stickToEndRef.current = isAtEnd()
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    // Seed based on initial position.
+    onScroll()
+
+    const ro = new ResizeObserver(() => {
+      // If the user is pinned to the right edge, keep it pinned even as tab
+      // labels (e.g. \"Terminal 5\" → branch name) expand and change scrollWidth.
+      if (!stickToEndRef.current) {
+        return
+      }
+      el.scrollLeft = Math.max(0, el.scrollWidth - el.clientWidth)
+    })
+    ro.observe(el)
+
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      ro.disconnect()
+    }
+  }, [])
+
+  // Why: new and reopened tabs are appended to the right; without this the strip
+  // keeps its scroll offset and the active tab can sit off-screen until the user
+  // drags the tab bar horizontally.
+  useLayoutEffect(() => {
+    const strip = tabStripRef.current
+    const len = orderedItems.length
+    const prev = prevStripLenRef.current
+    if (!strip) {
+      prevStripLenRef.current = { worktreeId, len }
+      return
+    }
+    if (!prev || prev.worktreeId !== worktreeId) {
+      prevStripLenRef.current = { worktreeId, len }
+      return
+    }
+    // If the user is pinned to the right edge, keep the close button visible
+    // even when tab labels change length (e.g. "Terminal 5" → branch name).
+    // Why: label changes don't necessarily change the strip element's own size,
+    // so ResizeObserver won't fire; this effect runs on rerenders instead.
+    if (stickToEndRef.current) {
+      const scrollToEnd = (): void => {
+        const el = tabStripRef.current
+        if (!el) {
+          return
+        }
+        el.scrollLeft = Math.max(0, el.scrollWidth - el.clientWidth)
+      }
+      scrollToEnd()
+      requestAnimationFrame(scrollToEnd)
+    }
+    if (len > prev.len) {
+      const scrollToEnd = (): void => {
+        const el = tabStripRef.current
+        if (!el) {
+          return
+        }
+        el.scrollLeft = Math.max(0, el.scrollWidth - el.clientWidth)
+        stickToEndRef.current = true
+      }
+      scrollToEnd()
+      requestAnimationFrame(scrollToEnd)
+    }
+    prevStripLenRef.current = { worktreeId, len }
+  }, [orderedItems, worktreeId])
+
   return (
     <div
       className="flex items-stretch h-full overflow-hidden flex-1 min-w-0"
@@ -221,76 +291,86 @@ function TabBarInner({
       // editor drop zone.
       data-native-file-drop-target="editor"
     >
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={sortableIds} strategy={horizontalListSortingStrategy}>
-          {/* Why: no-drag lets tab interactions work inside the titlebar's drag
-              region. The outer container inherits drag so empty space after the
-              "+" button remains window-draggable. */}
-          <div
-            ref={tabStripRef}
-            className="terminal-tab-strip flex items-stretch overflow-x-auto overflow-y-hidden"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          >
-            {orderedItems.map((item, index) => {
-              if (item.type === 'terminal') {
-                return (
-                  <SortableTab
-                    key={item.id}
-                    tab={item.data}
-                    tabCount={tabs.length}
-                    hasTabsToRight={index < orderedItems.length - 1}
-                    isActive={activeTabType === 'terminal' && item.id === activeTabId}
-                    isExpanded={expandedPaneByTabId[item.id] === true}
-                    onActivate={onActivate}
-                    onClose={onClose}
-                    onCloseOthers={onCloseOthers}
-                    onCloseToRight={onCloseToRight}
-                    onSetCustomTitle={onSetCustomTitle}
-                    onSetTabColor={onSetTabColor}
-                    onToggleExpand={onTogglePaneExpand}
-                    onSplitGroup={(direction, sourceVisibleTabId) =>
-                      onCreateSplitGroup?.(direction, sourceVisibleTabId)
-                    }
-                  />
-                )
-              }
-              if (item.type === 'browser') {
-                return (
-                  <BrowserTab
-                    key={item.id}
-                    tab={item.data}
-                    isActive={activeTabType === 'browser' && activeBrowserTabId === item.id}
-                    hasTabsToRight={index < orderedItems.length - 1}
-                    onActivate={() => onActivateBrowserTab?.(item.id)}
-                    onClose={() => onCloseBrowserTab?.(item.id)}
-                    onCloseToRight={() => onCloseToRight(item.id)}
-                    onSplitGroup={(direction, sourceVisibleTabId) =>
-                      onCreateSplitGroup?.(direction, sourceVisibleTabId)
-                    }
-                  />
-                )
-              }
+      <SortableContext items={sortableIds} strategy={horizontalListSortingStrategy}>
+        {/* Why: no-drag lets tab interactions work inside the titlebar's drag
+            region. The outer container inherits drag so empty space after the
+            "+" button remains window-draggable. */}
+        <div
+          ref={tabStripRef}
+          className="terminal-tab-strip flex items-stretch overflow-x-auto overflow-y-hidden"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          {orderedItems.map((item, index) => {
+            const dragData: TabDragItemData = {
+              kind: 'tab',
+              worktreeId,
+              groupId: resolvedGroupId,
+              unifiedTabId: item.unifiedTabId,
+              visibleTabId: item.id,
+              tabType: item.type
+            }
+
+            if (item.type === 'terminal') {
               return (
-                <EditorFileTab
+                <SortableTab
                   key={item.id}
-                  file={item.data}
-                  isActive={activeTabType === 'editor' && activeFileId === item.id}
+                  tab={item.data}
+                  tabCount={tabs.length}
                   hasTabsToRight={index < orderedItems.length - 1}
-                  statusByRelativePath={statusByRelativePath}
-                  onActivate={() => onActivateFile?.(item.id)}
-                  onClose={() => onCloseFile?.(item.id)}
-                  onCloseToRight={() => onCloseToRight(item.id)}
-                  onCloseAll={() => onCloseAllFiles?.()}
-                  onPin={() => onPinFile?.(item.data.id, item.data.tabId)}
+                  isActive={activeTabType === 'terminal' && item.id === activeTabId}
+                  isExpanded={expandedPaneByTabId[item.id] === true}
+                  onActivate={onActivate}
+                  onClose={onClose}
+                  onCloseOthers={onCloseOthers}
+                  onCloseToRight={onCloseToRight}
+                  onSetCustomTitle={onSetCustomTitle}
+                  onSetTabColor={onSetTabColor}
+                  onToggleExpand={onTogglePaneExpand}
                   onSplitGroup={(direction, sourceVisibleTabId) =>
                     onCreateSplitGroup?.(direction, sourceVisibleTabId)
                   }
+                  dragData={dragData}
                 />
               )
-            })}
-          </div>
-        </SortableContext>
-      </DndContext>
+            }
+            if (item.type === 'browser') {
+              return (
+                <BrowserTab
+                  key={item.id}
+                  tab={item.data}
+                  isActive={activeTabType === 'browser' && activeBrowserTabId === item.id}
+                  hasTabsToRight={index < orderedItems.length - 1}
+                  onActivate={() => onActivateBrowserTab?.(item.id)}
+                  onClose={() => onCloseBrowserTab?.(item.id)}
+                  onCloseToRight={() => onCloseToRight(item.id)}
+                  onSplitGroup={(direction, sourceVisibleTabId) =>
+                    onCreateSplitGroup?.(direction, sourceVisibleTabId)
+                  }
+                  dragData={dragData}
+                />
+              )
+            }
+            return (
+              <EditorFileTab
+                key={item.id}
+                file={item.data}
+                isActive={activeTabType === 'editor' && activeFileId === item.id}
+                hasTabsToRight={index < orderedItems.length - 1}
+                statusByRelativePath={statusByRelativePath}
+                onActivate={() => onActivateFile?.(item.id)}
+                onClose={() => onCloseFile?.(item.id)}
+                onCloseToRight={() => onCloseToRight(item.id)}
+                onCloseAll={() => onCloseAllFiles?.()}
+                onPin={() => onPinFile?.(item.data.id, item.data.tabId)}
+                onSplitGroup={(direction, sourceVisibleTabId) =>
+                  onCreateSplitGroup?.(direction, sourceVisibleTabId)
+                }
+                dragData={dragData}
+              />
+            )
+          })}
+        </div>
+      </SortableContext>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button

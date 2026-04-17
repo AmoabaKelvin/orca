@@ -31,6 +31,10 @@ import { placeIdAfter, reconcileTabOrder } from './tab-bar/reconcile-order'
 import { resolveActiveEntityId } from './terminal/active-entity'
 import TabGroupSplitLayout from './tab-group/TabGroupSplitLayout'
 import { shouldAutoCreateInitialTerminal } from './terminal/initial-terminal'
+import {
+  getEffectiveLayoutForWorktree as getEffectiveLayout,
+  anyMountedWorktreeHasLayout as computeAnyMountedWorktreeHasLayout
+} from './terminal/split-group-mount'
 import CodexRestartChip from './CodexRestartChip'
 
 const EditorPanel = lazy(() => import('./editor/EditorPanel'))
@@ -107,18 +111,8 @@ function Terminal(): React.JSX.Element | null {
     ? (browserTabsByWorktree[activeWorktreeId] ?? [])
     : []
   const getEffectiveLayoutForWorktree = useCallback(
-    (worktreeId: string) => {
-      const layout = layoutByWorktree[worktreeId]
-      if (layout) {
-        return layout
-      }
-      const groups = groupsByWorktree[worktreeId] ?? []
-      const fallbackGroupId = activeGroupIdByWorktree[worktreeId] ?? groups[0]?.id ?? null
-      if (!fallbackGroupId) {
-        return undefined
-      }
-      return { type: 'leaf', groupId: fallbackGroupId } as const
-    },
+    (worktreeId: string) =>
+      getEffectiveLayout(worktreeId, layoutByWorktree, groupsByWorktree, activeGroupIdByWorktree),
     [activeGroupIdByWorktree, groupsByWorktree, layoutByWorktree]
   )
   const effectiveActiveLayout = activeWorktreeId
@@ -216,6 +210,13 @@ function Terminal(): React.JSX.Element | null {
       mountedWorktreeIdsRef.current.delete(id)
     }
   }
+  const anyMountedWorktreeHasLayout = computeAnyMountedWorktreeHasLayout(
+    allWorktrees.map((wt) => wt.id),
+    mountedWorktreeIdsRef.current,
+    layoutByWorktree,
+    groupsByWorktree,
+    activeGroupIdByWorktree
+  )
   // Auto-create first tab when worktree activates
   useEffect(() => {
     if (!workspaceSessionReady) {
@@ -287,7 +288,7 @@ function Terminal(): React.JSX.Element | null {
       return
     }
     try {
-      // Why: the global Cmd/Ctrl+Shift+N shortcut is handled here rather than
+      // Why: the global Cmd/Ctrl+Shift+M shortcut is handled here rather than
       // inside a specific TabGroupPanel, so it must snapshot the store's
       // current focused group explicitly. Otherwise split layouts fall back to
       // the ambient/default group and open the file in the wrong pane.
@@ -534,6 +535,22 @@ function Terminal(): React.JSX.Element | null {
         return
       }
 
+      // Cmd/Ctrl+Shift+T — reopen closed browser tab when browser is active,
+      // otherwise reopen the most recently closed editor tab (VS Code–style).
+      if (mod && e.shiftKey && e.key.toLowerCase() === 't' && !e.repeat) {
+        e.preventDefault()
+        const state = useAppStore.getState()
+        if (state.activeTabType === 'browser') {
+          const restored = state.reopenClosedBrowserTab(activeWorktreeId)
+          if (restored === null) {
+            state.reopenClosedEditorTab(activeWorktreeId)
+          }
+        } else {
+          state.reopenClosedEditorTab(activeWorktreeId)
+        }
+        return
+      }
+
       // Cmd/Ctrl+Shift+B - new browser tab
       if (mod && e.shiftKey && e.key.toLowerCase() === 'b' && !e.repeat) {
         e.preventDefault()
@@ -560,8 +577,8 @@ function Terminal(): React.JSX.Element | null {
         }
       }
 
-      // Cmd/Ctrl+Shift+N - new file
-      if (mod && e.shiftKey && e.key.toLowerCase() === 'n' && !e.repeat) {
+      // Cmd/Ctrl+Shift+M - new markdown file
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'm' && !e.repeat) {
         e.preventDefault()
         void handleNewFile()
         return
@@ -797,7 +814,6 @@ function Terminal(): React.JSX.Element | null {
             onClose={handleCloseTab}
             onCloseOthers={handleCloseOthers}
             onCloseToRight={handleCloseTabsToRight}
-            onReorder={setTabBarOrder}
             onNewTerminalTab={handleNewTab}
             onNewBrowserTab={handleNewBrowserTab}
             onNewFileTab={handleNewFile}
@@ -828,8 +844,10 @@ function Terminal(): React.JSX.Element | null {
           — tab groups + terminal extend to the top of the window instead.
           The old summary label (workspace / active surface) is removed. */}
 
-      {effectiveActiveLayout ? (
-        <div className="relative flex flex-1 min-w-0 min-h-0 overflow-hidden">
+      {anyMountedWorktreeHasLayout ? (
+        <div
+          className={`relative flex flex-1 min-w-0 min-h-0 overflow-hidden${effectiveActiveLayout ? '' : ' hidden'}`}
+        >
           {/* Why: each mounted worktree surface is absolutely positioned so we
               can preserve hidden trees without reflowing the active one. Keep
               a relative anchor here so those panes size to the workspace body
@@ -841,7 +859,9 @@ function Terminal(): React.JSX.Element | null {
               if (!layout) {
                 return null
               }
-              const isVisible = activeView !== 'settings' && worktree.id === activeWorktreeId
+              // Why: use strict equality with 'terminal' instead of !== 'settings'
+              // so the terminal/browser surface hides on the new-workspace page too.
+              const isVisible = activeView === 'terminal' && worktree.id === activeWorktreeId
               return (
                 <div
                   key={`tab-groups-${worktree.id}`}
@@ -886,8 +906,9 @@ function Terminal(): React.JSX.Element | null {
             {allWorktrees
               .filter((wt) => mountedWorktreeIdsRef.current.has(wt.id))
               .map((worktree) => {
-                const isVisible = activeView !== 'settings' && worktree.id === activeWorktreeId
-
+                // Why: use strict equality with 'terminal' instead of !== 'settings'
+                // so the terminal/browser surface hides on the new-workspace page too.
+                const isVisible = activeView === 'terminal' && worktree.id === activeWorktreeId
                 return (
                   <div
                     key={worktree.id}
@@ -931,8 +952,10 @@ function Terminal(): React.JSX.Element | null {
           >
             {allWorktrees.map((worktree) => {
               const browserTabs = browserTabsByWorktree[worktree.id] ?? []
+              // Why: use strict equality with 'terminal' instead of !== 'settings'
+              // so browser panes also hide on the new-workspace page.
               const isVisibleWorktree =
-                activeView !== 'settings' && worktree.id === activeWorktreeId
+                activeView === 'terminal' && worktree.id === activeWorktreeId
               if (browserTabs.length === 0) {
                 return null
               }
