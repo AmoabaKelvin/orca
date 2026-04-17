@@ -3,7 +3,11 @@ import { getDefaultRepoHookSettings } from '../../../../shared/constants'
 
 export type HookName = keyof OrcaHooks['scripts']
 export const DEFAULT_REPO_HOOK_SETTINGS = getDefaultRepoHookSettings()
-export const MAX_THEME_RESULTS = 80
+// Why: sized to comfortably fit imported Ghostty catalogs (~500 themes) plus
+// the built-in set. The picker already lives inside a fixed-height ScrollArea
+// so rendering this many buttons is cheap, and the cap still guards against
+// pathological cases like the user pointing at a huge junk directory.
+export const MAX_THEME_RESULTS = 1000
 export const SCROLLBACK_PRESETS_MB = [10, 25, 50, 100, 250] as const
 export const ZOOM_STEP = 0.5
 export const ZOOM_MIN = -3
