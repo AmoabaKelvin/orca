@@ -1,8 +1,6 @@
 import type { ITheme } from '@xterm/xterm'
-import { getTheme, getThemeNames } from './terminal-themes-data'
+import { getTheme } from './terminal-themes-data'
 import type { GlobalSettings } from '../../../shared/types'
-
-export const BUILTIN_TERMINAL_THEME_NAMES = getThemeNames()
 
 export const DEFAULT_TERMINAL_THEME_DARK = 'Ghostty Default Style Dark'
 export const DEFAULT_TERMINAL_THEME_LIGHT = 'Builtin Tango Light'

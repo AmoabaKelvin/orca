@@ -18,6 +18,7 @@ import { registerSettingsHandlers } from './settings'
 import { registerBrowserHandlers } from './browser'
 import { browserSessionRegistry } from '../browser/browser-session-registry'
 import { registerShellHandlers } from './shell'
+import { registerTerminalThemeHandlers } from './terminal-themes'
 import { registerUIHandlers } from './ui'
 import { registerCodexAccountHandlers } from './codex-accounts'
 import { warmSystemFontFamilies } from '../system-fonts'
@@ -70,6 +71,7 @@ export function registerCoreHandlers(
   browserSessionRegistry.applyPendingCookieImport()
   browserSessionRegistry.restorePersistedUserAgent()
   registerShellHandlers()
+  registerTerminalThemeHandlers()
   registerSessionHandlers(store)
   registerUIHandlers(store)
   registerFilesystemHandlers(store)

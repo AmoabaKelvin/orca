@@ -30,6 +30,7 @@ import { isMacUserAgent, isWindowsUserAgent } from '@/components/terminal-pane/p
 import {
   TERMINAL_ADVANCED_SEARCH_ENTRIES,
   TERMINAL_CURSOR_SEARCH_ENTRIES,
+  TERMINAL_CUSTOM_THEMES_SEARCH_ENTRIES,
   TERMINAL_DARK_THEME_SEARCH_ENTRIES,
   TERMINAL_LIGHT_THEME_SEARCH_ENTRIES,
   TERMINAL_MAC_OPTION_SEARCH_ENTRIES,
@@ -38,6 +39,7 @@ import {
   TERMINAL_SETUP_SCRIPT_SEARCH_ENTRIES,
   TERMINAL_TYPOGRAPHY_SEARCH_ENTRIES
 } from './terminal-search'
+import { CustomThemesSection } from './CustomThemesSection'
 import { DarkTerminalThemeSection, LightTerminalThemeSection } from './TerminalThemeSections'
 
 type TerminalPaneProps = {
@@ -413,6 +415,13 @@ export function TerminalPane({
         updateSettings={updateSettings}
         previewProps={paneStyleOptions}
         lightPreviewAppearance={lightPreviewAppearance}
+      />
+    ) : null,
+    matchesSettingsSearch(searchQuery, TERMINAL_CUSTOM_THEMES_SEARCH_ENTRIES) ? (
+      <CustomThemesSection
+        key="custom-themes"
+        settings={settings}
+        updateSettings={updateSettings}
       />
     ) : null,
     matchesSettingsSearch(searchQuery, TERMINAL_SETUP_SCRIPT_SEARCH_ENTRIES) ? (

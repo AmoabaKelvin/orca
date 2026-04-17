@@ -454,6 +454,16 @@ const api = {
       ipcRenderer.invoke('shell:copyFile', args)
   },
 
+  terminalThemes: {
+    loadDirectory: (
+      path: string
+    ): Promise<{
+      themes: { filename: string; contents: string }[]
+      readErrors: { filename: string; message: string }[]
+      invalid: boolean
+    }> => ipcRenderer.invoke('terminalThemes:loadDirectory', path)
+  },
+
   browser: {
     registerGuest: (args: {
       browserPageId: string

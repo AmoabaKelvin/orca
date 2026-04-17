@@ -20,7 +20,8 @@ const {
   registerRateLimitHandlersMock,
   registerBrowserHandlersMock,
   setTrustedBrowserRendererWebContentsIdMock,
-  registerFilesystemWatcherHandlersMock
+  registerFilesystemWatcherHandlersMock,
+  registerTerminalThemeHandlersMock
 } = vi.hoisted(() => ({
   registerCliHandlersMock: vi.fn(),
   registerPreflightHandlersMock: vi.fn(),
@@ -41,7 +42,8 @@ const {
   registerRateLimitHandlersMock: vi.fn(),
   registerBrowserHandlersMock: vi.fn(),
   setTrustedBrowserRendererWebContentsIdMock: vi.fn(),
-  registerFilesystemWatcherHandlersMock: vi.fn()
+  registerFilesystemWatcherHandlersMock: vi.fn(),
+  registerTerminalThemeHandlersMock: vi.fn()
 }))
 
 vi.mock('./cli', () => ({
@@ -78,6 +80,10 @@ vi.mock('./settings', () => ({
 
 vi.mock('./shell', () => ({
   registerShellHandlers: registerShellHandlersMock
+}))
+
+vi.mock('./terminal-themes', () => ({
+  registerTerminalThemeHandlers: registerTerminalThemeHandlersMock
 }))
 
 vi.mock('./session', () => ({
@@ -142,6 +148,7 @@ describe('registerCoreHandlers', () => {
     registerBrowserHandlersMock.mockReset()
     setTrustedBrowserRendererWebContentsIdMock.mockReset()
     registerFilesystemWatcherHandlersMock.mockReset()
+    registerTerminalThemeHandlersMock.mockReset()
   })
 
   it('passes the store through to handler registrars that need it', () => {
@@ -183,6 +190,7 @@ describe('registerCoreHandlers', () => {
     expect(setTrustedBrowserRendererWebContentsIdMock).toHaveBeenCalledWith(null)
     expect(registerBrowserHandlersMock).toHaveBeenCalled()
     expect(registerFilesystemWatcherHandlersMock).toHaveBeenCalled()
+    expect(registerTerminalThemeHandlersMock).toHaveBeenCalled()
   })
 
   it('only registers IPC handlers once but always updates web contents id', () => {

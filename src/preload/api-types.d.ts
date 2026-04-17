@@ -370,6 +370,13 @@ export type PreloadApi = {
     pickDirectory: (args: { defaultPath?: string }) => Promise<string | null>
     copyFile: (args: { srcPath: string; destPath: string }) => Promise<void>
   }
+  terminalThemes: {
+    loadDirectory: (path: string) => Promise<{
+      themes: { filename: string; contents: string }[]
+      readErrors: { filename: string; message: string }[]
+      invalid: boolean
+    }>
+  }
   browser: BrowserApi
   hooks: {
     check: (args: {

@@ -10,7 +10,7 @@ export type SettingsSlice = {
   updateSettings: (updates: Partial<GlobalSettings>) => Promise<void>
 }
 
-export const createSettingsSlice: StateCreator<AppState, [], [], SettingsSlice> = (set) => ({
+export const createSettingsSlice: StateCreator<AppState, [], [], SettingsSlice> = (set, get) => ({
   settings: null,
   settingsSearchQuery: '',
   setSettingsSearchQuery: (q) => set({ settingsSearchQuery: q }),
@@ -19,6 +19,11 @@ export const createSettingsSlice: StateCreator<AppState, [], [], SettingsSlice> 
     try {
       const settings = await window.api.settings.get()
       set({ settings })
+      // Why: custom themes are loaded from a path stored in settings, so the
+      // picker only knows the full catalog after settings are hydrated. Fire
+      // the import refresh here so the first render already has the combined
+      // list available.
+      void get().refreshImportedTerminalThemes?.()
     } catch (err) {
       console.error('Failed to fetch settings:', err)
     }
@@ -39,6 +44,11 @@ export const createSettingsSlice: StateCreator<AppState, [], [], SettingsSlice> 
             }
           : null
       }))
+      // Why: re-run the import when the custom-themes path changes so added
+      // or removed directories reflect in the picker immediately.
+      if (Object.prototype.hasOwnProperty.call(updates, 'terminalCustomThemesDirectory')) {
+        void get().refreshImportedTerminalThemes?.()
+      }
     } catch (err) {
       console.error('Failed to update settings:', err)
     }

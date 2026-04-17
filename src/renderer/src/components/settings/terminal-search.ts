@@ -68,6 +68,14 @@ export const TERMINAL_DARK_THEME_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   }
 ]
 
+export const TERMINAL_CUSTOM_THEMES_SEARCH_ENTRIES: SettingsSearchEntry[] = [
+  {
+    title: 'Custom Themes Directory',
+    description: 'Import Ghostty-format theme files from a directory.',
+    keywords: ['terminal', 'theme', 'custom', 'ghostty', 'import', 'directory']
+  }
+]
+
 export const TERMINAL_LIGHT_THEME_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   {
     title: 'Use Separate Theme In Light Mode',
@@ -162,6 +170,7 @@ export function getTerminalPaneSearchEntries(platform: {
     ...(platform.isWindows ? TERMINAL_WINDOWS_SEARCH_ENTRIES : []),
     ...TERMINAL_DARK_THEME_SEARCH_ENTRIES,
     ...TERMINAL_LIGHT_THEME_SEARCH_ENTRIES,
+    ...TERMINAL_CUSTOM_THEMES_SEARCH_ENTRIES,
     ...TERMINAL_SETUP_SCRIPT_SEARCH_ENTRIES,
     ...TERMINAL_ADVANCED_SEARCH_ENTRIES,
     ...(platform.isMac ? TERMINAL_MAC_OPTION_SEARCH_ENTRIES : [])

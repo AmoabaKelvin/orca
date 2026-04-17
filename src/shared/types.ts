@@ -628,6 +628,11 @@ export type GlobalSettings = {
    *  'true' = full Meta on both Option keys;
    *  'left' / 'right' = only that Option key acts as Meta, the other composes. */
   terminalMacOptionAsAlt: 'true' | 'false' | 'left' | 'right'
+  /** Absolute path to a directory whose files are parsed as Ghostty-format
+   *  terminal themes and merged into the theme picker. Empty string means no
+   *  import. Themes imported this way preview identically to bundled ones
+   *  because they are normalized to the same xterm ITheme shape. */
+  terminalCustomThemesDirectory: string
 }
 
 export type NotificationEventSource = 'agent-task-complete' | 'terminal-bell' | 'test'

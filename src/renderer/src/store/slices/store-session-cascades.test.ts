@@ -98,6 +98,7 @@ import { createCodexUsageSlice } from './codex-usage'
 import { createBrowserSlice } from './browser'
 import { createRateLimitSlice } from './rate-limits'
 import { createSshSlice } from './ssh'
+import { createTerminalThemeImportsSlice } from './terminal-theme-imports'
 
 function createTestStore() {
   return create<AppState>()((...a) => ({
@@ -114,7 +115,8 @@ function createTestStore() {
     ...createCodexUsageSlice(...a),
     ...createBrowserSlice(...a),
     ...createRateLimitSlice(...a),
-    ...createSshSlice(...a)
+    ...createSshSlice(...a),
+    ...createTerminalThemeImportsSlice(...a)
   }))
 }
 

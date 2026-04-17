@@ -6,7 +6,9 @@ import { ScrollArea } from '../ui/scroll-area'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { Check, ChevronsUpDown, CircleX } from 'lucide-react'
-import { BUILTIN_TERMINAL_THEME_NAMES, normalizeColor } from '@/lib/terminal-theme'
+import { normalizeColor } from '@/lib/terminal-theme'
+import { getThemeNames } from '@/lib/terminal-themes-data'
+import { useAppStore } from '@/store'
 import { MAX_THEME_RESULTS } from './SettingsConstants'
 
 type ThemePickerProps = {
@@ -52,10 +54,25 @@ export function ThemePicker({
   onQueryChange,
   onSelectTheme
 }: ThemePickerProps): React.JSX.Element {
+  // Why: subscribe to the imported-themes slice so the picker re-renders when
+  // the user adds or changes the custom themes directory. The returned value
+  // from the selector drives the useMemo below; we don't read the slice's
+  // object directly — we just use it as a subscription anchor.
+  const importedThemesMap = useAppStore((s) => s.importedTerminalThemes.themes)
+  // Why: getThemeNames reads from a module-level overlay that the store keeps
+  // in sync. We depend on the imported map identity so this memo invalidates
+  // whenever the overlay changes; the lint rule can't see that getThemeNames
+  // reads state that lives outside the closure.
+  // oxlint-disable-next-line react-hooks/exhaustive-deps
+  const availableThemes = useMemo(() => getThemeNames(), [importedThemesMap])
+  const importedThemeCount = useMemo(
+    () => Object.keys(importedThemesMap).length,
+    [importedThemesMap]
+  )
   const normalizedQuery = query.trim().toLowerCase()
-  const filteredThemes = BUILTIN_TERMINAL_THEME_NAMES.filter((theme) =>
-    theme.toLowerCase().includes(normalizedQuery)
-  ).slice(0, MAX_THEME_RESULTS)
+  const filteredThemes = availableThemes
+    .filter((theme) => theme.toLowerCase().includes(normalizedQuery))
+    .slice(0, MAX_THEME_RESULTS)
 
   return (
     <div className="space-y-3">
@@ -66,16 +83,18 @@ export function ThemePicker({
       <Input
         value={query}
         onChange={(e) => onQueryChange(e.target.value)}
-        placeholder="Search builtin themes"
+        placeholder={
+          importedThemeCount > 0
+            ? `Search ${availableThemes.length} themes (${importedThemeCount} imported)`
+            : 'Search builtin themes'
+        }
       />
       <div className="rounded-lg border border-border/50">
         <div className="flex items-center justify-between border-b border-border/50 px-3 py-2 text-xs text-muted-foreground">
           <span>Selected: {selectedTheme}</span>
           <span>
             Showing {filteredThemes.length}
-            {normalizedQuery
-              ? ` matching "${query.trim()}"`
-              : ` of ${BUILTIN_TERMINAL_THEME_NAMES.length}`}
+            {normalizedQuery ? ` matching "${query.trim()}"` : ` of ${availableThemes.length}`}
           </span>
         </div>
         <ScrollArea className="h-64">
