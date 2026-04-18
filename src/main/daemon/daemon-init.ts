@@ -1,6 +1,6 @@
 import { join } from 'path'
 import { app } from 'electron'
-import { mkdirSync, existsSync, unlinkSync } from 'fs'
+import { mkdirSync, existsSync, unlinkSync, openSync } from 'fs'
 import { fork } from 'child_process'
 import { connect } from 'net'
 import { DaemonSpawner, type DaemonLauncher } from './daemon-spawner'
@@ -73,12 +73,17 @@ function createOutOfProcessLauncher(): DaemonLauncher {
     }
 
     const entryPath = getDaemonEntryPath()
+    // Why: route daemon stdout/stderr to a log file on disk so crashes and
+    // runtime errors (e.g. node-pty "posix_spawnp failed") have a visible
+    // trail post-mortem. Without this, a misbehaving daemon dies silently.
+    const logPath = join(getRuntimeDir(), 'daemon.log')
+    const logFd = openSync(logPath, 'a')
     const child = fork(entryPath, ['--socket', socketPath, '--token', tokenPath], {
       // Why: detached + unref lets the daemon outlive the Electron process.
-      // stdio 'ignore' prevents the child from holding the parent's stdout
-      // open, which would prevent Electron from exiting cleanly.
+      // stdout/stderr go to the log file FD (which stays open after Electron
+      // exits); ipc channel is required for the initial ready handshake.
       detached: true,
-      stdio: ['ignore', 'ignore', 'ignore', 'ipc']
+      stdio: ['ignore', logFd, logFd, 'ipc']
     })
 
     // Wait for the daemon to signal readiness via IPC
