@@ -24,6 +24,7 @@ import {
 type NativeDropResolution =
   | { target: 'editor' }
   | { target: 'terminal' }
+  | { target: 'composer' }
   | { target: 'file-explorer'; destinationDir: string }
   // Why: returned when the explorer marker was found but no destinationDir
   // could be resolved. The caller must suppress the drop entirely instead of
@@ -51,7 +52,7 @@ function resolveNativeFileDrop(event: DragEvent): NativeDropResolution | null {
     }
 
     const target = entry.dataset.nativeFileDropTarget
-    if (target === 'editor' || target === 'terminal') {
+    if (target === 'editor' || target === 'terminal' || target === 'composer') {
       return { target }
     }
     if (target === 'file-explorer') {
@@ -325,6 +326,15 @@ const api = {
     }
   },
 
+  feedback: {
+    submit: (args: {
+      feedback: string
+      githubLogin: string | null
+      githubEmail: string | null
+    }): Promise<{ ok: true } | { ok: false; status: number | null; error: string }> =>
+      ipcRenderer.invoke('feedback:submit', args)
+  },
+
   gh: {
     viewer: (): Promise<unknown> => ipcRenderer.invoke('gh:viewer'),
 
@@ -396,6 +406,17 @@ const api = {
 
     checkOrcaStarred: (): Promise<boolean | null> => ipcRenderer.invoke('gh:checkOrcaStarred'),
     starOrca: (): Promise<boolean> => ipcRenderer.invoke('gh:starOrca')
+  },
+
+  starNag: {
+    onShow: (callback: () => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent): void => callback()
+      ipcRenderer.on('star-nag:show', listener)
+      return () => ipcRenderer.removeListener('star-nag:show', listener)
+    },
+    dismiss: (): Promise<void> => ipcRenderer.invoke('star-nag:dismiss'),
+    complete: (): Promise<void> => ipcRenderer.invoke('star-nag:complete'),
+    forceShow: (): Promise<void> => ipcRenderer.invoke('star-nag:forceShow')
   },
 
   settings: {
@@ -1099,6 +1120,7 @@ const api = {
         data:
           | { paths: string[]; target: 'editor' }
           | { paths: string[]; target: 'terminal' }
+          | { paths: string[]; target: 'composer' }
           | { paths: string[]; target: 'file-explorer'; destinationDir: string }
       ) => void
     ): (() => void) => {
@@ -1107,6 +1129,7 @@ const api = {
         data:
           | { paths: string[]; target: 'editor' }
           | { paths: string[]; target: 'terminal' }
+          | { paths: string[]; target: 'composer' }
           | { paths: string[]; target: 'file-explorer'; destinationDir: string }
       ) => callback(data)
       ipcRenderer.on('terminal:file-drop', listener)

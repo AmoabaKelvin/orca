@@ -98,6 +98,12 @@ export type OpenFile = {
   conflictReview?: ConflictReviewState
   isPreview?: boolean // preview tabs are replaced when another file is single-clicked
   isUntitled?: boolean // true for files created via "New Markdown" that haven't been renamed yet
+  // Why: when an external process (e.g. `git mv`, `rm`) removes the file on
+  // disk while it's open, we keep the tab around so the user can still see
+  // (and potentially save) their in-memory content. The tab surfaces this as
+  // a strikethrough label plus a "deleted"/"renamed" suffix. Cleared if the
+  // file reappears on disk at its original path.
+  externalMutation?: 'deleted' | 'renamed'
   mode: 'edit' | 'diff' | 'conflict-review'
 }
 
@@ -168,6 +174,7 @@ export type EditorSlice = {
   setActiveFile: (fileId: string) => void
   reorderFiles: (fileIds: string[]) => void
   markFileDirty: (fileId: string, dirty: boolean) => void
+  setExternalMutation: (fileId: string, mutation: 'deleted' | 'renamed' | null) => void
   clearUntitled: (fileId: string) => void
   openDiff: (
     worktreeId: string,
@@ -712,11 +719,12 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       }
     })
 
-    // Why: the unified tab model drives visual tab‐bar order and neighbor
-    // selection via pickNeighbor(group.tabOrder). Without this, closing an
-    // editor/diff tab picks the next active file from the openFiles array
-    // instead of the visual tab order, producing inconsistent behavior vs
-    // terminal/browser tab closes which already go through closeUnifiedTab.
+    // Why: the unified tab model drives visual tab-bar order and next-active
+    // selection (MRU-based, falling back to the visual neighbor). Without
+    // this, closing an editor/diff tab picks the next active file from the
+    // openFiles array instead of running the unified close path, producing
+    // inconsistent behavior vs terminal/browser tab closes which already go
+    // through closeUnifiedTab.
     for (const tabs of Object.values(get().unifiedTabsByWorktree ?? {})) {
       const unifiedTab = tabs.find(
         (entry) =>
@@ -906,13 +914,43 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
     }),
 
   markFileDirty: (fileId, dirty) =>
-    set((s) => ({
-      openFiles: s.openFiles.map((f) =>
-        f.id === fileId
-          ? { ...f, isDirty: dirty, ...(dirty && f.isPreview ? { isPreview: undefined } : {}) }
-          : f
-      )
-    })),
+    set((s) => {
+      // Why: typing fires this on every keystroke. Rebuilding openFiles
+      // unconditionally thrashes every subscriber (EditorPanel → EditorContent
+      // → MonacoEditor re-renders) and produced visible typing lag. Bail out
+      // when the dirty bit is already the target value and the preview-promote
+      // side effect is a no-op.
+      const file = s.openFiles.find((f) => f.id === fileId)
+      if (!file) {
+        return s
+      }
+      const needsPreviewClear = dirty && file.isPreview
+      if (file.isDirty === dirty && !needsPreviewClear) {
+        return s
+      }
+      return {
+        openFiles: s.openFiles.map((f) =>
+          f.id === fileId
+            ? { ...f, isDirty: dirty, ...(needsPreviewClear ? { isPreview: undefined } : {}) }
+            : f
+        )
+      }
+    }),
+
+  setExternalMutation: (fileId, mutation) =>
+    set((s) => {
+      const file = s.openFiles.find((f) => f.id === fileId)
+      if (!file) {
+        return s
+      }
+      const next = mutation ?? undefined
+      if (file.externalMutation === next) {
+        return s
+      }
+      return {
+        openFiles: s.openFiles.map((f) => (f.id === fileId ? { ...f, externalMutation: next } : f))
+      }
+    }),
 
   clearUntitled: (fileId) =>
     set((s) => ({

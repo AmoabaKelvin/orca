@@ -43,6 +43,12 @@ export const DEFAULT_EDITOR_AUTO_SAVE_DELAY_MS = 1000
 export const MIN_EDITOR_AUTO_SAVE_DELAY_MS = 250
 export const MAX_EDITOR_AUTO_SAVE_DELAY_MS = 10_000
 
+// Why: initial threshold of agents spawned (since last update) before we show
+// the star-on-GitHub notification. Doubles each time the user dismisses
+// without starring — e.g. 50 → 100 → 200 → 400. Past dismissals are encoded
+// in starNagNextThreshold, so this constant is only the first-time seed.
+export const STAR_NAG_INITIAL_THRESHOLD = 50
+
 export const DEFAULT_WORKTREE_CARD_PROPERTIES: WorktreeCardProperty[] = [
   'status',
   'unread',

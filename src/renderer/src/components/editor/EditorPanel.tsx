@@ -371,25 +371,14 @@ function EditorPanelInner({
       if (matchingFiles.length === 0) {
         return
       }
-      setFileContents((prev) => {
-        const next = { ...prev }
-        for (const file of matchingFiles) {
-          if (file.mode === 'edit') {
-            delete next[file.id]
-          }
-        }
-        return next
-      })
-      setDiffContents((prev) => {
-        const next = { ...prev }
-        for (const file of matchingFiles) {
-          if (file.mode === 'diff') {
-            delete next[file.id]
-          }
-        }
-        return next
-      })
-
+      // Why: do NOT delete fileContents[file.id] here before the reload
+      // completes. Dropping the entry renders EditorContent's "Loading..."
+      // placeholder and unmounts MonacoEditor. On remount, @monaco-editor/react
+      // skips its value-sync effect on the first render, and `keepCurrentModel`
+      // retains the prior model — so the new content prop never reaches the
+      // editor and the user sees the pre-external-edit text linger.
+      // loadFileContent / loadDiffContent overwrite the entry atomically once
+      // the fresh read returns, which is what Monaco's value-sync can observe.
       for (const file of matchingFiles) {
         if (file.mode === 'edit') {
           void loadFileContent(file.filePath, file.id, file.worktreeId)

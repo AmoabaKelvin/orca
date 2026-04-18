@@ -15,7 +15,13 @@ import '@/lib/monaco-setup'
 import { computeEditorFontSize } from '@/lib/editor-font-zoom'
 
 import { useContextualCopySetup } from './useContextualCopySetup'
-import { computeMonacoRevealRange } from './monaco-reveal-range'
+import { performReveal } from './monaco-reveal'
+import { syncContentOnMount, syncContentUpdate } from './monaco-content-sync'
+import {
+  beginProgrammaticContentSync,
+  endProgrammaticContentSync,
+  shouldIgnoreMonacoContentChange
+} from './monaco-programmatic-sync'
 
 type MonacoEditorProps = {
   filePath: string
@@ -131,9 +137,45 @@ export default function MonacoEditor({
     [cancelScheduledReveal, clearTransientRevealHighlight]
   )
 
+  // Why: `keepCurrentModel` retains Monaco models across unmounts, and
+  // @monaco-editor/react skips its value→model sync on the first render after
+  // a remount. Without explicit sync, external file changes that arrived
+  // while the tab was unmounted leave the retained model showing stale text.
+  // contentRef lets handleMount read the current content without re-binding;
+  // lastSyncedContentRef lets the update effect distinguish our own onChange
+  // emissions from real prop drift.
+  // Invariant: the mount path (handleMount's syncContentOnMount call) MUST
+  // read `contentRef.current`, never `lastSyncedContentRef.current`. The
+  // useLayoutEffect below can run before mount with `editorRef.current === null`
+  // and bails without updating lastSyncedContentRef, so that ref may be stale
+  // pre-mount; only contentRef is guaranteed to reflect the latest prop.
+  const contentRef = useRef(content)
+  contentRef.current = content
+  const lastSyncedContentRef = useRef<string>(content)
+  // Why: Monaco model reconciliation reuses real edit operations so retained
+  // models keep sane undo behavior. Those edits are programmatic, not user
+  // typing, so split panes must suppress the resulting onChange callback or a
+  // freshly mounted markdown source view can mark the shared file dirty.
+  const isApplyingProgrammaticContentRef = useRef(false)
+
   const handleMount: OnMount = useCallback(
     (editorInstance, monaco) => {
       editorRef.current = editorInstance
+
+      // Why: see comment on contentRef — reconcile the retained model against
+      // the current prop before any user interaction so external changes that
+      // arrived while the tab was unmounted become visible immediately.
+      beginProgrammaticContentSync(filePath)
+      isApplyingProgrammaticContentRef.current = true
+      try {
+        const didSyncOnMount = syncContentOnMount(editorInstance, contentRef.current)
+        if (didSyncOnMount) {
+          lastSyncedContentRef.current = contentRef.current
+        }
+      } finally {
+        isApplyingProgrammaticContentRef.current = false
+        endProgrammaticContentSync(filePath)
+      }
 
       setupCopy(editorInstance, monaco, filePath, propsRef)
 
@@ -225,11 +267,45 @@ export default function MonacoEditor({
   const handleChange = useCallback(
     (value: string | undefined) => {
       if (value !== undefined) {
+        // Why: split panes that share a retained Monaco model all receive the
+        // same model change events. When one pane is reconciling prop content
+        // into the shared model, sibling panes must ignore the echoed onChange
+        // or they'll treat the programmatic sync as a user edit and mark the
+        // shared file dirty.
+        if (
+          shouldIgnoreMonacoContentChange({
+            filePath,
+            isApplyingProgrammaticContent: isApplyingProgrammaticContentRef.current
+          })
+        ) {
+          return
+        }
+        lastSyncedContentRef.current = value
         onContentChange(value)
       }
     },
-    [onContentChange]
+    [filePath, onContentChange]
   )
+
+  // Why: reconcile the model whenever `content` drifts from what we last
+  // synced (covers external file changes while mounted). The on-mount case
+  // is handled directly in handleMount. useLayoutEffect lets the overwrite
+  // land before paint so the user never sees stale text.
+  useLayoutEffect(() => {
+    const ed = editorRef.current
+    if (!ed || lastSyncedContentRef.current === content) {
+      return
+    }
+    beginProgrammaticContentSync(filePath)
+    isApplyingProgrammaticContentRef.current = true
+    try {
+      syncContentUpdate(ed, content)
+      lastSyncedContentRef.current = content
+    } finally {
+      isApplyingProgrammaticContentRef.current = false
+      endProgrammaticContentSync(filePath)
+    }
+  }, [content, filePath])
 
   // Snapshot scroll position synchronously on unmount so tab switches always
   // capture the latest value, even if the trailing throttle hasn't fired yet.
@@ -399,64 +475,4 @@ export default function MonacoEditor({
       </DropdownMenu>
     </div>
   )
-}
-
-/** Shared reveal logic used by both onMount and useEffect */
-function performReveal(
-  ed: editor.IStandaloneCodeEditor,
-  line: number,
-  column: number,
-  matchLength: number,
-  clearTransientRevealHighlight: () => void,
-  revealDecorationRef: React.RefObject<editor.IEditorDecorationsCollection | null>,
-  revealHighlightTimerRef: React.RefObject<ReturnType<typeof setTimeout> | null>
-): void {
-  const model = ed.getModel()
-  if (!model) {
-    ed.focus()
-    return
-  }
-
-  const range = computeMonacoRevealRange({
-    line,
-    column,
-    matchLength,
-    maxLine: model.getLineCount(),
-    lineMaxColumn: model.getLineMaxColumn(Math.min(Math.max(1, line), model.getLineCount()))
-  })
-  const shouldHighlight = matchLength > 0
-
-  ed.setPosition({ lineNumber: range.startLineNumber, column: range.startColumn })
-  if (shouldHighlight) {
-    ed.setSelection(range)
-    ed.revealRangeInCenter(range)
-  } else {
-    ed.setSelection({
-      startLineNumber: range.startLineNumber,
-      startColumn: range.startColumn,
-      endLineNumber: range.startLineNumber,
-      endColumn: range.startColumn
-    })
-    ed.revealPositionInCenter({ lineNumber: range.startLineNumber, column: range.startColumn })
-  }
-
-  clearTransientRevealHighlight()
-  if (shouldHighlight) {
-    revealDecorationRef.current = ed.createDecorationsCollection([
-      {
-        range,
-        options: {
-          inlineClassName: 'monaco-search-result-highlight',
-          stickiness: 1
-        }
-      }
-    ])
-    revealHighlightTimerRef.current = setTimeout(() => {
-      revealDecorationRef.current?.clear()
-      revealDecorationRef.current = null
-      revealHighlightTimerRef.current = null
-    }, 1200)
-  }
-
-  ed.focus()
 }

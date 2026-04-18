@@ -6,6 +6,7 @@ const {
   registerClaudeUsageHandlersMock,
   registerCodexUsageHandlersMock,
   registerGitHubHandlersMock,
+  registerFeedbackHandlersMock,
   registerStatsHandlersMock,
   registerNotificationHandlersMock,
   registerSettingsHandlersMock,
@@ -29,6 +30,7 @@ const {
   registerClaudeUsageHandlersMock: vi.fn(),
   registerCodexUsageHandlersMock: vi.fn(),
   registerGitHubHandlersMock: vi.fn(),
+  registerFeedbackHandlersMock: vi.fn(),
   registerStatsHandlersMock: vi.fn(),
   registerNotificationHandlersMock: vi.fn(),
   registerSettingsHandlersMock: vi.fn(),
@@ -66,6 +68,10 @@ vi.mock('./codex-usage', () => ({
 
 vi.mock('./github', () => ({
   registerGitHubHandlers: registerGitHubHandlersMock
+}))
+
+vi.mock('./feedback', () => ({
+  registerFeedbackHandlers: registerFeedbackHandlersMock
 }))
 
 vi.mock('./stats', () => ({
@@ -139,6 +145,7 @@ describe('registerCoreHandlers', () => {
     registerClaudeUsageHandlersMock.mockReset()
     registerCodexUsageHandlersMock.mockReset()
     registerGitHubHandlersMock.mockReset()
+    registerFeedbackHandlersMock.mockReset()
     registerStatsHandlersMock.mockReset()
     registerNotificationHandlersMock.mockReset()
     registerSettingsHandlersMock.mockReset()
@@ -182,6 +189,7 @@ describe('registerCoreHandlers', () => {
     expect(registerCodexAccountHandlersMock).toHaveBeenCalledWith(codexAccounts)
     expect(registerRateLimitHandlersMock).toHaveBeenCalledWith(rateLimits)
     expect(registerGitHubHandlersMock).toHaveBeenCalledWith(store, stats)
+    expect(registerFeedbackHandlersMock).toHaveBeenCalled()
     expect(registerStatsHandlersMock).toHaveBeenCalledWith(stats)
     expect(registerNotificationHandlersMock).toHaveBeenCalledWith(store)
     expect(registerSettingsHandlersMock).toHaveBeenCalledWith(store)

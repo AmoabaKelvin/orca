@@ -1,0 +1,353 @@
+import { useEffect, useMemo, useRef } from 'react'
+import { useAppStore } from '@/store'
+import { getConnectionId } from '@/lib/connection-context'
+import { basename } from '@/lib/path'
+import { normalizeAbsolutePath } from '@/components/right-sidebar/file-explorer-paths'
+import { getExternalFileChangeRelativePath } from '@/components/right-sidebar/useFileExplorerWatch'
+import {
+  getOpenFilesForExternalFileChange,
+  notifyEditorExternalFileChange
+} from '@/components/editor/editor-autosave'
+import type { FsChangedPayload } from '../../../shared/types'
+import { findWorktreeById } from '@/store/slices/worktree-helpers'
+
+type WatchedTarget = {
+  worktreeId: string
+  worktreePath: string
+  connectionId: string | undefined
+}
+
+type ExternalWatchNotification = {
+  worktreeId: string
+  worktreePath: string
+  relativePath: string
+}
+
+/**
+ * Subscribes to filesystem watcher events for every worktree that currently
+ * has an editor tab open, and notifies the editor to reload clean tabs when
+ * their on-disk contents change.
+ *
+ * Why: the File Explorer panel's watcher hook is unmounted whenever the user
+ * switches the right sidebar to Source Control / Checks / Search. Relying on
+ * that panel to dispatch editor-reload notifications means terminal edits go
+ * unnoticed while any non-Explorer sidebar tab is active. Lifting the
+ * editor-reload subscription to an always-mounted hook mirrors VSCode's
+ * `TextFileEditorModelManager`, which subscribes to `fileService
+ * .onDidFilesChange` once at the workbench level and reloads non-dirty models
+ * regardless of which UI panel is visible.
+ */
+export function useEditorExternalWatch(): void {
+  const openFiles = useAppStore((s) => s.openFiles)
+  const worktreesByRepo = useAppStore((s) => s.worktreesByRepo)
+  const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
+
+  // Why: unify the target computation and the dependency key into one memo so
+  // there's a single source of truth. The derived string key drives the
+  // watch-diff effect; the array itself is what the effect actually iterates.
+  const { targets, targetsKey } = useMemo(() => {
+    const ids = new Set<string>()
+    // Why: watch every worktree that has an editor tab open, so terminal edits
+    // in any of those roots reach the editor. Also watch the active worktree
+    // even when it has no open files — otherwise the File Explorer's tree
+    // reconciliation loses its event stream the moment the last tab for that
+    // worktree is closed.
+    for (const f of openFiles) {
+      ids.add(f.worktreeId)
+    }
+    if (activeWorktreeId) {
+      ids.add(activeWorktreeId)
+    }
+    const nextTargets: WatchedTarget[] = []
+    const parts: string[] = []
+    for (const id of Array.from(ids).sort()) {
+      const wt = findWorktreeById(worktreesByRepo, id)
+      if (!wt) {
+        continue
+      }
+      nextTargets.push({
+        worktreeId: id,
+        worktreePath: wt.path,
+        connectionId: getConnectionId(id) ?? undefined
+      })
+      parts.push(`${id}::${wt.path}`)
+    }
+    return { targets: nextTargets, targetsKey: parts.join('|') }
+  }, [openFiles, worktreesByRepo, activeWorktreeId])
+
+  const targetsRef = useRef<WatchedTarget[]>([])
+  const latestTargetsRef = useRef<WatchedTarget[]>(targets)
+  latestTargetsRef.current = targets
+
+  // Why: diff previous vs next targets so unchanged worktrees keep their
+  // existing subscription. Tearing down every subscription on each targetsKey
+  // change (e.g. opening/closing a tab in an already-watched worktree) causes
+  // a watcher churn that can drop events emitted during the gap.
+  useEffect(() => {
+    const nextTargets = latestTargetsRef.current
+    const prev = targetsRef.current
+    const prevIds = new Set(prev.map((t) => t.worktreeId))
+    const nextIds = new Set(nextTargets.map((t) => t.worktreeId))
+    const removed = prev.filter((t) => !nextIds.has(t.worktreeId))
+    const added = nextTargets.filter((t) => !prevIds.has(t.worktreeId))
+
+    for (const target of removed) {
+      void window.api.fs.unwatchWorktree({
+        worktreePath: target.worktreePath,
+        connectionId: target.connectionId
+      })
+    }
+    for (const target of added) {
+      void window.api.fs.watchWorktree({
+        worktreePath: target.worktreePath,
+        connectionId: target.connectionId
+      })
+    }
+    targetsRef.current = nextTargets
+    // Why: this effect is intentionally differential — it does not unwatch on
+    // cleanup. Final unmount unwatching lives in the separate [] effect below
+    // so that re-running on targetsKey changes doesn't tear down everything.
+  }, [targetsKey])
+
+  // Why: the fs:changed subscription and the final unmount unwatch are
+  // independent of which worktrees are currently watched. Keeping them in a
+  // single always-mounted effect avoids re-subscribing on every targetsKey
+  // change (which would otherwise miss events fired during re-subscription).
+  useEffect(() => {
+    const handleFsChanged = (payload: FsChangedPayload): void => {
+      const target = targetsRef.current.find(
+        (t) => normalizeAbsolutePath(t.worktreePath) === normalizeAbsolutePath(payload.worktreePath)
+      )
+      if (!target) {
+        return
+      }
+
+      // Why: when an external process removes (or `git mv`s) a file that's
+      // open in the editor, keep the tab alive and mark it as deleted/renamed
+      // so the user can see the mutation and still access their in-memory
+      // content. A paired create-event in the same batch signals a rename;
+      // a lone delete is a hard delete. Resurrection (same path comes back
+      // on disk) clears the mark further down.
+      const deletedOpenEditorIds = collectDeletedOpenEditorIds(payload, target.worktreeId)
+      // Why: correlate creates to deletes by basename OR parent directory to
+      // avoid mislabelling unrelated create+delete pairs in a batched payload
+      // as "renamed". When we can't correlate, default to 'deleted' — that's
+      // the least misleading fallback (it preserves in-memory content and
+      // doesn't claim a rename target that doesn't exist).
+      const hasPairedCreate =
+        deletedOpenEditorIds.length > 0 &&
+        hasRenameCorrelatedCreate(payload, target.worktreeId, deletedOpenEditorIds)
+      if (deletedOpenEditorIds.length > 0) {
+        const setExternalMutation = useAppStore.getState().setExternalMutation
+        const mutation = hasPairedCreate ? 'renamed' : 'deleted'
+        for (const fileId of deletedOpenEditorIds) {
+          setExternalMutation(fileId, mutation)
+        }
+      }
+
+      // Why: if a previously-deleted file reappears at the same path (e.g.
+      // the user ran `git checkout`), clear the tombstone so the tab returns
+      // to its normal state and any non-dirty content gets reloaded below.
+      const createOrUpdatePaths = new Set<string>()
+      for (const evt of payload.events) {
+        if (evt.isDirectory === true) {
+          continue
+        }
+        if (evt.kind === 'create' || evt.kind === 'update') {
+          createOrUpdatePaths.add(normalizeAbsolutePath(evt.absolutePath))
+        }
+      }
+      if (createOrUpdatePaths.size > 0) {
+        const state = useAppStore.getState()
+        for (const file of state.openFiles) {
+          if (
+            file.worktreeId === target.worktreeId &&
+            file.mode === 'edit' &&
+            file.externalMutation &&
+            createOrUpdatePaths.has(normalizeAbsolutePath(file.filePath))
+          ) {
+            state.setExternalMutation(file.id, null)
+          }
+        }
+      }
+
+      const changedFiles = new Set<string>()
+      for (const evt of payload.events) {
+        if (evt.kind === 'overflow') {
+          // Why: overflow payloads omit per-path create/update info, so any
+          // stale tombstone must be cleared conservatively before we decide
+          // which clean tabs to reload. Otherwise a file that reappeared on
+          // disk during the overrun stays struck through until some later
+          // path-specific event happens to clear it.
+          for (const notification of getOverflowExternalReloadTargets(target)) {
+            notifyEditorExternalFileChange(notification)
+          }
+          // Why: `break` (not `return`) — the remaining code early-returns
+          // when changedFiles is empty, so breaking out is semantically
+          // equivalent and more robust to future code added after the loop.
+          break
+        }
+
+        if (evt.kind === 'update' && evt.isDirectory === true) {
+          continue
+        }
+
+        if (evt.kind === 'delete') {
+          // Why: delete events are already handled above by marking the tab
+          // as tombstoned. Feeding them into the reload pipeline would fire
+          // `readFile` against the ENOENT path and replace the in-memory
+          // content with "Error loading file..." — losing the user's view.
+          continue
+        }
+
+        const relativePath = getExternalFileChangeRelativePath(
+          target.worktreePath,
+          normalizeAbsolutePath(evt.absolutePath),
+          evt.isDirectory
+        )
+        if (relativePath) {
+          changedFiles.add(relativePath)
+        }
+      }
+
+      if (changedFiles.size === 0) {
+        return
+      }
+
+      // Why: skip notifying for any tab with unsaved edits so external writes
+      // don't silently destroy the user's work. Mirrors the dirty guard in
+      // `useFileExplorerHandlers`. Read `openFiles` once per payload to avoid
+      // N store reads for large batched events.
+      const openFilesSnapshot = useAppStore.getState().openFiles
+      for (const relativePath of changedFiles) {
+        const notification = {
+          worktreeId: target.worktreeId,
+          worktreePath: target.worktreePath,
+          relativePath
+        }
+        const matching = getOpenFilesForExternalFileChange(openFilesSnapshot, notification)
+        if (matching.length === 0) {
+          continue
+        }
+        if (matching.some((f) => f.isDirty)) {
+          continue
+        }
+        notifyEditorExternalFileChange(notification)
+      }
+    }
+
+    const unsubscribe = window.api.fs.onFsChanged(handleFsChanged)
+
+    return () => {
+      unsubscribe()
+      // Why: final unmount must tear down every outstanding subscription.
+      // The differential watch effect above intentionally never unwatches on
+      // cleanup, so this is the only place that clears them.
+      for (const target of targetsRef.current) {
+        void window.api.fs.unwatchWorktree({
+          worktreePath: target.worktreePath,
+          connectionId: target.connectionId
+        })
+      }
+      targetsRef.current = []
+    }
+  }, [])
+}
+
+export function getOverflowExternalReloadTargets(
+  target: Pick<WatchedTarget, 'worktreeId' | 'worktreePath'>
+): ExternalWatchNotification[] {
+  const state = useAppStore.getState()
+  const notifications: ExternalWatchNotification[] = []
+
+  for (const file of state.openFiles) {
+    if (file.worktreeId !== target.worktreeId || file.mode !== 'edit' || file.isDirty) {
+      continue
+    }
+    if (file.externalMutation) {
+      // Why: overflow gives no per-path resurrection signal, so fall back to
+      // "assume it may exist again" and clear the tombstone before reloading.
+      // If the file is still gone, EditorPanel will preserve the current in-
+      // memory view by showing the read failure instead of leaving a permanent
+      // stale "deleted" badge with no path to recovery.
+      state.setExternalMutation(file.id, null)
+    }
+    notifications.push({
+      worktreeId: target.worktreeId,
+      worktreePath: target.worktreePath,
+      relativePath: file.relativePath
+    })
+  }
+
+  return notifications
+}
+
+function collectDeletedOpenEditorIds(payload: FsChangedPayload, worktreeId: string): string[] {
+  const deletePaths = new Set<string>()
+  for (const evt of payload.events) {
+    if (evt.kind === 'delete') {
+      deletePaths.add(normalizeAbsolutePath(evt.absolutePath))
+    }
+  }
+  if (deletePaths.size === 0) {
+    return []
+  }
+  const openFilesNow = useAppStore.getState().openFiles
+  const result: string[] = []
+  for (const file of openFilesNow) {
+    if (file.worktreeId !== worktreeId || file.mode !== 'edit') {
+      continue
+    }
+    if (deletePaths.has(normalizeAbsolutePath(file.filePath))) {
+      result.push(file.id)
+    }
+  }
+  return result
+}
+
+/**
+ * Returns true if the batched payload contains at least one file-create event
+ * whose basename matches a deleted open editor file.
+ *
+ * Why: a batched fs payload may include unrelated create+delete events. A
+ * blanket `events.some(kind === 'create')` would mislabel those as renames.
+ * Basename correlation catches the common `git mv` / `mv` case where the
+ * filename survives the move. We intentionally do NOT correlate by parent
+ * directory because editor save-as-temp patterns (`rm foo.md && touch
+ * foo.md.new`) routinely put unrelated creates in the same dir as a delete,
+ * which would produce false rename labels. When correlation fails the caller
+ * falls back to 'deleted', which is the least misleading default.
+ */
+function hasRenameCorrelatedCreate(
+  payload: FsChangedPayload,
+  worktreeId: string,
+  deletedOpenEditorIds: string[]
+): boolean {
+  if (deletedOpenEditorIds.length === 0) {
+    return false
+  }
+  const deletedIdSet = new Set(deletedOpenEditorIds)
+  const openFilesNow = useAppStore.getState().openFiles
+  const deletedBasenames = new Set<string>()
+  for (const file of openFilesNow) {
+    if (file.worktreeId !== worktreeId || file.mode !== 'edit') {
+      continue
+    }
+    if (!deletedIdSet.has(file.id)) {
+      continue
+    }
+    deletedBasenames.add(basename(normalizeAbsolutePath(file.filePath)))
+  }
+  if (deletedBasenames.size === 0) {
+    return false
+  }
+  for (const evt of payload.events) {
+    if (evt.kind !== 'create' || evt.isDirectory === true) {
+      continue
+    }
+    if (deletedBasenames.has(basename(normalizeAbsolutePath(evt.absolutePath)))) {
+      return true
+    }
+  }
+  return false
+}

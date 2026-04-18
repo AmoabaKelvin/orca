@@ -20,9 +20,11 @@ import {
   findTabAndWorktree,
   findTabByEntityInGroup,
   patchTab,
-  pickNeighbor,
+  pickNextActiveTab,
+  pushRecentTabId,
+  sanitizeRecentTabIds,
   updateGroup
-} from './tabs-helpers'
+} from './tab-group-state'
 import { buildHydratedTabState } from './tabs-hydration'
 import { buildOrphanTerminalCleanupPatch, getOrphanTerminalIds } from './terminal-orphan-helpers'
 
@@ -33,10 +35,6 @@ export type TabsSlice = {
   groupsByWorktree: Record<string, TabGroup[]>
   activeGroupIdByWorktree: Record<string, string>
   layoutByWorktree: Record<string, TabGroupLayoutNode>
-  /** Per-group activation history (most recent at end). Used so closing the
-   *  active tab returns focus to the previously-active tab instead of a
-   *  positional neighbor. Bounded to TAB_ACTIVATION_STACK_LIMIT entries. */
-  tabActivationStackByGroupId: Record<string, string[]>
   createUnifiedTab: (
     worktreeId: string,
     contentType: TabContentType,
@@ -393,50 +391,11 @@ function buildActiveSurfacePatch(
   }
 }
 
-const TAB_ACTIVATION_STACK_LIMIT = 32
-
-function pushActivation(
-  stacksByGroupId: Record<string, string[]>,
-  groupId: string,
-  tabId: string
-): Record<string, string[]> {
-  const current = stacksByGroupId[groupId] ?? []
-  const filtered = current.filter((id) => id !== tabId)
-  filtered.push(tabId)
-  const trimmed =
-    filtered.length > TAB_ACTIVATION_STACK_LIMIT
-      ? filtered.slice(filtered.length - TAB_ACTIVATION_STACK_LIMIT)
-      : filtered
-  return { ...stacksByGroupId, [groupId]: trimmed }
-}
-
-/** Pick the most recent entry in the stack that still exists in validIds,
- *  consuming stale entries as it goes. Returns null if the stack is empty or
- *  every entry is stale. */
-function popLatestValidActivation(
-  stack: string[] | undefined,
-  validIds: Set<string>
-): { chosen: string | null; remaining: string[] } {
-  if (!stack || stack.length === 0) {
-    return { chosen: null, remaining: stack ?? [] }
-  }
-  const remaining = [...stack]
-  while (remaining.length > 0) {
-    const candidate = remaining.at(-1)!
-    if (validIds.has(candidate)) {
-      return { chosen: candidate, remaining }
-    }
-    remaining.pop()
-  }
-  return { chosen: null, remaining }
-}
-
 export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, get) => ({
   unifiedTabsByWorktree: {},
   groupsByWorktree: {},
   activeGroupIdByWorktree: {},
   layoutByWorktree: {},
-  tabActivationStackByGroupId: {},
 
   createUnifiedTab: (worktreeId, contentType, init) => {
     const id = init?.id ?? globalThis.crypto.randomUUID()
@@ -497,9 +456,15 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
       } else {
         nextOrder.push(created.id)
       }
-      // Why: dedupe at the boundary — upstream added this to guard against
-      // racey stored orders that contain the new id twice after restore.
       nextOrder = dedupeTabOrder(nextOrder)
+      // Why: creating a tab implicitly activates it, so extend the group's MRU
+      // stack with the new id. Keeping MRU updates colocated with activation
+      // writes preserves the invariant that `activeTabId` equals the tail of
+      // `recentTabIds` for any tab we've actually seen.
+      const nextRecent = pushRecentTabId(
+        sanitizeRecentTabIds(group.recentTabIds, nextOrder),
+        created.id
+      )
       return {
         unifiedTabsByWorktree: {
           ...state.unifiedTabsByWorktree,
@@ -510,21 +475,15 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
           [worktreeId]: updateGroup(groupsByWorktree[worktreeId] ?? [], {
             ...group,
             activeTabId: created.id,
-            tabOrder: nextOrder
+            tabOrder: nextOrder,
+            recentTabIds: nextRecent
           })
         },
         activeGroupIdByWorktree,
         layoutByWorktree: {
           ...state.layoutByWorktree,
           [worktreeId]: state.layoutByWorktree[worktreeId] ?? { type: 'leaf', groupId: group.id }
-        },
-        // Why: record the just-created tab as the most-recent activation so a
-        // subsequent close falls back through the history in the right order.
-        tabActivationStackByGroupId: pushActivation(
-          state.tabActivationStackByGroupId,
-          group.id,
-          created.id
-        )
+        }
       }
     })
     return created
@@ -567,20 +526,26 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
         groupsByWorktree: {
           ...state.groupsByWorktree,
           [worktreeId]: (state.groupsByWorktree[worktreeId] ?? []).map((group) =>
-            group.id === tab.groupId ? { ...group, activeTabId: tabId } : group
+            group.id === tab.groupId
+              ? {
+                  ...group,
+                  activeTabId: tabId,
+                  // Why: MRU tracks every activation within the group so
+                  // closeUnifiedTab can jump back to the previous tab instead
+                  // of the visual neighbor. Sanitize first to prune ids from
+                  // removed tabs that may have lingered in persisted state.
+                  recentTabIds: pushRecentTabId(
+                    sanitizeRecentTabIds(group.recentTabIds, group.tabOrder),
+                    tabId
+                  )
+                }
+              : group
           )
         },
         activeGroupIdByWorktree: {
           ...state.activeGroupIdByWorktree,
           [worktreeId]: tab.groupId
-        },
-        // Why: track every explicit activation so closeUnifiedTab can fall
-        // back to the previously-active tab instead of a positional neighbor.
-        tabActivationStackByGroupId: pushActivation(
-          state.tabActivationStackByGroupId,
-          tab.groupId,
-          tabId
-        )
+        }
       }
     })
   },
@@ -600,25 +565,20 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
     const dedupedGroupOrder = dedupeTabOrder(group.tabOrder)
     const remainingOrder = dedupeTabOrder(dedupedGroupOrder.filter((id) => id !== tabId))
     const wasLastTab = remainingOrder.length === 0
-    // Why: when closing the active tab, prefer the most recent prior active
-    // tab in the same group (focus history) over the positional neighbor.
-    // This matches the common browser/VS Code behavior of "Ctrl-W goes back
-    // to the tab I was just on". Fall back to pickNeighbor when no valid
-    // history is available (e.g. hydrated state or cross-group moves).
-    const activationStack = state.tabActivationStackByGroupId[group.id] ?? []
-    const stackWithoutClosed = activationStack.filter((id) => id !== tabId)
-    const remainingIdSet = new Set(remainingOrder)
-    const { chosen: historicalActive, remaining: prunedStack } = popLatestValidActivation(
-      stackWithoutClosed,
-      remainingIdSet
-    )
-    const nextActivationStackForGroup = prunedStack
+    // Why: when closing the active tab, walk the group's MRU stack back to the
+    // previously-active tab instead of the visual neighbor. `pickNextActiveTab`
+    // falls back to pickNeighbor when the MRU is empty (hydrated sessions,
+    // never-visited siblings) so behavior degrades gracefully.
     const nextActiveTabId =
       group.activeTabId === tabId
         ? wasLastTab
           ? null
-          : (historicalActive ?? pickNeighbor(dedupedGroupOrder, tabId))
+          : pickNextActiveTab(dedupedGroupOrder, group.recentTabIds, tabId)
         : group.activeTabId
+    const nextRecentTabIds = sanitizeRecentTabIds(
+      (group.recentTabIds ?? []).filter((id) => id !== tabId),
+      remainingOrder
+    )
 
     set((current) => {
       const nextTabs = (current.unifiedTabsByWorktree[worktreeId] ?? []).filter(
@@ -626,7 +586,12 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
       )
       let nextGroups = (current.groupsByWorktree[worktreeId] ?? []).map((candidate) =>
         candidate.id === group.id
-          ? { ...candidate, activeTabId: nextActiveTabId, tabOrder: remainingOrder }
+          ? {
+              ...candidate,
+              activeTabId: nextActiveTabId,
+              tabOrder: remainingOrder,
+              recentTabIds: nextRecentTabIds
+            }
           : candidate
       )
       let nextLayoutByWorktree = current.layoutByWorktree
@@ -649,26 +614,6 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
         (current.tabsByWorktree[worktreeId] ?? []).length === 0 &&
         (current.browserTabsByWorktree[worktreeId] ?? []).length === 0 &&
         !current.openFiles.some((file) => file.worktreeId === worktreeId)
-      // Why: drop the closed tab from its group's activation stack, and drop
-      // the entire stack when the group itself is being collapsed. Stale
-      // entries here never become active (popLatestValidActivation filters
-      // them), but clearing them keeps the map from growing unboundedly as
-      // groups come and go.
-      const nextTabActivationStackByGroupId = (() => {
-        const groupStillExists = nextGroups.some((candidate) => candidate.id === group.id)
-        if (!groupStillExists) {
-          if (!(group.id in current.tabActivationStackByGroupId)) {
-            return current.tabActivationStackByGroupId
-          }
-          const next = { ...current.tabActivationStackByGroupId }
-          delete next[group.id]
-          return next
-        }
-        return {
-          ...current.tabActivationStackByGroupId,
-          [group.id]: nextActivationStackForGroup
-        }
-      })()
       return {
         unifiedTabsByWorktree: { ...current.unifiedTabsByWorktree, [worktreeId]: nextTabs },
         groupsByWorktree: {
@@ -677,7 +622,6 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
         },
         layoutByWorktree: nextLayoutByWorktree,
         activeGroupIdByWorktree: nextActiveGroupIdByWorktree,
-        tabActivationStackByGroupId: nextTabActivationStackByGroupId,
         // Why: the split-group model can legally derive "terminal with no
         // active tab" after the final unified tab closes. That leaves the
         // worktree selected but render-empty, so the workspace shows a blank
@@ -900,19 +844,10 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
         groupId,
         remainingGroups[0]?.id ?? null
       )
-      const nextTabActivationStackByGroupId = (() => {
-        if (!(groupId in current.tabActivationStackByGroupId)) {
-          return current.tabActivationStackByGroupId
-        }
-        const next = { ...current.tabActivationStackByGroupId }
-        delete next[groupId]
-        return next
-      })()
       return {
         groupsByWorktree: { ...current.groupsByWorktree, [worktreeId]: remainingGroups },
         layoutByWorktree: collapsedState.layoutByWorktree,
         activeGroupIdByWorktree: collapsedState.activeGroupIdByWorktree,
-        tabActivationStackByGroupId: nextTabActivationStackByGroupId,
         ...(current.activeWorktreeId === worktreeId
           ? buildActiveSurfacePatch(
               {
@@ -997,49 +932,38 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
         ...state.activeGroupIdByWorktree,
         [worktreeId]: opts?.activate ? targetGroupId : state.activeGroupIdByWorktree[worktreeId]
       }
+      const sourceRecentTabIds = sanitizeRecentTabIds(
+        (sourceGroup.recentTabIds ?? []).filter((id) => id !== tabId),
+        sourceOrder
+      )
       const nextGroups = (state.groupsByWorktree[worktreeId] ?? []).map((group) => {
         if (group.id === sourceGroup.id) {
           return {
             ...group,
             activeTabId:
               group.activeTabId === tabId
-                ? pickNeighbor(dedupedSourceGroupOrder, tabId)
+                ? // Why: when the moved tab was active in the source, keep
+                  // MRU-aware selection so the user lands on their previously
+                  // focused tab rather than a visual neighbor.
+                  pickNextActiveTab(dedupedSourceGroupOrder, sourceGroup.recentTabIds, tabId)
                 : group.activeTabId,
-            tabOrder: sourceOrder
+            tabOrder: sourceOrder,
+            recentTabIds: sourceRecentTabIds
           }
         }
         if (group.id === targetGroupId) {
+          const sanitizedTargetRecent = sanitizeRecentTabIds(group.recentTabIds, targetOrder)
           return {
             ...group,
             activeTabId: opts?.activate ? tabId : group.activeTabId,
-            tabOrder: targetOrder
+            tabOrder: targetOrder,
+            recentTabIds: opts?.activate
+              ? pushRecentTabId(sanitizedTargetRecent, tabId)
+              : sanitizedTargetRecent
           }
         }
         return group
       })
-      // Why: transplant the tab's activation history entry across groups.
-      // Without this, closing the moved tab from its new group would look at a
-      // stack that never saw it, and the stack on the source group would still
-      // carry a stale reference.
-      const sourceStack = state.tabActivationStackByGroupId[sourceGroup.id] ?? []
-      const targetStack = state.tabActivationStackByGroupId[targetGroupId] ?? []
-      const nextSourceStack = sourceStack.filter((id) => id !== tabId)
-      const nextTargetStack = opts?.activate
-        ? (() => {
-            const filtered = targetStack.filter((id) => id !== tabId)
-            filtered.push(tabId)
-            return filtered.length > TAB_ACTIVATION_STACK_LIMIT
-              ? filtered.slice(filtered.length - TAB_ACTIVATION_STACK_LIMIT)
-              : filtered
-          })()
-        : targetStack.includes(tabId)
-          ? targetStack
-          : targetStack
-      const nextTabActivationStackByGroupId = {
-        ...state.tabActivationStackByGroupId,
-        [sourceGroup.id]: nextSourceStack,
-        [targetGroupId]: nextTargetStack
-      }
       return {
         unifiedTabsByWorktree: {
           ...state.unifiedTabsByWorktree,
@@ -1051,8 +975,7 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
           ...state.groupsByWorktree,
           [worktreeId]: nextGroups
         },
-        activeGroupIdByWorktree: nextActiveGroupIdByWorktree,
-        tabActivationStackByGroupId: nextTabActivationStackByGroupId
+        activeGroupIdByWorktree: nextActiveGroupIdByWorktree
       }
     })
     return moved
@@ -1140,22 +1063,34 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
       )
       targetOrder.splice(targetIndex, 0, tabId)
 
+      const sourceRecentTabIds = sanitizeRecentTabIds(
+        (sourceGroup.recentTabIds ?? []).filter((id) => id !== tabId),
+        sourceOrder
+      )
       nextGroups = nextGroups.map((group) => {
         if (group.id === sourceGroup.id) {
           return {
             ...group,
             activeTabId:
               group.activeTabId === tabId
-                ? pickNeighbor(dedupedSourceGroupOrder, tabId)
+                ? // Why: same MRU-aware fallback as moveUnifiedTabToGroup so
+                  // the pane left behind by a drag keeps the user on their
+                  // previously-active tab.
+                  pickNextActiveTab(dedupedSourceGroupOrder, sourceGroup.recentTabIds, tabId)
                 : group.activeTabId,
-            tabOrder: sourceOrder
+            tabOrder: sourceOrder,
+            recentTabIds: sourceRecentTabIds
           }
         }
         if (group.id === resolvedTargetGroupId) {
           return {
             ...group,
             activeTabId: tabId,
-            tabOrder: targetOrder
+            tabOrder: targetOrder,
+            recentTabIds: pushRecentTabId(
+              sanitizeRecentTabIds(group.recentTabIds, targetOrder),
+              tabId
+            )
           }
         }
         return group
@@ -1371,9 +1306,16 @@ export const createTabsSlice: StateCreator<AppState, [], [], TabsSlice> = (set, 
       const tabOrderUnchanged =
         tabOrder.length === group.tabOrder.length &&
         tabOrder.every((tabId, index) => tabId === group.tabOrder[index])
-      return tabOrderUnchanged && activeTabId === group.activeTabId
+      // Why: reconciliation can drop backing tabs (stale persisted ids, dead
+      // PTYs, closed editor files). Keep the MRU stack in sync so the next
+      // close doesn't try to activate a tab the renderer no longer owns.
+      const recentTabIds = sanitizeRecentTabIds(group.recentTabIds, tabOrder)
+      const recentUnchanged =
+        recentTabIds.length === (group.recentTabIds ?? []).length &&
+        recentTabIds.every((id, index) => id === (group.recentTabIds ?? [])[index])
+      return tabOrderUnchanged && activeTabId === group.activeTabId && recentUnchanged
         ? group
-        : { ...group, tabOrder, activeTabId }
+        : { ...group, tabOrder, activeTabId, recentTabIds }
     })
 
     const currentActiveGroupId =

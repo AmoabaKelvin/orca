@@ -24,9 +24,11 @@ import WorktreeJumpPalette from './components/WorktreeJumpPalette'
 import NewWorkspaceComposerModal from './components/NewWorkspaceComposerModal'
 import { StatusBar } from './components/status-bar/StatusBar'
 import { UpdateCard } from './components/UpdateCard'
+import { StarNagCard } from './components/StarNagCard'
 import { ZoomOverlay } from './components/ZoomOverlay'
 import { SshPassphraseDialog } from './components/settings/SshPassphraseDialog'
 import { useGitStatusPolling } from './components/right-sidebar/useGitStatusPolling'
+import { useEditorExternalWatch } from './hooks/useEditorExternalWatch'
 import {
   setRuntimeGraphStoreStateGetter,
   setRuntimeGraphSyncEnabled
@@ -90,8 +92,7 @@ function App(): React.JSX.Element {
       toggleRightSidebar: s.toggleRightSidebar,
       setRightSidebarOpen: s.setRightSidebarOpen,
       setRightSidebarTab: s.setRightSidebarTab,
-      updateSettings: s.updateSettings,
-      openNewWorkspacePage: s.openNewWorkspacePage
+      updateSettings: s.updateSettings
     }))
   )
 
@@ -137,6 +138,13 @@ function App(): React.JSX.Element {
   // sidebar is closed, which leaves stale "Rebasing"/"Merging" badges behind
   // until some unrelated view remount happens to refresh them.
   useGitStatusPolling()
+  // Why: the editor must hear external filesystem changes regardless of
+  // which right-sidebar panel is visible (Explorer unmounts when the user
+  // switches to Source Control or Checks). Wiring this at App level mirrors
+  // VSCode's workbench-scoped `TextFileEditorModelManager`, which reloads
+  // clean models from a single always-on file-change subscription instead
+  // of tying reloads to the Explorer UI lifecycle.
+  useEditorExternalWatch()
   useGlobalFileDrop()
 
   // Fetch initial data + hydrate GitHub cache from disk
@@ -516,14 +524,14 @@ function App(): React.JSX.Element {
         return
       }
 
-      // Cmd/Ctrl+N — new workspace
+      // Cmd/Ctrl+N — new workspace (opens the lightweight composer modal)
       if (!e.altKey && !e.shiftKey && e.key.toLowerCase() === 'n') {
         if (!repos.some((repo) => isGitRepoKind(repo))) {
           return
         }
         dispatchClearModifierHints()
         e.preventDefault()
-        actions.openNewWorkspacePage()
+        actions.openModal('new-workspace-composer')
         return
       }
 
@@ -878,6 +886,7 @@ function App(): React.JSX.Element {
       <QuickOpen />
       <WorktreeJumpPalette />
       <UpdateCard />
+      <StarNagCard />
       <ZoomOverlay />
       <SshPassphraseDialog />
       <Toaster closeButton toastOptions={{ className: 'font-sans text-sm' }} />

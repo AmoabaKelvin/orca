@@ -8,7 +8,7 @@ import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { Separator } from '../ui/separator'
-import { Download, FolderOpen, Loader2, Plus, RefreshCw, Timer, Trash2 } from 'lucide-react'
+import { Download, FolderOpen, Loader2, Plus, RefreshCw, Star, Timer, Trash2 } from 'lucide-react'
 import { useAppStore } from '../../store'
 import { CliSection } from './CliSection'
 import { toast } from 'sonner'
@@ -24,6 +24,7 @@ import {
   GENERAL_CLI_SEARCH_ENTRIES,
   GENERAL_EDITOR_SEARCH_ENTRIES,
   GENERAL_PANE_SEARCH_ENTRIES,
+  GENERAL_SUPPORT_SEARCH_ENTRIES,
   GENERAL_UPDATE_SEARCH_ENTRIES,
   GENERAL_WORKSPACE_SEARCH_ENTRIES
 } from './general-search'
@@ -107,10 +108,55 @@ export function GeneralPane({ settings, updateSettings }: GeneralPaneProps): Rea
     'idle' | 'adding' | `reauth:${string}` | `remove:${string}` | `select:${string | 'system'}`
   >('idle')
   const [removeAccountId, setRemoveAccountId] = useState<string | null>(null)
+  // Why: the star state is derived from gh, not from settings, so it does not
+  // live in the global settings store. 'hidden' covers the gh-unavailable and
+  // already-starred-on-a-previous-session cases so the section drops out for
+  // users who can't or don't need to act.
+  //
+  // We start in 'loading' and render a placeholder at the exact same
+  // dimensions as the resolved section. When gh resolves to 'hidden', the
+  // placeholder collapses with a grid-rows transition so content above it
+  // doesn't shift; anything below (nothing today, but future-proof) eases up.
+  const [starState, setStarState] = useState<
+    'loading' | 'not-starred' | 'starred' | 'starring' | 'hidden' | 'error'
+  >('loading')
 
   useEffect(() => {
     window.api.updater.getVersion().then(setAppVersion)
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void window.api.gh.checkOrcaStarred().then((result) => {
+      if (cancelled) {
+        return
+      }
+      if (result === null) {
+        setStarState('hidden')
+      } else {
+        setStarState(result ? 'starred' : 'not-starred')
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleStarClick = async (): Promise<void> => {
+    if (starState !== 'not-starred' && starState !== 'error') {
+      return
+    }
+    setStarState('starring')
+    const ok = await window.api.gh.starOrca()
+    if (!ok) {
+      setStarState('error')
+      return
+    }
+    setStarState('starred')
+    // Why: clicking star anywhere should also permanently mute the
+    // threshold-based nag so the user isn't re-prompted via the popup.
+    await window.api.starNag.complete()
+  }
 
   useEffect(() => {
     setAutoSaveDelayDraft(String(settings.editorAutoSaveDelayMs))
@@ -802,6 +848,10 @@ export function GeneralPane({ settings, updateSettings }: GeneralPaneProps): Rea
         </SearchableSetting>
       </section>
     ) : null
+    // Note: the Support section is rendered outside this array so it can own
+    // its own loading placeholder and its own collapsing Separator. Without
+    // that separation, a dangling divider would remain above the collapsed
+    // section.
   ].filter(Boolean)
 
   return (
@@ -846,6 +896,127 @@ export function GeneralPane({ settings, updateSettings }: GeneralPaneProps): Rea
           {section}
         </div>
       ))}
+      {matchesSettingsSearch(searchQuery, GENERAL_SUPPORT_SEARCH_ENTRIES) ? (
+        <SupportSection
+          state={starState}
+          hasPrecedingSections={visibleSections.length > 0}
+          onStarClick={handleStarClick}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+type SupportSectionProps = {
+  state: 'loading' | 'not-starred' | 'starring' | 'starred' | 'hidden' | 'error'
+  hasPrecedingSections: boolean
+  onStarClick: () => void | Promise<void>
+}
+
+function SupportSection({
+  state,
+  hasPrecedingSections,
+  onStarClick
+}: SupportSectionProps): React.JSX.Element {
+  // Why: 'hidden' means gh is unavailable or the user had already starred on a
+  // previous session — in both cases we collapse the entire section (including
+  // its leading Separator) so the settings pane doesn't carry an empty strip.
+  // For every other state we render the full row so the initial layout is
+  // stable: the skeleton-to-live swap happens in place and a post-click
+  // "Starred" confirmation does not shift anything above or below it.
+  const collapsed = state === 'hidden'
+
+  return (
+    <section
+      className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+        collapsed ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'
+      }`}
+      aria-hidden={collapsed}
+    >
+      <div className="min-h-0 overflow-hidden">
+        <div className="space-y-8">
+          {hasPrecedingSections ? <Separator /> : null}
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold">Support Orca</h3>
+            </div>
+            {state === 'loading' ? <SupportRowSkeleton /> : null}
+            {state !== 'loading' && state !== 'hidden' ? (
+              <SupportRow state={state} onStarClick={onStarClick} />
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function SupportRowSkeleton(): React.JSX.Element {
+  return (
+    <div className="flex items-center justify-between gap-4 px-1 py-2" aria-hidden="true">
+      <div className="h-4 w-36 rounded bg-muted/50 animate-pulse" />
+      <div className="h-8 w-24 rounded-md bg-muted/50 animate-pulse" />
+    </div>
+  )
+}
+
+function SupportRow({
+  state,
+  onStarClick
+}: {
+  state: 'not-starred' | 'starring' | 'starred' | 'error'
+  onStarClick: () => void | Promise<void>
+}): React.JSX.Element {
+  // Why: the left-hand label is the setting's identity and must not change
+  // when the user clicks — the row should still read "Star Orca on GitHub"
+  // afterwards. The right-hand control is what changes: before starring it
+  // is a button; after a successful star we swap in a small inline "Thanks"
+  // confirmation so the row keeps the same shape without showing a stale,
+  // disabled button.
+  return (
+    <SearchableSetting
+      title="Star Orca on GitHub"
+      description="Support the project with a GitHub star via the gh CLI."
+      keywords={['star', 'github', 'support', 'feedback', 'like']}
+      className="flex items-center justify-between gap-4 px-1 py-2"
+    >
+      <Label>Star Orca on GitHub</Label>
+      {state === 'starred' ? (
+        <SupportRowThanks />
+      ) : (
+        <Button
+          variant="default"
+          size="sm"
+          onClick={() => void onStarClick()}
+          disabled={state === 'starring'}
+          className="shrink-0 gap-1.5"
+        >
+          {state === 'starring' ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Star className="size-3.5" />
+          )}
+          {state === 'starring' ? 'Starring…' : state === 'error' ? 'Try Again' : 'Star'}
+        </Button>
+      )}
+    </SearchableSetting>
+  )
+}
+
+function SupportRowThanks(): React.JSX.Element {
+  // Why: match the size="sm" button's h-8 / gap-1.5 / px-3 dimensions so the
+  // row height stays identical when the button is swapped out. Without the
+  // fixed height, the text baseline collapses ~6px and the entire row
+  // shrinks, shifting everything below.
+  return (
+    <div
+      className="shrink-0 inline-flex h-8 items-center gap-1.5 px-3 text-sm font-medium
+        text-amber-400/90 animate-in fade-in slide-in-from-right-1 duration-300"
+      role="status"
+      aria-live="polite"
+    >
+      <Star className="size-3.5 fill-amber-400/80 text-amber-400/80" aria-hidden="true" />
+      Thanks for the support!
     </div>
   )
 }

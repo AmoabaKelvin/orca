@@ -86,11 +86,20 @@ export const GENERAL_AGENT_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   }
 ]
 
+export const GENERAL_SUPPORT_SEARCH_ENTRIES: SettingsSearchEntry[] = [
+  {
+    title: 'Star Orca on GitHub',
+    description: 'Support the project with a GitHub star via the gh CLI.',
+    keywords: ['star', 'github', 'support', 'feedback', 'like']
+  }
+]
+
 export const GENERAL_PANE_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   ...GENERAL_WORKSPACE_SEARCH_ENTRIES,
   ...GENERAL_EDITOR_SEARCH_ENTRIES,
   ...GENERAL_CLI_SEARCH_ENTRIES,
   ...GENERAL_CACHE_TIMER_SEARCH_ENTRIES,
   ...GENERAL_CODEX_ACCOUNTS_SEARCH_ENTRIES,
-  ...GENERAL_UPDATE_SEARCH_ENTRIES
+  ...GENERAL_UPDATE_SEARCH_ENTRIES,
+  ...GENERAL_SUPPORT_SEARCH_ENTRIES
 ]
