@@ -20,7 +20,20 @@ module.exports = {
   // from out/shared/ (e.g. runtime-bootstrap). Both directories must be
   // unpacked so that Node's require() can resolve the cross-directory imports
   // when the CLI runs outside the asar archive.
-  asarUnpack: ['out/cli/**', 'out/shared/**', 'resources/**'],
+  //
+  // out/main/** is required because the terminal-persistence daemon
+  // (daemon-entry.js + sibling chunks/) is launched via child_process.fork(),
+  // which cannot execute scripts from inside app.asar. @xterm/headless and
+  // @xterm/addon-serialize are JS-only packages that daemon-entry.js
+  // requires at runtime; native modules (node-pty, @parcel/watcher,
+  // cpu-features) are auto-unpacked by electron-builder already.
+  asarUnpack: [
+    'out/cli/**',
+    'out/shared/**',
+    'out/main/**',
+    'node_modules/@xterm/**',
+    'resources/**'
+  ],
   win: {
     executableName: 'Orca',
     extraResources: [
