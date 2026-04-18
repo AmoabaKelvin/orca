@@ -4,7 +4,9 @@ import {
   BarChart3,
   Bell,
   Bot,
+  FlaskConical,
   GitBranch,
+  Globe,
   Keyboard,
   Palette,
   Server,
@@ -18,6 +20,7 @@ import { useSystemPrefersDark } from '@/components/terminal-pane/use-system-pref
 import { isMacUserAgent, isWindowsUserAgent } from '@/components/terminal-pane/pane-helpers'
 import { SCROLLBACK_PRESETS_MB, getFallbackTerminalFonts } from './SettingsConstants'
 import { GeneralPane, GENERAL_PANE_SEARCH_ENTRIES } from './GeneralPane'
+import { BrowserPane, BROWSER_PANE_SEARCH_ENTRIES } from './BrowserPane'
 import { AppearancePane, APPEARANCE_PANE_SEARCH_ENTRIES } from './AppearancePane'
 import { ShortcutsPane, SHORTCUTS_PANE_SEARCH_ENTRIES } from './ShortcutsPane'
 import { TerminalPane } from './TerminalPane'
@@ -26,6 +29,7 @@ import { getTerminalPaneSearchEntries } from './terminal-search'
 import { GitPane, GIT_PANE_SEARCH_ENTRIES } from './GitPane'
 import { NotificationsPane, NOTIFICATIONS_PANE_SEARCH_ENTRIES } from './NotificationsPane'
 import { SshPane, SSH_PANE_SEARCH_ENTRIES } from './SshPane'
+import { ExperimentalPane, EXPERIMENTAL_PANE_SEARCH_ENTRIES } from './ExperimentalPane'
 import { AgentsPane, AGENTS_PANE_SEARCH_ENTRIES } from './AgentsPane'
 import { StatsPane, STATS_PANE_SEARCH_ENTRIES } from '../stats/StatsPane'
 import { SettingsSidebar } from './SettingsSidebar'
@@ -34,6 +38,7 @@ import { matchesSettingsSearch, type SettingsSearchEntry } from './settings-sear
 
 type SettingsNavTarget =
   | 'general'
+  | 'browser'
   | 'git'
   | 'appearance'
   | 'terminal'
@@ -41,6 +46,7 @@ type SettingsNavTarget =
   | 'shortcuts'
   | 'stats'
   | 'ssh'
+  | 'experimental'
   | 'agents'
   | 'repo'
 
@@ -264,6 +270,13 @@ function Settings(): React.JSX.Element {
         searchEntries: terminalPaneSearchEntries
       },
       {
+        id: 'browser',
+        title: 'Browser',
+        description: 'Home page, link routing, and session cookies.',
+        icon: Globe,
+        searchEntries: BROWSER_PANE_SEARCH_ENTRIES
+      },
+      {
         id: 'notifications',
         title: 'Notifications',
         description: 'Native desktop notifications for agent and terminal events.',
@@ -292,6 +305,13 @@ function Settings(): React.JSX.Element {
         searchEntries: SSH_PANE_SEARCH_ENTRIES,
         badge: 'Beta'
       },
+      {
+        id: 'experimental',
+        title: 'Experimental',
+        description: 'Features that are still being stabilized. Enable at your own risk.',
+        icon: FlaskConical,
+        searchEntries: EXPERIMENTAL_PANE_SEARCH_ENTRIES
+      },
       ...repos.map((repo) => ({
         id: `repo-${repo.id}`,
         title: repo.displayName,
@@ -318,7 +338,7 @@ function Settings(): React.JSX.Element {
 
     if (scrollTargetId && pendingNavSectionId && visibleIds.has(pendingNavSectionId)) {
       const target = document.getElementById(scrollTargetId)
-      target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      target?.scrollIntoView({ block: 'start' })
       setActiveSectionId(pendingNavSectionId)
       pendingNavSectionRef.current = null
       pendingScrollTargetRef.current = null
@@ -349,10 +369,39 @@ function Settings(): React.JSX.Element {
         return
       }
 
-      const containerTop = container.getBoundingClientRect().top
-      const candidate =
-        sections.find((section) => section.getBoundingClientRect().top - containerTop >= -24) ??
-        sections.at(-1)
+      // Why: highlight the section that the user is actually reading.
+      // We pick the section whose body crosses a probe line ~40% down the
+      // viewport (roughly the middle, biased slightly up toward where the
+      // eye naturally focuses). Earlier logic used the first section with
+      // its top near the container top, which lagged badly — a section
+      // could still fill most of the viewport while the sidebar had already
+      // advanced to the next one.
+      const containerRect = container.getBoundingClientRect()
+      const probeY = containerRect.top + containerRect.height * 0.4
+
+      // If we've scrolled to the very bottom, force-highlight the last
+      // section even when it's too short to reach the probe line.
+      const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 2
+
+      let candidate: HTMLElement | undefined
+      if (atBottom) {
+        candidate = sections.at(-1)
+      } else {
+        for (const section of sections) {
+          const rect = section.getBoundingClientRect()
+          if (rect.top <= probeY && rect.bottom > probeY) {
+            candidate = section
+            break
+          }
+          if (rect.top <= probeY) {
+            // Last section whose heading is above the probe line — used
+            // when no section straddles the probe (e.g. between sections,
+            // or when the probe sits in the gutter above the first one).
+            candidate = section
+          }
+        }
+        candidate ??= sections.at(0)
+      }
       if (!candidate) {
         return
       }
@@ -385,7 +434,7 @@ function Settings(): React.JSX.Element {
     if (!target) {
       return
     }
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    target.scrollIntoView({ block: 'start' })
     setActiveSectionId(sectionId)
   }, [])
 
@@ -488,6 +537,15 @@ function Settings(): React.JSX.Element {
                 </SettingsSection>
 
                 <SettingsSection
+                  id="browser"
+                  title="Browser"
+                  description="Home page, link routing, and session cookies."
+                  searchEntries={BROWSER_PANE_SEARCH_ENTRIES}
+                >
+                  <BrowserPane settings={settings} updateSettings={updateSettings} />
+                </SettingsSection>
+
+                <SettingsSection
                   id="notifications"
                   title="Notifications"
                   description="Native desktop notifications for agent activity and terminal events."
@@ -522,6 +580,15 @@ function Settings(): React.JSX.Element {
                   searchEntries={SSH_PANE_SEARCH_ENTRIES}
                 >
                   <SshPane />
+                </SettingsSection>
+
+                <SettingsSection
+                  id="experimental"
+                  title="Experimental"
+                  description="Features that are still being stabilized. Enable at your own risk."
+                  searchEntries={EXPERIMENTAL_PANE_SEARCH_ENTRIES}
+                >
+                  <ExperimentalPane settings={settings} updateSettings={updateSettings} />
                 </SettingsSection>
 
                 {repos.map((repo) => {

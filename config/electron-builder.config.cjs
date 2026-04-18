@@ -21,17 +21,18 @@ module.exports = {
   // unpacked so that Node's require() can resolve the cross-directory imports
   // when the CLI runs outside the asar archive.
   //
-  // out/main/** is required because the terminal-persistence daemon
-  // (daemon-entry.js + sibling chunks/) is launched via child_process.fork(),
-  // which cannot execute scripts from inside app.asar. @xterm/headless and
-  // @xterm/addon-serialize are JS-only packages that daemon-entry.js
-  // requires at runtime; native modules (node-pty, @parcel/watcher,
-  // cpu-features) are auto-unpacked by electron-builder already.
+  // out/main/daemon-entry.js + out/main/chunks/** are unpacked because the
+  // terminal-persistence daemon is launched via child_process.fork(), which
+  // cannot execute scripts from inside app.asar. Xterm JS-only deps are
+  // bundled directly into daemon-entry.js by electron-vite (see
+  // electron.vite.config.ts) so node_modules/@xterm/** does not need to be
+  // unpacked. Native modules (node-pty, @parcel/watcher, cpu-features) are
+  // auto-unpacked by electron-builder already.
   asarUnpack: [
     'out/cli/**',
     'out/shared/**',
-    'out/main/**',
-    'node_modules/@xterm/**',
+    'out/main/daemon-entry.js',
+    'out/main/chunks/**',
     'resources/**'
   ],
   win: {

@@ -1,3 +1,4 @@
+import { registerAppHandlers } from './app'
 import { registerCliHandlers } from './cli'
 import { registerPreflightHandlers } from './preflight'
 import type { Store } from '../persistence'
@@ -53,6 +54,7 @@ export function registerCoreHandlers(
   }
   registered = true
 
+  registerAppHandlers()
   registerCliHandlers()
   registerPreflightHandlers()
   registerClaudeUsageHandlers(claudeUsage)

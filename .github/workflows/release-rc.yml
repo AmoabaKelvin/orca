@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 15
     outputs:
       tag: ${{ steps.version.outputs.tag }}
-      should_release: ${{ steps.existing.outputs.already_ran != 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+      should_release: ${{ steps.window.outputs.allowed == 'true' && steps.existing.outputs.already_ran != 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
 
     steps:
       - name: Checkout
@@ -59,8 +59,36 @@ jobs:
           slot=$(TZ=America/Los_Angeles date '+%Y-%m-%d-%H')
           echo "value=$slot" >>"$GITHUB_OUTPUT"
 
+      - name: Validate PT release window
+        id: window
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "allowed=true" >>"$GITHUB_OUTPUT"
+            echo "reason=manual" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          pt_hour=$(TZ=America/Los_Angeles date '+%H')
+          pt_minute=$(TZ=America/Los_Angeles date '+%M')
+
+          # Why: GitHub may deliver a scheduled event long after the intended
+          # time. We only allow scheduled RC releases during the exact target
+          # PT hours so a delayed run at 4:16 AM never creates a release that
+          # was intended for 3:00 AM.
+          if [[ "$pt_hour" == "03" || "$pt_hour" == "15" ]]; then
+            echo "allowed=true" >>"$GITHUB_OUTPUT"
+            echo "reason=target_hour:${pt_hour}:${pt_minute}" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "allowed=false" >>"$GITHUB_OUTPUT"
+          echo "reason=outside_target_hour:${pt_hour}:${pt_minute}" >>"$GITHUB_OUTPUT"
+
       - name: Skip if this PT release window already ran
         id: existing
+        if: steps.window.outputs.allowed == 'true'
         run: |
           # Why: GitHub can delay or drop schedule events, especially near the
           # start of the hour. We schedule multiple attempts inside each target
@@ -94,12 +122,21 @@ jobs:
         run: |
           echo "Dry run only."
           echo "Current PT slot: ${{ steps.slot.outputs.value }}"
+          echo "Window allowed: ${{ steps.window.outputs.allowed }}"
+          echo "Window reason: ${{ steps.window.outputs.reason }}"
           echo "Already ran this slot: ${{ steps.existing.outputs.already_ran }}"
           echo "Reason: ${{ steps.existing.outputs.reason }}"
 
+      - name: Skip summary
+        if: steps.window.outputs.allowed != 'true'
+        run: |
+          echo "Skipping scheduled RC release."
+          echo "Current PT slot: ${{ steps.slot.outputs.value }}"
+          echo "Reason: ${{ steps.window.outputs.reason }}"
+
       - name: Create and push RC tag
         id: version
-        if: steps.existing.outputs.already_ran != 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+        if: steps.window.outputs.allowed == 'true' && steps.existing.outputs.already_ran != 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

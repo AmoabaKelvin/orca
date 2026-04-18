@@ -1,6 +1,7 @@
 import * as pty from 'node-pty'
 import type { SubprocessHandle } from './session'
 import { getShellReadyLaunchConfig, resolvePtyShellPath } from './shell-ready'
+import { ensureNodePtySpawnHelperExecutable } from '../providers/local-pty-utils'
 
 export type PtySubprocessOptions = {
   sessionId: string
@@ -52,32 +53,18 @@ export function createPtySubprocess(opts: PtySubprocessOptions): SubprocessHandl
     shellArgs = shellReadyLaunch?.args ?? ['-l']
   }
 
-  const resolvedCwd = opts.cwd || getDefaultCwd()
-  let proc: pty.IPty
-  try {
-    proc = pty.spawn(shellPath, shellArgs, {
-      name: 'xterm-256color',
-      cols: opts.cols,
-      rows: opts.rows,
-      cwd: resolvedCwd,
-      env
-    })
-  } catch (err) {
-    // Why: node-pty's posix_spawnp error messages don't include the errno,
-    // so log the full spawn context to the daemon log before rethrowing.
-    // This surfaces bad shell paths, missing cwd, and env-shape issues that
-    // Finder-launched packaged builds can easily hit.
-    console.error('[daemon] pty.spawn failed', {
-      shellPath,
-      shellArgs,
-      cwd: resolvedCwd,
-      hasShellEnv: Boolean(env.SHELL),
-      hasHomeEnv: Boolean(env.HOME),
-      pathEnv: env.PATH ?? null,
-      errMessage: err instanceof Error ? err.message : String(err)
-    })
-    throw err
-  }
+  // Why: asar packaging can strip the +x bit from node-pty's spawn-helper
+  // binary. The main process fixes this via LocalPtyProvider, but the daemon
+  // runs in a separate forked process with its own code path.
+  ensureNodePtySpawnHelperExecutable()
+
+  const proc = pty.spawn(shellPath, shellArgs, {
+    name: 'xterm-256color',
+    cols: opts.cols,
+    rows: opts.rows,
+    cwd: opts.cwd || getDefaultCwd(),
+    env
+  })
 
   let onDataCb: ((data: string) => void) | null = null
   let onExitCb: ((code: number) => void) | null = null

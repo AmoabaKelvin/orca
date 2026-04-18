@@ -543,13 +543,14 @@ export type TuiAgent =
   | 'qwen-code' // Qwen Code
   | 'rovo' // Rovo Dev
   | 'hermes' // Hermes Agent
+  | 'copilot' // GitHub Copilot CLI
 
 export type TaskViewPresetId = 'all' | 'issues' | 'review' | 'my-issues' | 'my-prs' | 'prs'
 
 /** Where the repo setup script runs when a worktree is created.
- *  - 'split-vertical': split the initial terminal pane with a vertical divider (default).
- *  - 'split-horizontal': split the initial terminal pane with a horizontal divider.
- *  - 'new-tab': open a background tab titled "Setup" and leave focus on the first tab. */
+ *  - 'new-tab': open a background tab titled "Setup" and leave focus on the first tab (default).
+ *  - 'split-vertical': split the initial terminal pane with a vertical divider.
+ *  - 'split-horizontal': split the initial terminal pane with a horizontal divider. */
 export type SetupScriptLaunchMode = 'split-vertical' | 'split-horizontal' | 'new-tab'
 
 /** Direction used when the setup script launch mode is a split. */
@@ -585,7 +586,8 @@ export type GlobalSettings = {
   terminalRightClickToPaste: boolean
   terminalFocusFollowsMouse: boolean
   /** Where the repo setup script runs on workspace create. Defaults to a
-   *  vertical split so the user's main terminal stays immediately usable. */
+   *  background "Setup" tab so the user's main terminal stays immediately
+   *  usable without the setup output crowding the initial pane. */
   setupScriptLaunchMode: SetupScriptLaunchMode
   terminalScrollbackBytes: number
   /** Why: opening arbitrary links inside Orca uses an isolated guest browser surface.
@@ -617,6 +619,12 @@ export type GlobalSettings = {
   terminalScopeHistoryByWorktree: boolean
   /** Which agent to pre-select in the new-workspace composer. null = auto (first detected). */
   defaultTuiAgent: TuiAgent | null
+  /** Why: worktree deletion is destructive (git worktree remove + rm -rf of the
+   *  working directory), so Orca shows a confirmation dialog by default. Users
+   *  who delete frequently can opt into skipping the dialog via a "Don't ask
+   *  again" checkbox inside it or from the General settings pane. We keep this
+   *  defaulted to false so first-time behavior stays safe. */
+  skipDeleteWorktreeConfirm: boolean
   /** Default preset in the new-workspace GitHub task view. */
   defaultTaskViewPreset: TaskViewPresetId
   /** Per-agent CLI command overrides. A missing key means use the catalog default binary name. */
@@ -633,6 +641,16 @@ export type GlobalSettings = {
    *  import. Themes imported this way preview identically to bundled ones
    *  because they are normalized to the same xterm ITheme shape. */
   terminalCustomThemesDirectory: string
+  /** Experimental: persist terminal sessions across app restarts via an
+   *  out-of-process daemon (src/main/daemon/**). Opt-in because the daemon
+   *  protocol is still stabilizing — some sessions have been observed to go
+   *  unresponsive after internal state drift. Disabled sessions fall back to
+   *  the in-process LocalPtyProvider. Requires an app restart to apply. */
+  experimentalTerminalDaemon: boolean
+  /** One-shot flag for the "persistent sessions are now opt-in" transition
+   *  toast shown to users upgrading from v1.3.0 (where the daemon was on by
+   *  default). Set to true the first time the toast fires so it never repeats. */
+  experimentalTerminalDaemonNoticeShown: boolean
 }
 
 export type NotificationEventSource = 'agent-task-complete' | 'terminal-bell' | 'test'
