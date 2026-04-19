@@ -117,7 +117,13 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => (
   setSearchQuery: (q) => set({ searchQuery: q }),
 
   groupBy: 'none',
-  setGroupBy: (g) => set({ groupBy: g }),
+  // Why: group keys are mode-specific (e.g. repo id vs PR status), so
+  // collapsed state from one mode is meaningless in another. Clearing
+  // also prevents unbounded accumulation of stale keys across mode switches.
+  setGroupBy: (g) => {
+    window.api.ui.set({ collapsedGroups: [] }).catch(console.error)
+    set({ groupBy: g, collapsedGroups: new Set<string>() })
+  },
 
   sortBy: 'name',
   setSortBy: (s) => set({ sortBy: s }),
