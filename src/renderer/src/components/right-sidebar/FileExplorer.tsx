@@ -313,6 +313,16 @@ function FileExplorerInner(): React.JSX.Element {
             setBgMenuPoint({ x: e.clientX, y: e.clientY })
             setBgMenuOpen(true)
           }}
+          onDoubleClick={(e) => {
+            if (!worktreePath || inlineInput) {
+              return
+            }
+            const target = e.target as HTMLElement
+            if (target.closest('[data-slot="context-menu-trigger"]')) {
+              return
+            }
+            startNew('file', worktreePath, 0)
+          }}
         >
           {isLoading && (
             <div className="flex items-center justify-center h-full text-[11px] text-muted-foreground">
