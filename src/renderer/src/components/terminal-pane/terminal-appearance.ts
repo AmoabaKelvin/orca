@@ -18,13 +18,16 @@ export function applyTerminalAppearance(
   systemPrefersDark: boolean,
   paneFontSizes: Map<number, number>,
   paneTransports: Map<number, PtyTransport>,
-  effectiveMacOptionAsAlt: EffectiveMacOptionAsAlt
+  effectiveMacOptionAsAlt: EffectiveMacOptionAsAlt,
+  paneMode2031: Map<number, boolean>,
+  paneLastThemeMode: Map<number, 'dark' | 'light'>
 ): void {
   const appearance = resolveEffectiveTerminalAppearance(settings, systemPrefersDark)
   const paneStyles = resolvePaneStyleOptions(settings)
   const theme: ITheme | null = appearance.theme ?? getBuiltinTheme(appearance.themeName)
   const paneBackground = theme?.background ?? '#000000'
   const terminalFontWeights = resolveTerminalFontWeights(settings.terminalFontWeight)
+  const mode2031Seq = appearance.mode === 'dark' ? '\x1b[?997;1n' : '\x1b[?997;2n'
 
   for (const pane of manager.getPanes()) {
     if (theme) {
@@ -55,6 +58,15 @@ export function applyTerminalAppearance(
     const transport = paneTransports.get(pane.id)
     if (transport?.isConnected()) {
       transport.resize(pane.terminal.cols, pane.terminal.rows)
+      // Gate on actual mode flip so font/size/opacity tweaks — which also
+      // re-run this function — don't spam subscribed TUIs with CSI 997.
+      if (
+        paneMode2031.get(pane.id) &&
+        paneLastThemeMode.get(pane.id) !== appearance.mode &&
+        transport.sendInput(mode2031Seq)
+      ) {
+        paneLastThemeMode.set(pane.id, appearance.mode)
+      }
     }
   }
 
