@@ -23,7 +23,7 @@ import {
   restoreScrollbackBuffers
 } from './layout-serialization'
 import { applyExpandedLayoutTo, restoreExpandedLayoutFrom } from './expand-collapse'
-import { applyTerminalAppearance } from './terminal-appearance'
+import { applyTerminalAppearance, mode2031SequenceFor } from './terminal-appearance'
 import type { EffectiveMacOptionAsAlt } from '@/lib/keyboard-layout/detect-option-as-alt'
 import { resolveEffectiveTerminalAppearance } from '@/lib/terminal-theme'
 import { connectPanePty } from './pty-connection'
@@ -208,8 +208,7 @@ export function useTerminalPaneLifecycle({
       currentSettings,
       systemPrefersDarkRef.current
     )
-    const seq = mode === 'dark' ? '\x1b[?997;1n' : '\x1b[?997;2n'
-    if (transport.sendInput(seq)) {
+    if (transport.sendInput(mode2031SequenceFor(mode))) {
       paneLastThemeModeRef.current.set(paneId, mode)
     }
   }
@@ -314,6 +313,10 @@ export function useTerminalPaneLifecycle({
         const parser = pane.terminal.parser
         const hasMode2031 = (params: (number | number[])[]): boolean =>
           params.some((p) => (Array.isArray(p) ? p.includes(2031) : p === 2031))
+        // Why return false from both handlers: we only observe mode 2031.
+        // Returning false lets xterm's built-in DEC private mode handler
+        // continue processing the same sequence, so compound sequences like
+        // `CSI ?25;2031h` still update cursor visibility correctly.
         const mode2031Disposables: IDisposable[] = [
           parser.registerCsiHandler({ prefix: '?', final: 'h' }, (params) => {
             if (hasMode2031(params)) {
