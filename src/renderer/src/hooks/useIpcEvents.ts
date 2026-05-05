@@ -44,6 +44,7 @@ import { collectLeafIdsInOrder } from '@/components/terminal-pane/layout-seriali
 import { track } from '@/lib/telemetry'
 import { singlePaneLayoutSnapshot } from '@/store/slices/terminal-helpers'
 import { buildWorkspaceSessionPayload } from '@/lib/workspace-session'
+import { dispatchTerminalNotification } from '@/components/terminal-pane/terminal-notification-dispatch'
 
 export { resolveZoomTarget } from './resolve-zoom-target'
 
@@ -1441,7 +1442,7 @@ export function useIpcEvents(): void {
       if (!payload) {
         return
       }
-      const { exists, title, repoConnectionId } = resolvePaneKey(store, data.paneKey)
+      const { exists, title, repoConnectionId, worktreeId } = resolvePaneKey(store, data.paneKey)
       if (!exists) {
         // Why: empty paneKeys are dropped in main before IPC fanout. Reaching
         // this branch means a non-empty paneKey escaped without a matching
@@ -1465,6 +1466,19 @@ export function useIpcEvents(): void {
       // the renderer bundle is newer than the preload bundle.
       if (data.connectionId !== undefined && data.connectionId !== repoConnectionId) {
         return
+      }
+      if (options?.replay !== true && payload.agentType === 'codex' && payload.state === 'done') {
+        // Why: Codex hook state is authoritative even when its terminal title
+        // does not produce Orca's working->idle transition. Reuse the normal
+        // dispatcher so Settings suppression, cooldown, and sound still apply.
+        // Snapshot replay is cached state, not a fresh completion event.
+        if (worktreeId) {
+          dispatchTerminalNotification(worktreeId, {
+            source: 'agent-task-complete',
+            dedupeKey: data.paneKey,
+            terminalTitle: title
+          })
+        }
       }
       store.setAgentStatus(data.paneKey, payload, title, {
         updatedAt: data.receivedAt,
@@ -1665,16 +1679,21 @@ export function useIpcEvents(): void {
 function resolvePaneKey(
   store: ReturnType<typeof useAppStore.getState>,
   paneKey: string
-): { exists: boolean; title: string | undefined; repoConnectionId: string | null } {
+): {
+  exists: boolean
+  title: string | undefined
+  repoConnectionId: string | null
+  worktreeId: string | undefined
+} {
   const parsed = parsePaneKey(paneKey)
   if (!parsed) {
-    return { exists: false, title: undefined, repoConnectionId: null }
+    return { exists: false, title: undefined, repoConnectionId: null, worktreeId: undefined }
   }
   const { tabId, leafId } = parsed
   const layout = store.terminalLayoutsByTabId?.[tabId]
   const leafExists = collectLeafIdsInOrder(layout?.root).includes(leafId)
   if (!leafExists) {
-    return { exists: false, title: undefined, repoConnectionId: null }
+    return { exists: false, title: undefined, repoConnectionId: null, worktreeId: undefined }
   }
   // Why: replay can remint numeric pane ids, so status title recovery must use
   // persisted leaf-keyed titles when crossing from hook state into tab state.
@@ -1712,5 +1731,5 @@ function resolvePaneKey(
       repoConnectionId = repo?.connectionId ?? null
     }
   }
-  return { exists, title: paneTitle ?? tabTitle, repoConnectionId }
+  return { exists, title: paneTitle ?? tabTitle, repoConnectionId, worktreeId: owningWorktreeId }
 }
