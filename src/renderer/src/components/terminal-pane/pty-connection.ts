@@ -268,7 +268,7 @@ export function connectPanePty(
     // decision higher up, not a transport-layer guess.
     deps.markWorktreeUnread(deps.worktreeId)
     deps.markTerminalTabUnread(deps.tabId)
-    deps.dispatchNotification({ source: 'terminal-bell' })
+    deps.dispatchNotification({ source: 'terminal-bell', dedupeKey: cacheKey })
   }
 
   // ─── Agent task-complete: OS notification, not tab attention ──────────
@@ -283,7 +283,7 @@ export function connectPanePty(
   // signals. OS notifications are a separate channel: not every agent CLI
   // reliably emits BEL on completion (Gemini, some Codex flows), and
   // without this dispatch the Settings toggle would have zero producers.
-  // Double-firing with a concurrent BEL is handled by the 5 s per-worktree
+  // Double-firing with a concurrent BEL is handled by the 5 s pane-scoped
   // dedupe in main/ipc/notifications.ts.
   const onAgentBecameIdle = (title: string): void => {
     // Why: only start the prompt-cache countdown for Claude agents — other
@@ -304,8 +304,12 @@ export function connectPanePty(
     // removing it (as #944 did) leaves the user-facing Settings toggle with no
     // events to fire. Dispatch is gated per-source in main; the main-process
     // dedupe also collapses concurrent BEL + task-complete for the same
-    // worktree into a single notification.
-    deps.dispatchNotification({ source: 'agent-task-complete', terminalTitle: title })
+    // pane into a single notification.
+    deps.dispatchNotification({
+      source: 'agent-task-complete',
+      dedupeKey: cacheKey,
+      terminalTitle: title
+    })
   }
   const onAgentBecameWorking = (): void => {
     // Why: a new API call refreshes the prompt-cache TTL, so clear any running

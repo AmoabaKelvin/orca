@@ -31,6 +31,7 @@ const activeNotifications = new Set<Notification>()
 
 export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntimeService): void {
   const recentNotifications = new Map<string, number>()
+  const recentMobileNotifications = new Map<string, number>()
 
   ipcMain.removeHandler('notifications:openSystemSettings')
   ipcMain.removeHandler('notifications:getPermissionStatus')
@@ -67,12 +68,15 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
   ipcMain.handle(
     'notifications:dispatch',
     (_event, args: NotificationDispatchRequest): NotificationDispatchResult => {
-      // Why: mobile push is independent of desktop notification guards.
-      // The user's phone should receive the notification even when the desktop
-      // window is focused (suppressWhenFocused), Electron notifications aren't
-      // supported, or the desktop is in cooldown. The mobile client decides
-      // independently whether to show based on its own app state.
-      if (runtime) {
+      // Why: mobile push is independent of desktop notification guards like
+      // focus suppression and Electron support, but it still needs its own
+      // cooldown because hooks and title transitions can report the same
+      // completion through separate renderer paths.
+      const dedupeKey = getNotificationDedupeKey(args)
+      const now = Date.now()
+      const lastMobileSentAt = recentMobileNotifications.get(dedupeKey) ?? 0
+      const shouldDispatchMobile = now - lastMobileSentAt >= NOTIFICATION_COOLDOWN_MS
+      if (runtime && shouldDispatchMobile) {
         const opts = buildNotificationOptions(args)
         runtime.dispatchMobileNotification({
           source: args.source,
@@ -80,6 +84,14 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
           body: opts.body,
           worktreeId: args.worktreeId
         })
+        recentMobileNotifications.set(dedupeKey, now)
+        if (recentMobileNotifications.size > 50) {
+          for (const [key, ts] of recentMobileNotifications) {
+            if (now - ts >= NOTIFICATION_COOLDOWN_MS) {
+              recentMobileNotifications.delete(key)
+            }
+          }
+        }
       }
 
       if (!Notification.isSupported()) {
@@ -109,10 +121,9 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
         return { delivered: false, reason: 'suppressed-focus' }
       }
 
-      // Dedupe by worktree, not by source — an agent finishing and a terminal bell
-      // often fire within the same data chunk so only the first one should surface.
-      const dedupeKey = args.worktreeId ?? args.worktreeLabel ?? 'global'
-      const now = Date.now()
+      // Dedupe by the pane-scoped key when available, not by source — an agent
+      // finishing and a terminal bell often fire within the same data chunk so
+      // only the first one should surface for that pane.
       const lastSentAt = recentNotifications.get(dedupeKey) ?? 0
       if (now - lastSentAt < NOTIFICATION_COOLDOWN_MS) {
         return { delivered: false, reason: 'cooldown' }
@@ -301,6 +312,16 @@ export function triggerStartupNotificationRegistration(store: Store): void {
   setTimeout(cleanup, 10_000)
 
   notification.show()
+}
+
+function getNotificationDedupeKey(args: NotificationDispatchRequest): string {
+  // Why: two panes in the same worktree are separate attention sources and
+  // must not suppress each other. A pane-scoped key still collapses duplicate
+  // hook/title/BEL signals for the same pane.
+  if (args.dedupeKey) {
+    return `pane:${args.dedupeKey}`
+  }
+  return args.worktreeId ?? args.worktreeLabel ?? 'global'
 }
 
 function buildNotificationOptions(args: NotificationDispatchRequest): {

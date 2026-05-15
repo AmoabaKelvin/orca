@@ -1126,7 +1126,10 @@ describe('connectPanePty', () => {
 
     expect(deps.markWorktreeUnread).toHaveBeenCalledTimes(1)
     expect(deps.markTerminalTabUnread).toHaveBeenCalledWith('tab-1')
-    expect(deps.dispatchNotification).toHaveBeenCalledWith({ source: 'terminal-bell' })
+    expect(deps.dispatchNotification).toHaveBeenCalledWith({
+      source: 'terminal-bell',
+      dedupeKey: `tab-1:${LEAF_1}`
+    })
   })
 
   // Why: show-until-interact — a real keystroke through xterm onData is the
@@ -1378,7 +1381,7 @@ describe('connectPanePty', () => {
   // notification (user-toggleable in Settings) but MUST NOT raise tab/worktree
   // unread — those stay BEL-only so non-agent long-running tasks remain
   // first-class attention sources. Double-firing with a concurrent BEL is
-  // collapsed by the per-worktree dedupe in main/ipc/notifications.ts.
+  // collapsed by pane-scoped dedupe in main/ipc/notifications.ts.
   //
   // This test deliberately wires the real useNotificationDispatch hook into
   // connectPanePty instead of a vi.fn() stub. A stub would let the producer
@@ -1424,6 +1427,7 @@ describe('connectPanePty', () => {
       expect.objectContaining({
         source: 'agent-task-complete',
         worktreeId: 'wt-1',
+        dedupeKey: `tab-1:${LEAF_1}`,
         terminalTitle: '* Claude done'
       })
     )

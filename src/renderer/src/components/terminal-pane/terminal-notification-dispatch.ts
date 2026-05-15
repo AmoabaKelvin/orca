@@ -4,6 +4,7 @@ import { playDesktopNotificationSound } from '@/lib/desktop-notification-sound'
 
 export type TerminalNotificationEvent = {
   source: 'terminal-bell' | 'agent-task-complete'
+  dedupeKey?: string
   terminalTitle?: string
 }
 
@@ -38,6 +39,7 @@ export function dispatchTerminalNotification(
     .dispatch({
       source: event.source,
       worktreeId,
+      dedupeKey: event.dedupeKey,
       repoLabel: repo?.displayName,
       worktreeLabel: worktree?.displayName || worktree?.branch || worktreeId,
       terminalTitle: event.terminalTitle,

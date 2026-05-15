@@ -2232,6 +2232,66 @@ describe('useIpcEvents agent status snapshot integration', () => {
     expect(setAgentStatus).not.toHaveBeenCalled()
   })
 
+  it('hydrates Codex done snapshots without dispatching completion notifications', async () => {
+    const setAgentStatus = vi.fn()
+    const dispatchTerminalNotification = vi.fn()
+    const getSnapshot = vi.fn(() =>
+      Promise.resolve([
+        {
+          paneKey: TAB_1_PANE_KEY,
+          connectionId: 'conn-1',
+          state: 'done' as const,
+          prompt: 'p',
+          agentType: 'codex',
+          receivedAt: 1_700_000_000_000,
+          stateStartedAt: 1_699_999_999_000
+        }
+      ])
+    )
+    const storeState: StoreLike = buildStoreState({
+      setAgentStatus,
+      workspaceSessionReady: true,
+      repos: [{ id: 'repo-1', connectionId: 'conn-1' }],
+      worktreesByRepo: {
+        'repo-1': [{ id: 'wt-1', repoId: 'repo-1' }]
+      },
+      tabsByWorktree: {
+        'wt-1': [{ id: 'tab-1', ptyId: 'pty-1', worktreeId: 'wt-1', title: 'Codex Tab' }]
+      },
+      terminalLayoutsByTabId: {
+        'tab-1': {
+          root: { type: 'leaf', leafId: TAB_1_LEAF_ID },
+          activeLeafId: TAB_1_LEAF_ID,
+          expandedLeafId: null
+        }
+      }
+    })
+
+    stubReactSyncEffect()
+    vi.doMock('../store', () => ({
+      useAppStore: { subscribe: vi.fn(() => () => {}), getState: () => storeState }
+    }))
+    stubAuxiliaryModules()
+    vi.doMock('@/components/terminal-pane/terminal-notification-dispatch', () => ({
+      dispatchTerminalNotification
+    }))
+    vi.stubGlobal(
+      'window',
+      buildWindowApi({
+        getSnapshot,
+        onSet: () => () => {}
+      })
+    )
+
+    const { useIpcEvents } = await import('./useIpcEvents')
+    useIpcEvents()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(dispatchTerminalNotification).not.toHaveBeenCalled()
+    expect(setAgentStatus).toHaveBeenCalledTimes(1)
+  })
+
   it('forwards events whose connectionId matches the live repo connection', async () => {
     const setAgentStatus = vi.fn()
     const onSetListenerRef: { current: ((data: AgentStatusSetData) => void) | null } = {
@@ -2306,6 +2366,13 @@ describe('useIpcEvents agent status snapshot integration', () => {
       },
       tabsByWorktree: {
         'wt-1': [{ id: 'tab-1', ptyId: 'pty-1', worktreeId: 'wt-1', title: 'Codex Tab' }]
+      },
+      terminalLayoutsByTabId: {
+        'tab-1': {
+          root: { type: 'leaf', leafId: TAB_1_LEAF_ID },
+          activeLeafId: TAB_1_LEAF_ID,
+          expandedLeafId: null
+        }
       }
     })
 
@@ -2332,7 +2399,7 @@ describe('useIpcEvents agent status snapshot integration', () => {
     await Promise.resolve()
 
     onSetListenerRef.current?.({
-      paneKey: 'tab-1:0',
+      paneKey: TAB_1_PANE_KEY,
       connectionId: 'conn-1',
       state: 'done',
       agentType: 'codex',
@@ -2342,9 +2409,138 @@ describe('useIpcEvents agent status snapshot integration', () => {
 
     expect(dispatchTerminalNotification).toHaveBeenCalledWith('wt-1', {
       source: 'agent-task-complete',
+      dedupeKey: TAB_1_PANE_KEY,
       terminalTitle: 'Codex Tab'
     })
     expect(setAgentStatus).toHaveBeenCalledTimes(1)
+  })
+
+  it('routes Codex notifications to the live pane worktree over stale payload worktreeId', async () => {
+    const setAgentStatus = vi.fn()
+    const dispatchTerminalNotification = vi.fn()
+    const onSetListenerRef: { current: ((data: AgentStatusSetData) => void) | null } = {
+      current: null
+    }
+    const storeState: StoreLike = buildStoreState({
+      setAgentStatus,
+      workspaceSessionReady: true,
+      repos: [{ id: 'repo-1', connectionId: 'conn-1' }],
+      worktreesByRepo: {
+        'repo-1': [
+          { id: 'wt-live', repoId: 'repo-1' },
+          { id: 'wt-stale', repoId: 'repo-1' }
+        ]
+      },
+      tabsByWorktree: {
+        'wt-live': [{ id: 'tab-1', ptyId: 'pty-1', worktreeId: 'wt-live', title: 'Codex Tab' }],
+        'wt-stale': [{ id: 'tab-other', ptyId: 'pty-2', worktreeId: 'wt-stale', title: 'Other' }]
+      },
+      terminalLayoutsByTabId: {
+        'tab-1': {
+          root: { type: 'leaf', leafId: TAB_1_LEAF_ID },
+          activeLeafId: TAB_1_LEAF_ID,
+          expandedLeafId: null
+        }
+      }
+    })
+
+    stubReactSyncEffect()
+    vi.doMock('../store', () => ({
+      useAppStore: { subscribe: vi.fn(() => () => {}), getState: () => storeState }
+    }))
+    stubAuxiliaryModules()
+    vi.doMock('@/components/terminal-pane/terminal-notification-dispatch', () => ({
+      dispatchTerminalNotification
+    }))
+    vi.stubGlobal(
+      'window',
+      buildWindowApi({
+        onSet: (cb) => {
+          onSetListenerRef.current = cb
+          return () => {}
+        }
+      })
+    )
+
+    const { useIpcEvents } = await import('./useIpcEvents')
+    useIpcEvents()
+    await Promise.resolve()
+
+    onSetListenerRef.current?.({
+      paneKey: TAB_1_PANE_KEY,
+      worktreeId: 'wt-stale',
+      connectionId: 'conn-1',
+      state: 'done',
+      agentType: 'codex',
+      receivedAt: 1_700_000_000_100,
+      stateStartedAt: 1_699_999_999_100
+    })
+
+    expect(dispatchTerminalNotification).toHaveBeenCalledWith('wt-live', {
+      source: 'agent-task-complete',
+      dedupeKey: TAB_1_PANE_KEY,
+      terminalTitle: 'Codex Tab'
+    })
+  })
+
+  it('does not dispatch Codex notifications for closed split panes', async () => {
+    const setAgentStatus = vi.fn()
+    const dispatchTerminalNotification = vi.fn()
+    const onSetListenerRef: { current: ((data: AgentStatusSetData) => void) | null } = {
+      current: null
+    }
+    const storeState: StoreLike = buildStoreState({
+      setAgentStatus,
+      workspaceSessionReady: true,
+      repos: [{ id: 'repo-1', connectionId: 'conn-1' }],
+      worktreesByRepo: {
+        'repo-1': [{ id: 'wt-1', repoId: 'repo-1' }]
+      },
+      tabsByWorktree: {
+        'wt-1': [{ id: 'tab-1', ptyId: 'pty-1', worktreeId: 'wt-1', title: 'Codex Tab' }]
+      },
+      terminalLayoutsByTabId: {
+        'tab-1': {
+          root: { type: 'leaf', leafId: TAB_1_LEAF_ID },
+          activeLeafId: TAB_1_LEAF_ID,
+          expandedLeafId: null
+        }
+      }
+    })
+
+    stubReactSyncEffect()
+    vi.doMock('../store', () => ({
+      useAppStore: { subscribe: vi.fn(() => () => {}), getState: () => storeState }
+    }))
+    stubAuxiliaryModules()
+    vi.doMock('@/components/terminal-pane/terminal-notification-dispatch', () => ({
+      dispatchTerminalNotification
+    }))
+    vi.stubGlobal(
+      'window',
+      buildWindowApi({
+        onSet: (cb) => {
+          onSetListenerRef.current = cb
+          return () => {}
+        }
+      })
+    )
+
+    const { useIpcEvents } = await import('./useIpcEvents')
+    useIpcEvents()
+    await Promise.resolve()
+
+    onSetListenerRef.current?.({
+      paneKey: makePaneKey('tab-1', STALE_LEAF_ID),
+      connectionId: 'conn-1',
+      state: 'done',
+      agentType: 'codex',
+      receivedAt: 1_700_000_000_100,
+      stateStartedAt: 1_699_999_999_100
+    })
+
+    expect(dispatchTerminalNotification).not.toHaveBeenCalled()
+    expect(setAgentStatus).not.toHaveBeenCalled()
   })
 
   it('does not dispatch Codex notifications for stale remote hook events', async () => {
@@ -2388,7 +2584,7 @@ describe('useIpcEvents agent status snapshot integration', () => {
     await Promise.resolve()
 
     onSetListenerRef.current?.({
-      paneKey: 'tab-1:0',
+      paneKey: TAB_1_PANE_KEY,
       connectionId: 'conn-stale',
       state: 'done',
       agentType: 'codex',

@@ -293,6 +293,116 @@ describe('registerNotificationHandlers', () => {
     expect(notificationShowMock).toHaveBeenCalledTimes(1)
   })
 
+  it('allows independent pane notifications in the same worktree', () => {
+    registerNotificationHandlers({
+      getSettings: () => ({
+        notifications: {
+          enabled: true,
+          agentTaskComplete: true,
+          terminalBell: true,
+          suppressWhenFocused: false
+        }
+      })
+    } as never)
+
+    const handler = getDispatchHandler()
+
+    expect(
+      handler({}, { source: 'agent-task-complete', worktreeId: 'repo::wt1', dedupeKey: 'tab-1:1' })
+    ).toEqual({ delivered: true })
+    expect(
+      handler({}, { source: 'agent-task-complete', worktreeId: 'repo::wt1', dedupeKey: 'tab-1:2' })
+    ).toEqual({ delivered: true })
+    expect(notificationShowMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('deduplicates duplicate signals for the same pane', () => {
+    registerNotificationHandlers({
+      getSettings: () => ({
+        notifications: {
+          enabled: true,
+          agentTaskComplete: true,
+          terminalBell: true,
+          suppressWhenFocused: false
+        }
+      })
+    } as never)
+
+    const handler = getDispatchHandler()
+
+    expect(
+      handler({}, { source: 'agent-task-complete', worktreeId: 'repo::wt1', dedupeKey: 'tab-1:1' })
+    ).toEqual({ delivered: true })
+    expect(
+      handler({}, { source: 'terminal-bell', worktreeId: 'repo::wt1', dedupeKey: 'tab-1:1' })
+    ).toEqual({
+      delivered: false,
+      reason: 'cooldown'
+    })
+    expect(notificationShowMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('deduplicates mobile notification fanout for the same worktree', () => {
+    const dispatchMobileNotification = vi.fn()
+    registerNotificationHandlers(
+      {
+        getSettings: () => ({
+          notifications: {
+            enabled: true,
+            agentTaskComplete: true,
+            terminalBell: true,
+            suppressWhenFocused: false
+          }
+        })
+      } as never,
+      { dispatchMobileNotification } as never
+    )
+
+    const handler = getDispatchHandler()
+
+    expect(handler({}, { source: 'agent-task-complete', worktreeId: 'repo::wt1' })).toEqual({
+      delivered: true
+    })
+    expect(handler({}, { source: 'agent-task-complete', worktreeId: 'repo::wt1' })).toEqual({
+      delivered: false,
+      reason: 'cooldown'
+    })
+
+    vi.advanceTimersByTime(5001)
+
+    expect(handler({}, { source: 'agent-task-complete', worktreeId: 'repo::wt1' })).toEqual({
+      delivered: true
+    })
+    expect(dispatchMobileNotification).toHaveBeenCalledTimes(2)
+  })
+
+  it('allows mobile notification fanout for independent panes in the same worktree', () => {
+    const dispatchMobileNotification = vi.fn()
+    registerNotificationHandlers(
+      {
+        getSettings: () => ({
+          notifications: {
+            enabled: true,
+            agentTaskComplete: true,
+            terminalBell: true,
+            suppressWhenFocused: false
+          }
+        })
+      } as never,
+      { dispatchMobileNotification } as never
+    )
+
+    const handler = getDispatchHandler()
+
+    expect(
+      handler({}, { source: 'agent-task-complete', worktreeId: 'repo::wt1', dedupeKey: 'tab-1:1' })
+    ).toEqual({ delivered: true })
+    expect(
+      handler({}, { source: 'agent-task-complete', worktreeId: 'repo::wt1', dedupeKey: 'tab-1:2' })
+    ).toEqual({ delivered: true })
+    expect(dispatchMobileNotification).toHaveBeenCalledTimes(2)
+  })
+
   it('loads allowed custom sound files for preload playback', async () => {
     const soundPath = join(tempDir, 'sound.ogg')
     writeFileSync(soundPath, Buffer.from([1, 2, 3]))

@@ -37,6 +37,7 @@ export type PtyConnectionDeps = {
   // main process can also emit `'test'` from the settings-pane button.
   dispatchNotification: (event: {
     source: 'terminal-bell' | 'agent-task-complete'
+    dedupeKey?: string
     terminalTitle?: string
   }) => void
   setCacheTimerStartedAt: (key: string, ts: number | null) => void

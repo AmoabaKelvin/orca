@@ -1506,6 +1506,7 @@ export type NotificationEventSource = 'agent-task-complete' | 'terminal-bell' | 
 export type NotificationDispatchRequest = {
   source: NotificationEventSource
   worktreeId?: string
+  dedupeKey?: string
   repoLabel?: string
   worktreeLabel?: string
   terminalTitle?: string
