@@ -27,6 +27,7 @@ const SEARCHED = ['build/Release', 'build/Debug', 'prebuilds/linux-x64']
 
 const INSTALLED: NodePtyBindingSurvey = {
   moduleDir: MODULE_DIR,
+  installed: true,
   bindingPath: `${MODULE_DIR}/build/Release/pty.node`,
   searched: SEARCHED,
   builtNodeAbi: null,
@@ -140,6 +141,37 @@ describe('diagnoseNodePtyUnavailable', () => {
     })
     expect(present.reason).toBe('dependency_missing')
     expect(formatNodePtyUnavailableMessage(present)).not.toContain('apt-get')
+    expect(formatNodePtyUnavailableMessage(present)).toContain(
+      'build tools needed to compile it are present'
+    )
+  })
+
+  it('never claims the build tools are present when no toolchain probe answered', () => {
+    // docs/reference/ssh-execution-boundary.md: a probe that timed out established nothing.
+    const linuxUnchecked = message({ survey: NOTHING_INSTALLED, toolchain: null })
+    expect(linuxUnchecked).not.toContain('are present')
+    expect(linuxUnchecked).toContain('could not be checked')
+    expect(linuxUnchecked).toContain('Reconnect to reinstall')
+
+    // Off Linux the probe never runs: node-pty ships prebuilds, so tools are beside the point.
+    const macos = message({
+      host: { ...UBUNTU_2004, platform: 'darwin', libc: 'none', glibcVersion: null },
+      survey: NOTHING_INSTALLED,
+      toolchain: null
+    })
+    expect(macos).not.toContain('build tools')
+    expect(macos).toContain('Reconnect to reinstall')
+  })
+
+  it('names an absent node-pty directory as not installed and still offers the build tools (#20386)', () => {
+    // The no-toolchain deploy removes node-pty outright, so there is no directory to search.
+    const text = message({
+      survey: { ...NOTHING_INSTALLED, installed: false, searched: [] },
+      toolchain: toolchain(['python3'])
+    })
+    expect(text).toContain(`node-pty is not installed at ${MODULE_DIR}`)
+    expect(text).toContain('sudo apt-get install -y build-essential python3')
+    expect(text).not.toContain('reconnect to retry')
   })
 
   it('reports a binding that killed the probe as a crash rather than a miss', () => {
