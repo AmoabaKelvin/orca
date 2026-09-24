@@ -19,7 +19,7 @@
  * Every step is best-effort and failure-tolerant: whatever cannot be established is
  * reported as unestablished rather than guessed (docs/reference/ssh-execution-boundary.md).
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { release } from 'node:os'
 import process from 'node:process'
@@ -85,6 +85,7 @@ export function surveyNodePtyBinding(
   const built = readNodeGypBuildRecord(nodePtyDir)
   return {
     moduleDir: nodePtyDir,
+    installed: true,
     bindingPath,
     searched,
     builtNodeAbi: built.nodeAbi,
@@ -181,6 +182,25 @@ async function probeRelayBuildToolchain(
   }
 }
 
+// Only ENOENT is absence — the relay observing its own host. `stat` judges the directory the
+// loader reads, so a dangling link is absent; `existsSync` would also answer false for EACCES.
+function readNodePtyDirPresence(
+  nodePtyDir: string
+): 'present' | 'absent' | { unverifiable: string } {
+  try {
+    statSync(nodePtyDir)
+    return 'present'
+  } catch (error) {
+    const code = error instanceof Error && 'code' in error ? String(error.code) : null
+    if (code === 'ENOENT') {
+      return 'absent'
+    }
+    return {
+      unverifiable: `the relay could not read its node-pty install directory (${code ?? readErrorMessage(error) ?? 'unknown error'})`
+    }
+  }
+}
+
 function readErrorMessage(error: unknown): string | null {
   if (error instanceof Error) {
     return error.message
@@ -207,7 +227,26 @@ export async function collectNodePtyUnavailableDiagnosis(options: {
       unverifiableBecause: 'the relay could not locate its node-pty install directory'
     })
   }
-  const survey = surveyNodePtyBinding(options.nodePtyDir, host)
+  const presence = readNodePtyDirPresence(options.nodePtyDir)
+  if (typeof presence === 'object') {
+    return diagnoseNodePtyUnavailable({
+      host,
+      survey: null,
+      requireError,
+      unverifiableBecause: presence.unverifiable
+    })
+  }
+  const survey: NodePtyBindingSurvey | null =
+    presence === 'absent'
+      ? {
+          moduleDir: options.nodePtyDir,
+          installed: false,
+          bindingPath: null,
+          searched: [],
+          builtNodeAbi: null,
+          builtArch: null
+        }
+      : surveyNodePtyBinding(options.nodePtyDir, host)
   const probed = survey?.bindingPath ? await probeNodePtyLoader(options.nodePtyDir) : {}
   const toolchain =
     survey && !survey.bindingPath ? await probeRelayBuildToolchain(host.platform) : null
