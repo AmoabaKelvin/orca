@@ -23,4 +23,18 @@ describe('TaskPageJiraTextFallbackNotice', () => {
     expect(screen.getByText(/Showing text matches/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Details' })).toBeNull()
   })
+
+  it('updates one mounted live region instead of inserting a new one', () => {
+    const { rerender } = render(<TaskPageJiraTextFallbackNotice reason={null} />)
+    const region = screen.getByRole('status')
+    expect(region.textContent).toBe('')
+
+    rerender(<TaskPageJiraTextFallbackNotice reason={REASON} />)
+    expect(screen.getByRole('status')).toBe(region)
+    expect(region.textContent).toContain('Showing text matches')
+
+    rerender(<TaskPageJiraTextFallbackNotice reason={null} />)
+    expect(screen.getByRole('status')).toBe(region)
+    expect(region.textContent).toBe('')
+  })
 })

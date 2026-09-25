@@ -104,9 +104,9 @@ export function TaskPageJiraContent({
               onOpenChange={setJiraErrorDetailsOpen}
             />
           ) : null}
-          {!jiraStatus.credentialError && !jiraError && jiraJqlRejection !== null ? (
-            <TaskPageJiraTextFallbackNotice key={jiraJqlRejection} reason={jiraJqlRejection} />
-          ) : null}
+          <TaskPageJiraTextFallbackNotice
+            reason={!jiraStatus.credentialError && !jiraError ? jiraJqlRejection : null}
+          />
 
           {jiraLoading && jiraIssues.length === 0 ? (
             <div className="divide-y divide-border/50">
