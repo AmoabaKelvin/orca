@@ -11,6 +11,7 @@ describe('TaskPageJiraTextFallbackNotice', () => {
   it("keeps Jira's reason behind Details", () => {
     render(<TaskPageJiraTextFallbackNotice reason={REASON} />)
     expect(screen.getByText(/Showing text matches/)).toBeTruthy()
+    expect(screen.getByRole('status').textContent).toContain('Showing text matches')
     expect(screen.queryByText(REASON)).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Details' }))
