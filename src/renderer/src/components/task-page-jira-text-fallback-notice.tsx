@@ -8,7 +8,10 @@ export function TaskPageJiraTextFallbackNotice({ reason }: { reason: string }): 
   // Why: collapsed by default; for plain-text searches Jira's JQL reason is noise.
   const [open, setOpen] = useState(false)
   return (
-    <div className="flex items-start gap-2 border-b border-border/50 bg-muted/35 px-4 py-2 text-xs text-muted-foreground">
+    <div
+      role="status"
+      className="flex items-start gap-2 border-b border-border/50 bg-muted/35 px-4 py-2 text-xs text-muted-foreground"
+    >
       <Info className="mt-0.5 size-3.5 flex-none" />
       <div className="min-w-0 flex-1">
         <Collapsible open={open} onOpenChange={setOpen}>
