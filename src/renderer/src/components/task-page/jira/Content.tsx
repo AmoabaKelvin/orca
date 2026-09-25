@@ -1,10 +1,11 @@
 import type { TaskPageComposerActionsModel } from '../../use-task-page-composer-actions'
-import { Info, LoaderCircle } from 'lucide-react'
+import { LoaderCircle } from 'lucide-react'
 import { JiraIcon } from '@/components/icons/JiraIcon'
 import { translate } from '@/i18n/i18n'
 import { Button } from '@/components/ui/button'
 import { TaskPageJiraSortControls } from '../../task-page-jira-sort-controls'
 import { TaskPageJiraErrorBanner } from '../../task-page-linear-jira-list-model'
+import { TaskPageJiraTextFallbackNotice } from '../../task-page-jira-text-fallback-notice'
 import { TaskPageJiraIssueList } from '@/components/task-page-jira-issue-list'
 import { formatRelativeTime } from '../../task-page-source-context'
 import { getJiraStatusTone } from '@/components/task-page-jira-status-tone'
@@ -104,18 +105,7 @@ export function TaskPageJiraContent({
             />
           ) : null}
           {!jiraStatus.credentialError && !jiraError && jiraJqlRejection !== null ? (
-            <div className="flex items-start gap-2 border-b border-border/50 bg-muted/35 px-4 py-2 text-xs text-muted-foreground">
-              <Info className="mt-0.5 size-3.5 flex-none" />
-              <div className="min-w-0">
-                <p>
-                  {translate(
-                    'auto.components.TaskPage.jiraTextMatchesNotice',
-                    "Showing text matches. Jira couldn't run this search as JQL."
-                  )}
-                </p>
-                {jiraJqlRejection ? <p className="mt-0.5 break-words">{jiraJqlRejection}</p> : null}
-              </div>
-            </div>
+            <TaskPageJiraTextFallbackNotice key={jiraJqlRejection} reason={jiraJqlRejection} />
           ) : null}
 
           {jiraLoading && jiraIssues.length === 0 ? (
