@@ -157,8 +157,8 @@ export function useWorktreeListKeyboardNavigation(args: {
           )
         ) {
           e.preventDefault()
+          return
         }
-        return
       }
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         if (e.target !== e.currentTarget) {

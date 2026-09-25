@@ -249,6 +249,18 @@ describe('Delete on the focused workspace list', () => {
     expect(state.updateWorktreeMeta).not.toHaveBeenCalled()
   })
 
+  it('leaves a rebound list key working when there is nothing to mark Done', () => {
+    const state = setState([worktree('a', 'in-review')])
+    state.keybindings = { 'workspace.markDone': ['Enter'] }
+    const { list } = renderList({ activeWorktreeId: 'a' })
+
+    const event = press(list, 'Enter')
+
+    expect(state.updateWorktreeMeta).not.toHaveBeenCalled()
+    // Enter's own handler (focus the terminal) ran and claimed the key.
+    expect(event.defaultPrevented).toBe(true)
+  })
+
   it('respects a user who unbinds the shortcut', () => {
     const state = setState([worktree('a', 'in-progress')])
     state.keybindings = { 'workspace.markDone': [] }
