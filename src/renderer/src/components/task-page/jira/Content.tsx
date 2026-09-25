@@ -1,5 +1,5 @@
 import type { TaskPageComposerActionsModel } from '../../use-task-page-composer-actions'
-import { LoaderCircle } from 'lucide-react'
+import { Info, LoaderCircle } from 'lucide-react'
 import { JiraIcon } from '@/components/icons/JiraIcon'
 import { translate } from '@/i18n/i18n'
 import { Button } from '@/components/ui/button'
@@ -31,6 +31,7 @@ export function TaskPageJiraContent({
     jiraError,
     jiraErrorDetailsOpen,
     setJiraErrorDetailsOpen,
+    jiraJqlRejection,
     jiraSearchInput,
     jiraOrderBy,
     jiraOrderDirection,
@@ -102,6 +103,20 @@ export function TaskPageJiraContent({
               onOpenChange={setJiraErrorDetailsOpen}
             />
           ) : null}
+          {!jiraStatus.credentialError && !jiraError && jiraJqlRejection !== null ? (
+            <div className="flex items-start gap-2 border-b border-border/50 bg-muted/35 px-4 py-2 text-xs text-muted-foreground">
+              <Info className="mt-0.5 size-3.5 flex-none" />
+              <div className="min-w-0">
+                <p>
+                  {translate(
+                    'auto.components.TaskPage.jiraTextMatchesNotice',
+                    "Showing text matches. Jira couldn't run this search as JQL."
+                  )}
+                </p>
+                {jiraJqlRejection ? <p className="mt-0.5 break-words">{jiraJqlRejection}</p> : null}
+              </div>
+            </div>
+          ) : null}
 
           {jiraLoading && jiraIssues.length === 0 ? (
             <div className="divide-y divide-border/50">
@@ -123,7 +138,10 @@ export function TaskPageJiraContent({
               </p>
               <p className="mt-2 text-sm text-muted-foreground">
                 {jiraSearchInput
-                  ? translate('auto.components.TaskPage.f51e254d35', 'Try a different JQL query.')
+                  ? translate(
+                      'auto.components.TaskPage.f51e254d35',
+                      'Try different search terms or JQL.'
+                    )
                   : translate(
                       'auto.components.TaskPage.94d900518d',
                       'No issues match the selected preset.'
