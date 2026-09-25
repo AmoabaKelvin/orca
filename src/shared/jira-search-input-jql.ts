@@ -7,6 +7,9 @@ const JQL_OPERATOR_PATTERN = /[=~<>]|\b(?:in|is|was|changed)\b|^order\s+by\b/i
 // Lucene text-search syntax. Jira's index drops these characters, so spaces keep matches intact.
 const TEXT_SEARCH_SYNTAX_PATTERN = /[+\-&|!(){}[\]^"~*?:\\/]/g
 
+// Why: Jira skips word-splitting for a wildcard term, so `login,*` or `c#*` match nothing.
+const WILDCARD_SAFE_WORD_PATTERN = /^[\p{L}\p{N}']+$/u
+
 export function mayBeJql(input: string): boolean {
   return JQL_OPERATOR_PATTERN.test(input.trim())
 }
@@ -23,5 +26,9 @@ export function buildJiraTextSearchJql(input: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase()
-  return words ? `text ~ "${words}*"` : ''
+  if (!words) {
+    return ''
+  }
+  const lastWord = words.slice(words.lastIndexOf(' ') + 1)
+  return `text ~ "${words}${WILDCARD_SAFE_WORD_PATTERN.test(lastWord) ? '*' : ''}"`
 }

@@ -64,6 +64,28 @@ describe('buildJiraTextSearchJql', () => {
     expect(buildJiraTextSearchJql(input)).toBe(expected)
   })
 
+  // Jira skips word-splitting for a wildcard term, so each of these matched nothing with a trailing *.
+  it.each([
+    ['fix login.', 'text ~ "fix login."'],
+    ['login,', 'text ~ "login,"'],
+    ['C#', 'text ~ "c#"'],
+    ['100%', 'text ~ "100%"'],
+    ['$5', 'text ~ "$5"'],
+    ['a;b', 'text ~ "a;b"'],
+    ['foo=bar', 'text ~ "foo=bar"'],
+    ['node.js', 'text ~ "node.js"']
+  ])('drops the wildcard when the last word has punctuation: %s', (input, expected) => {
+    expect(buildJiraTextSearchJql(input)).toBe(expected)
+  })
+
+  it.each([
+    ['café', 'text ~ "café*"'],
+    ["don't", 'text ~ "don\'t*"'],
+    ['login. fix', 'text ~ "login. fix*"']
+  ])('keeps the wildcard on a plain last word: %s', (input, expected) => {
+    expect(buildJiraTextSearchJql(input)).toBe(expected)
+  })
+
   it.each([
     ['OR x', 'text ~ "or x*"'],
     ['AND x', 'text ~ "and x*"'],
