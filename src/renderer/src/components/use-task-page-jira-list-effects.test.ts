@@ -28,6 +28,7 @@ function createModel(): TaskPageLinearCollectionEffectsModel {
     setJiraLoading: vi.fn(),
     setJiraError: vi.fn(),
     setJiraErrorDetailsOpen: vi.fn(),
+    setJiraJqlRejection: vi.fn(),
     jiraSearchInput: '',
     appliedJiraSearch: '',
     setAppliedJiraSearch: vi.fn(),
