@@ -107,18 +107,6 @@ describe('collectNodePtyUnavailableDiagnosis', () => {
     }
   }, 20_000)
 
-  it('reports an unlocatable install as unverifiable, not as a diagnosis', async () => {
-    const diagnosis = await collectNodePtyUnavailableDiagnosis({
-      nodePtyDir: null,
-      error: new Error(FLATTENED)
-    })
-    expect(diagnosis.status).toBe('unverifiable')
-    const text = formatNodePtyUnavailableMessage(diagnosis)
-    expect(text).toContain('could not establish why')
-    // It still has to be reportable: the raw error is the only thing an issue can quote.
-    expect(text).toContain(FLATTENED)
-  })
-
   it('diagnoses a node-pty directory that does not exist instead of calling it unverifiable (#20386)', async () => {
     // What a Linux host without a compiler gets: the deploy reinstalls with node-pty removed.
     const root = mkdtempSync(join(tmpdir(), 'orca-node-pty-'))
@@ -160,10 +148,15 @@ describe('collectNodePtyUnavailableDiagnosis', () => {
       chmodSync(locked, 0o000)
       try {
         const diagnosis = await collectNodePtyUnavailableDiagnosis({
-          nodePtyDir: join(locked, 'node-pty')
+          nodePtyDir: join(locked, 'node-pty'),
+          error: new Error(FLATTENED)
         })
         expect(diagnosis.status).toBe('unverifiable')
         expect(diagnosis.detail).toContain('EACCES')
+        const text = formatNodePtyUnavailableMessage(diagnosis)
+        expect(text).toContain('could not establish why')
+        // It still has to be reportable: the raw error is the only thing an issue can quote.
+        expect(text).toContain(FLATTENED)
       } finally {
         chmodSync(locked, 0o755)
       }

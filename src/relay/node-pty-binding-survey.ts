@@ -213,20 +213,12 @@ function readErrorMessage(error: unknown): string | null {
  * one's answer. Called only on the failure path, so a spawn that works pays nothing.
  */
 export async function collectNodePtyUnavailableDiagnosis(options: {
-  nodePtyDir: string | null
+  nodePtyDir: string
   error?: unknown
 }): Promise<NodePtyUnavailableDiagnosis> {
   const abi = detectNativeHostAbi()
   const host: NodePtyUnavailableHost = { ...abi, nodeVersion: process.version }
   const requireError = readErrorMessage(options.error)
-  if (!options.nodePtyDir) {
-    return diagnoseNodePtyUnavailable({
-      host,
-      survey: null,
-      requireError,
-      unverifiableBecause: 'the relay could not locate its node-pty install directory'
-    })
-  }
   const presence = readNodePtyDirPresence(options.nodePtyDir)
   if (typeof presence === 'object') {
     return diagnoseNodePtyUnavailable({
