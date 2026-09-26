@@ -1,8 +1,8 @@
 import { JIRA_ISSUE_KEY_PATTERN } from './jira-issue-url'
 
 // Why: JQL's operator set is closed (plugins add functions, not operators), so input with
-// none of these and no leading ORDER BY cannot parse as JQL.
-const JQL_OPERATOR_PATTERN = /[=~<>]|\b(?:in|is|was|changed)\b|^order\s+by\b/i
+// none of these and no leading ORDER BY cannot parse as JQL. Hyphens excluded so `sign-in` stays text.
+const JQL_OPERATOR_PATTERN = /[=~<>]|(?<![\w-])(?:in|is|was|changed)(?![\w-])|^order\s+by\b/i
 
 // Lucene text-search syntax. Jira's index drops these characters, so spaces keep matches intact.
 const TEXT_SEARCH_SYNTAX_PATTERN = /[+\-&|!(){}[\]^"~*?:\\/]/g

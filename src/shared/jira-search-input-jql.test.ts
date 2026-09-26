@@ -27,12 +27,19 @@ describe('mayBeJql', () => {
     expect(mayBeJql(input)).toBe(true)
   })
 
-  it.each(['s', 'test', 'fix login bug', 'ABC-12', 'within isolation', 'order the pizza', '   '])(
-    'skips JQL for input with no operator: %s',
-    (input) => {
-      expect(mayBeJql(input)).toBe(false)
-    }
-  )
+  it.each([
+    's',
+    'test',
+    'fix login bug',
+    'ABC-12',
+    'within isolation',
+    'order the pizza',
+    'sign-in page',
+    'built-in was-',
+    '   '
+  ])('skips JQL for input with no operator: %s', (input) => {
+    expect(mayBeJql(input)).toBe(false)
+  })
 })
 
 describe('buildJiraTextSearchJql', () => {
