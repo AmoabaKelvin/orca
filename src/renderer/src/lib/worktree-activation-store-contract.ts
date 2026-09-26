@@ -71,7 +71,7 @@ export type InitialTerminalOptions = {
    *  workspace", wake) has to hand back a usable surface. Activation sets this unless the
    *  caller says it provides its own surface; background worktree creation leaves it unset. */
   reseedEmptiedWorkspace?: boolean
-  /** The owning host just answered this activation's census with nothing to adopt or resume —
+  /** The owning host just answered this activation's census with no live PTY for the workspace —
    *  fresher than direct-SSH workspace-sync state. */
   hostAnsweredActivationCensus?: boolean
   /** Set by callers that open their own primary surface (a structured native chat session).

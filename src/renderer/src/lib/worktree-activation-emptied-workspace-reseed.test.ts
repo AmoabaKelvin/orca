@@ -557,6 +557,35 @@ describe('activating an emptied SSH git worktree', () => {
     }
   )
 
+  // Live PTYs the gate could not surface may be tabs the pending sync still carries.
+  it.each([
+    ['a local worktree still seeds', false, 1],
+    ['an SSH worktree mid-sync waits', true, 0]
+  ])('when the census lists a live PTY it cannot surface, %s', async (_label, ssh, tabCount) => {
+    let worktree: Worktree
+    if (ssh) {
+      worktree = seedEmptiedSshWorktree('pulling')
+    } else {
+      worktree = makeWorktree()
+      seedEmptyActivatableWorktree(worktree)
+      seedClosedLastTerminal(worktree.id)
+      useAppStore.setState({ workspaceSessionReady: true, terminalStartupRestorationReady: true })
+    }
+    stubActivationCensus(worktree.id, async () => [
+      { id: `${worktree.id}@@live`, cwd: '/', title: 'bash', agentOwnership: 'absent' }
+    ])
+
+    activateAndRevealWorktree(worktree.id, {
+      ...(ssh ? { executionHostId: SSH_HOST_ID } : {}),
+      notifyHostRuntime: false
+    })
+    await expect(waitForWorktreeAgentActivationGateForTests(worktree.id)).resolves.toBe(
+      'unsurfaced'
+    )
+
+    expect(useAppStore.getState().tabsByWorktree[worktree.id]).toHaveLength(tabCount)
+  })
+
   it('stays empty when the SSH host could not answer the census', async () => {
     const worktree = seedEmptiedSshWorktree()
     stubActivationCensus(worktree.id, async () => {

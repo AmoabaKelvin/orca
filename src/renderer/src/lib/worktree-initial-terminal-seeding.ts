@@ -40,7 +40,8 @@ function getSetupRunnerCommandPlatformForLaunch(setup: WorktreeSetupLaunch): 'wi
 export function reseedGatedEmptyWorkspace(
   workspaceKey: string,
   callerProvidesSurface: boolean,
-  executionHostId?: ExecutionHostId
+  executionHostId?: ExecutionHostId,
+  hostListedNoLivePty = false
 ): void {
   const state = useAppStore.getState()
   if (
@@ -59,8 +60,7 @@ export function reseedGatedEmptyWorkspace(
     undefined,
     {
       reseedEmptiedWorkspace: true,
-      // Why: an `empty` gate means the owning host just answered its census.
-      hostAnsweredActivationCensus: true
+      hostAnsweredActivationCensus: hostListedNoLivePty
     }
   )
 }
