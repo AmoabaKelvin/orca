@@ -1,5 +1,5 @@
 import type { TaskPageLinearCollectionEffectsModel } from './use-task-page-linear-collection-effects'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import {
   getSingleJiraProjectScope,
   getTaskPageJiraStatusOrderScopeKey,
@@ -59,6 +59,7 @@ export function useTaskPageJiraListEffects(model: TaskPageLinearCollectionEffect
       jiraQuery: appliedJiraSearch.trim()
     })
   }, [appliedJiraSearch, setTaskResumeState, taskResumeApplied, jiraSearchPersistReadyRef])
+  const previousJiraRefreshNonceRef = useRef(jiraRefreshNonce)
   useEffect(() => {
     if (!taskResumeApplied) {
       return
@@ -69,6 +70,8 @@ export function useTaskPageJiraListEffects(model: TaskPageLinearCollectionEffect
     if (!jiraConnected) {
       return
     }
+    const force = previousJiraRefreshNonceRef.current !== jiraRefreshNonce
+    previousJiraRefreshNonceRef.current = jiraRefreshNonce
     let cancelled = false
     setJiraLoading(true)
     setJiraError(null)
@@ -79,11 +82,13 @@ export function useTaskPageJiraListEffects(model: TaskPageLinearCollectionEffect
       trimmed.length > 0
         ? searchTaskPageJiraIssues(trimmed, (jql) =>
             searchJiraIssues(jql, JIRA_ITEM_LIMIT, {
-              sourceContext: jiraTaskSourceContext
+              sourceContext: jiraTaskSourceContext,
+              force
             })
           )
         : listJiraIssues(activeJiraPreset, JIRA_ITEM_LIMIT, {
-            sourceContext: jiraTaskSourceContext
+            sourceContext: jiraTaskSourceContext,
+            force
           }).then((issues) => ({ issues, jqlRejection: null }))
     void request
       .then(({ issues, jqlRejection }) => {
