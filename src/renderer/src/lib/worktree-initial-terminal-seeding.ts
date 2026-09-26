@@ -58,7 +58,9 @@ export function reseedGatedEmptyWorkspace(
     undefined,
     undefined,
     {
-      reseedEmptiedWorkspace: true
+      reseedEmptiedWorkspace: true,
+      // Why: an `empty` gate means the owning host just answered its census.
+      hostAnsweredActivationCensus: true
     }
   )
 }
@@ -98,7 +100,7 @@ export function ensureWorktreeHasInitialTerminal(
   }
 
   const backendStartupTerminalSpawned = opts?.backendStartupTerminalSpawned === true
-  const hostAuthority = resolveWorkspaceTerminalHostAuthority(ownerState, worktreeId)
+  const hostAuthority = resolveWorkspaceTerminalHostAuthority(ownerState, worktreeId, opts)
   // Why: explicit spawn evidence survives the new-worktree ownership race; a host that owns terminal creation provides the same authority for later activations.
   if (backendStartupTerminalSpawned || hostAuthority === 'live') {
     const existingTerminalTabId = store.tabsByWorktree[worktreeId]?.[0]?.id
