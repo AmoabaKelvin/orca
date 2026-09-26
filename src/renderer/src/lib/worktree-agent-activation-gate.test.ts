@@ -592,7 +592,7 @@ describe('worktree agent activation gate', () => {
     })
     seedExistingSurface(deps.getState(), { tabId: 'tab-live', leafId: LIVE_LEAF_ID })
 
-    // The seam re-checks its own guard, so an existing tab is not re-seeded by 'empty'.
+    // The seam re-checks its own guard, so an existing tab is not re-seeded by 'unsurfaced'.
     await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('unsurfaced')
 
     expect(createTab).not.toHaveBeenCalled()
