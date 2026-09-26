@@ -32,6 +32,7 @@ function startWorkflow(harness: AgentStatusExtensionHarness): void {
   harness.emitPiEvent('subagent:async-started', {
     id: WORKFLOW,
     mode: 'workflow',
+    agent: 'workflow',
     pid: AGENT_STATUS_EXTENSION_SELF_PID
   })
 }
@@ -403,6 +404,24 @@ describe('Pi child rows', () => {
     await harness.callHook('tool_execution_start', { toolName: 'bash', args: {} })
     await vi.advanceTimersByTimeAsync(0)
     expect(posts(harness).at(-1)?.subagents).toBeUndefined()
+  })
+
+  it('keeps a workflow run out of the rows while it still holds the pane', async () => {
+    const harness = createAgentStatusExtensionHarness({ kind: 'pi' })
+    await harness.callHook('agent_start')
+    startWorkflow(harness)
+    startAsync(harness, 'run-a', 'scout')
+    await endTurn(harness)
+    expect(childIds(posts(harness).at(-1))).toEqual(['run-a'])
+
+    complete(harness, 'run-a')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(posts(harness).at(-1)).toEqual({ hook_event_name: 'subagents_update' })
+
+    complete(harness, WORKFLOW)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(postedHookNames(harness).slice(-1)).toEqual(['agent_end'])
+    expect(posts(harness).some((post) => childIds(post)?.includes(WORKFLOW))).toBe(false)
   })
 
   it('settles the run its children held open when Pi starts a new session', async () => {
