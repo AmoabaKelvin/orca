@@ -15,6 +15,7 @@ import type { PiAgentKind } from '../../shared/pi-agent-kind'
 import { getPiAgentStatusHandlerSourceLines } from './agent-status-handler-source'
 import { getPiAgentStatusRuntimeDetectionSourceLines } from './agent-status-runtime-detection-source'
 import { getPiAgentStatusWslCurlSourceLines } from './agent-status-wsl-curl-source'
+import { getPiSubagentSnapshotSourceLines } from './agent-status-subagent-roster-source'
 
 export const ORCA_PI_AGENT_STATUS_EXTENSION_FILE = 'orca-agent-status.ts'
 
@@ -123,8 +124,8 @@ export function getPiAgentStatusExtensionSource(kind: PiAgentKind = 'pi'): strin
   // Why: Pi resumes from an existing transcript; OMP resumes directly by session id (#8962).
   const payloadLine =
     kind !== 'omp'
-      ? '    payload: { hook_event_name: hookEventName, ...(ompRuntime ? metadata : getPersistedSessionMetadata()), ...extra },'
-      : '    payload: { hook_event_name: hookEventName, ...metadata, ...extra },'
+      ? '    payload: { hook_event_name: hookEventName, ...(ompRuntime ? metadata : getPersistedSessionMetadata()), ...subagentPayload(), ...extra },'
+      : '    payload: { hook_event_name: hookEventName, ...metadata, ...subagentPayload(), ...extra },'
 
   // Why: keep this string self-contained — it runs inside the pi process,
   // so it cannot import from Orca's main bundle. fs/http coords come from
@@ -144,6 +145,7 @@ export function getPiAgentStatusExtensionSource(kind: PiAgentKind = 'pi'): strin
     ...(kind === 'pi' ? ['let piUiPromptDepth = 0', 'let piTurnInFlight = false'] : []),
     ...modelMetadataSourceLines,
     '',
+    ...getPiSubagentSnapshotSourceLines(),
     ...sessionMetadataSourceLines,
     '',
     '// Why: re-reading the endpoint file on every event is cheap (small file,',
@@ -206,13 +208,15 @@ export function getPiAgentStatusExtensionSource(kind: PiAgentKind = 'pi'): strin
     '  const ompRuntime = isOmpRuntime()',
     '  cancelPostRetry()',
     '  const metadata = getPostSessionMetadata(ompRuntime)',
-    '// Model changes must not erase an unacknowledged completion in the latest-only slot.',
+    '// Model changes and new sessions must not erase an unacknowledged completion in the latest-only slot.',
     "  const previousCompletion = latestPost?.hookEventName === 'agent_end' && !latestPost.delivered && latestPost.metadata.session_id === metadata.session_id",
+    '  // Why: session_start posts never retry, so only a completion still queued behind an in-flight post can be lost.',
+    "  const keepsCompletion = hookEventName === 'session_start' ? pendingPost?.hookEventName === 'agent_end' : ompRuntime && hookEventName === 'model_select' && previousCompletion",
     '  pendingPost = {',
     '    revision: ++postRevision,',
     '    attempts: 0,',
     '    delivered: false,',
-    "    hookEventName: ompRuntime && hookEventName === 'model_select' && previousCompletion ? 'agent_end' : hookEventName,",
+    "    hookEventName: keepsCompletion ? 'agent_end' : hookEventName,",
     // Why: every coalesced snapshot must retain an open modal, not just its start event.
     kind === 'pi'
       ? '    extra: { ...extra, ...(!ompRuntime && piUiPromptDepth > 0 ? { ui_prompt_active: true } : {}) },'
