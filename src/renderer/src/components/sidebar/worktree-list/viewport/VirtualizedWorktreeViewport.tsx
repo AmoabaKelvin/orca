@@ -191,7 +191,8 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
     virtualizer: virtualization.virtualizer,
     scrollRef,
     activeModal: props.activeModal,
-    markDirectScrollInput
+    markDirectScrollInput,
+    selectedWorktrees: props.selectedWorktrees
   })
 
   const dropCtx = useWorktreeDropCommitContext({
