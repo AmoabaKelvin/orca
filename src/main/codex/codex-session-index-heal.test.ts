@@ -10,10 +10,12 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS } from '../codex-cli/codex-read-only-app-server-args'
 import type { CodexAppServerInvocation } from './codex-app-server-session'
 import { createCodexSessionBackfillAuditWriter } from './codex-session-backfill-audit'
 import { CODEX_SESSION_INDEX_HEAL_VERSION } from './codex-session-index-heal-state'
 import {
+  buildNativeHealInvocation,
   runCodexSessionIndexHeal,
   type CodexSessionIndexHealPaths
 } from './codex-session-index-heal'
@@ -775,5 +777,16 @@ describe('runCodexSessionIndexHeal', () => {
     })
     expect(warnSpy).toHaveBeenCalled()
     warnSpy.mockRestore()
+  })
+})
+
+describe('buildNativeHealInvocation', () => {
+  it('starts a read-only, plugin-free app-server pinned to the given home', () => {
+    const invocation = buildNativeHealInvocation('/codex-home', 1_000)
+
+    for (const arg of CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS) {
+      expect(invocation.args).toContain(arg)
+    }
+    expect(invocation.env).toEqual({ CODEX_HOME: '/codex-home' })
   })
 })
