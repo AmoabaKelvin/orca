@@ -29,6 +29,8 @@ export function getPiAgentStatusUiPromptHandlerSourceLines(kind: PiAgentKind): s
     '    } catch {',
     '      // Why: a runner this very modal invalidated cannot answer; keep the local verdict.',
     '    }',
+    '    // Why: Pi reports idle once its own turn settles, but children still hold the run open.',
+    '    isIdle &&= !lifecycleState.waiting',
     "    post('ui_prompt_end', { is_idle: isIdle })",
     '  })',
     '',
