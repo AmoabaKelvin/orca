@@ -52,6 +52,7 @@ export function useWorktreeListKeyboardNavigation(args: {
   activeModal: string
   markDirectScrollInput: () => void
   selectedWorktrees: readonly Worktree[]
+  onNavigate: (worktree: Worktree) => void
 }) {
   const {
     rows,
@@ -63,7 +64,8 @@ export function useWorktreeListKeyboardNavigation(args: {
     scrollRef,
     activeModal,
     markDirectScrollInput,
-    selectedWorktrees
+    selectedWorktrees,
+    onNavigate
   } = args
   const keybindings = useAppStore((s) => s.keybindings)
 
@@ -93,6 +95,7 @@ export function useWorktreeListKeyboardNavigation(args: {
       }
 
       void activateWorktreeFromSidebar(nextWorktree.id, nextWorktree.hostId)
+      onNavigate(nextWorktree)
 
       const rowIndex = findPreferredRenderRowIndexForWorktreeIdentity(
         renderRows,
@@ -109,7 +112,8 @@ export function useWorktreeListKeyboardNavigation(args: {
       activeWorktreeId,
       activeWorkspaceExecutionHostId,
       virtualizer,
-      pinnedDisplayPolicy
+      pinnedDisplayPolicy,
+      onNavigate
     ]
   )
 

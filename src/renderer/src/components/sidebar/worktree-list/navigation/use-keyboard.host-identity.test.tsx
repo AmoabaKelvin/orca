@@ -75,7 +75,8 @@ function renderProbe(activeWorktreeId: string, activeHostId: 'local' | null): vo
       scrollRef: { current: null },
       activeModal: 'none',
       markDirectScrollInput: () => {},
-      selectedWorktrees: []
+      selectedWorktrees: [],
+      onNavigate: () => {}
     })
     return null
   }

@@ -82,7 +82,8 @@ function Probe() {
     scrollRef,
     activeModal: modal,
     markDirectScrollInput: () => {},
-    selectedWorktrees: []
+    selectedWorktrees: [],
+    onNavigate: () => {}
   })
   return (
     <div
