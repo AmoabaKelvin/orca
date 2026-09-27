@@ -327,6 +327,7 @@ const WorktreeList = React.memo(function WorktreeList({
         selectedWorktreeIds={selection.selectedWorktreeIds}
         selectedWorktrees={selection.selectedWorktrees}
         onSelectionGesture={selection.updateSelectionForGesture}
+        onKeyboardNavigate={selection.selectOnly}
         onImmediateWorktreeActivate={handleImmediateWorktreeActivate}
         onContextMenuSelect={selection.selectForContextMenu}
         repoMap={repoMap}

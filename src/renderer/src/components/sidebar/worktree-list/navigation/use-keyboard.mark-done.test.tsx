@@ -45,6 +45,7 @@ vi.mock('@/store', () => {
 })
 
 const { useWorktreeListKeyboardNavigation } = await import('./use-keyboard')
+const { useSidebarWorktreeSelection } = await import('./use-selection')
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -64,6 +65,21 @@ function setState(worktrees: FakeWorktree[]): FakeState {
   }
   mocks.holder.state = state
   return state
+}
+
+function itemRows(ids: string[]): HostSectionRow[] {
+  return ids.map((id) => ({
+    type: 'item',
+    rowKey: id,
+    sectionKey: repo.id,
+    worktree: { ...worktreeFixture, id, hostId: 'ssh:box' },
+    repo,
+    depth: 0,
+    groupDepth: 0,
+    lineageTrail: [],
+    isLastLineageChild: false,
+    lineageChildCount: 0
+  }))
 }
 
 const virtualizer = new Virtualizer<HTMLDivElement, HTMLDivElement>({
@@ -99,7 +115,8 @@ function renderList(args: {
       scrollRef: { current: null },
       activeModal: args.activeModal ?? 'none',
       markDirectScrollInput: () => {},
-      selectedWorktrees: (args.selectedWorktrees ?? []).map((w) => ({ ...worktreeFixture, ...w }))
+      selectedWorktrees: (args.selectedWorktrees ?? []).map((w) => ({ ...worktreeFixture, ...w })),
+      onNavigate: () => {}
     })
     return (
       <div data-testid="list" tabIndex={0} onKeyDown={handleContainerKeyDown}>
@@ -295,19 +312,11 @@ describe('Delete on the focused workspace list', () => {
     mocks.activate.mockImplementation((id: string) => {
       state.activeWorktreeId = id
     })
-    const rows: HostSectionRow[] = ['a', 'b'].map((id) => ({
-      type: 'item',
-      rowKey: id,
-      sectionKey: repo.id,
-      worktree: { ...worktreeFixture, id, hostId: 'ssh:box' },
-      repo,
-      depth: 0,
-      groupDepth: 0,
-      lineageTrail: [],
-      isLastLineageChild: false,
-      lineageChildCount: 0
-    }))
-    const { list } = renderList({ activeWorktreeId: 'a', activeHostId: 'ssh:box', rows })
+    const { list } = renderList({
+      activeWorktreeId: 'a',
+      activeHostId: 'ssh:box',
+      rows: itemRows(['a', 'b'])
+    })
 
     press(list, 'ArrowDown')
     press(list, 'Delete')
@@ -343,7 +352,7 @@ describe('Delete on the focused workspace list', () => {
 
   it('ignores the one-row selection a plain click leaves behind', () => {
     const state = setState([worktree('a', 'in-progress'), worktree('b', 'in-progress')])
-    // Clicking a leaves it selected; arrowing to b makes b active without touching the selection.
+    // Clicking a selects it; switching to b another way (e.g. Cmd+J) leaves that selection behind.
     const { list } = renderList({
       activeWorktreeId: 'b',
       selectedWorktrees: [worktree('a', 'in-progress')]
@@ -356,6 +365,72 @@ describe('Delete on the focused workspace list', () => {
       'b',
       { workspaceStatus: 'completed' },
       expect.anything()
+    )
+  })
+
+  it('replaces a multi-row selection when the arrow keys move, like Finder', () => {
+    const state = setState(['a', 'b', 'c'].map((id) => worktree(id, 'in-progress', 'ssh:box')))
+    state.activeWorkspaceExecutionHostId = 'ssh:box'
+    mocks.activate.mockImplementation((id: string) => {
+      state.activeWorktreeId = id
+    })
+    const rows = itemRows(['a', 'b', 'c'])
+    let selection: ReturnType<typeof useSidebarWorktreeSelection> | undefined
+    function Probe(): React.JSX.Element {
+      selection = useSidebarWorktreeSelection({
+        sectionRows: rows,
+        pinnedDisplayPolicy: 'single-location'
+      })
+      const { handleContainerKeyDown } = useWorktreeListKeyboardNavigation({
+        rows,
+        renderRows: [],
+        activeWorktreeId: 'a',
+        activeWorkspaceExecutionHostId: 'ssh:box',
+        pinnedDisplayPolicy: 'single-location',
+        virtualizer,
+        scrollRef: { current: null },
+        activeModal: 'none',
+        markDirectScrollInput: () => {},
+        selectedWorktrees: selection.selectedWorktrees,
+        onNavigate: selection.selectOnly
+      })
+      return <div data-testid="list" tabIndex={0} onKeyDown={handleContainerKeyDown} />
+    }
+    state.activeWorktreeId = 'a'
+    act(() => root.render(<Probe />))
+    const list = container.querySelector<HTMLDivElement>('[data-testid="list"]')!
+    const isMac = navigator.userAgent.includes('Mac')
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: selection only reads the modifier keys.
+    const toggle = {
+      metaKey: isMac,
+      ctrlKey: !isMac,
+      shiftKey: false
+    } as React.MouseEvent<HTMLElement>
+    act(() => {
+      selection?.updateSelectionForGesture(toggle, {
+        ...worktreeFixture,
+        id: 'a',
+        hostId: 'ssh:box'
+      })
+    })
+    act(() => {
+      selection?.updateSelectionForGesture(toggle, {
+        ...worktreeFixture,
+        id: 'c',
+        hostId: 'ssh:box'
+      })
+    })
+    expect(selection?.selectedWorktrees.map((w) => w.id)).toEqual(['a', 'c'])
+
+    press(list, 'ArrowDown')
+    press(list, 'Delete')
+
+    expect(selection?.selectedWorktrees.map((w) => w.id)).toEqual(['b'])
+    expect(state.updateWorktreeMeta).toHaveBeenCalledTimes(1)
+    expect(state.updateWorktreeMeta).toHaveBeenCalledWith(
+      'b',
+      { workspaceStatus: 'completed' },
+      expect.objectContaining({ executionHostId: 'ssh:box' })
     )
   })
 

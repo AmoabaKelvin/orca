@@ -129,6 +129,15 @@ export function useSidebarWorktreeSelection(args: {
     [selectedWorktreeIds, selectedWorktrees]
   )
 
+  // Why: like Finder, moving the active row with the keyboard replaces the selection with that row.
+  const selectOnly = useCallback((worktree: Worktree) => {
+    const identity = getWorktreeHostIdentity(worktree)
+    setSelectedWorktreeIds((previous) =>
+      previous.size === 1 && previous.has(identity) ? previous : new Set([identity])
+    )
+    setSelectionAnchorId(identity)
+  }, [])
+
   // Why layout effect: the Cmd/Ctrl+1–9 handler can fire right after commit; publishing after paint would leave the shortcut cache stale.
   useLayoutEffect(() => {
     setVisibleWorktreeIds(renderedWorktreeIds)
@@ -151,6 +160,7 @@ export function useSidebarWorktreeSelection(args: {
     selectedWorktreeIds,
     selectedWorktrees,
     updateSelectionForGesture,
-    selectForContextMenu
+    selectForContextMenu,
+    selectOnly
   }
 }
