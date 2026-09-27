@@ -25,6 +25,20 @@ export const KEYBINDING_DEFINITION_CORE_4: readonly KeybindingDefinition[] = [
     defaultBindings: platformBindings([])
   },
   {
+    id: 'workspace.markDone',
+    title: 'Mark In progress workspace Done',
+    group: 'Workspace List',
+    scope: 'worktreeList',
+    searchKeywords: ['shortcut', 'workspace', 'worktree', 'status', 'done', 'complete', 'board'],
+    // Why: only fires while the workspace list itself has focus; the Mac "delete" key sends Backspace.
+    defaultBindings: {
+      darwin: ['Backspace', 'Delete'],
+      linux: ['Delete'],
+      win32: ['Delete']
+    },
+    allowBareKeybindings: true
+  },
+  {
     id: 'terminal.clearPaneTitle',
     title: 'Clear Pane Title',
     group: 'Terminal Panes',

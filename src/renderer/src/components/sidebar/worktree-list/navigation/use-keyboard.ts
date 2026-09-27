@@ -6,6 +6,7 @@ import { activateWorktreeFromSidebar } from '@/lib/sidebar-worktree-activation'
 import { focusRuntimeTerminalSurface } from '@/runtime/sync-runtime-graph'
 import { hasVisibleOverlay } from '@/lib/visible-overlay'
 import type { ExecutionHostId } from '../../../../../../shared/execution-host'
+import type { Worktree } from '../../../../../../shared/worktree/types'
 import { getShortcutPlatform } from '@/lib/shortcut-platform'
 import { keybindingMatchesAction } from '../../../../../../shared/keybindings'
 import type { HostSectionRow } from '../../host-section-rows'
@@ -18,6 +19,7 @@ import {
   resolveCycledWorktreeId
 } from '../../worktree-keyboard-cycle'
 import { findPreferredRenderRowIndexForWorktreeIdentity } from './render-row-lookup'
+import { markWorkspacesDone, type MarkDoneTarget } from './mark-done'
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -49,6 +51,7 @@ export function useWorktreeListKeyboardNavigation(args: {
   scrollRef: React.RefObject<HTMLDivElement | null>
   activeModal: string
   markDirectScrollInput: () => void
+  selectedWorktrees: readonly Worktree[]
 }) {
   const {
     rows,
@@ -59,7 +62,8 @@ export function useWorktreeListKeyboardNavigation(args: {
     virtualizer,
     scrollRef,
     activeModal,
-    markDirectScrollInput
+    markDirectScrollInput,
+    selectedWorktrees
   } = args
   const keybindings = useAppStore((s) => s.keybindings)
 
@@ -161,6 +165,29 @@ export function useWorktreeListKeyboardNavigation(args: {
       ) {
         return
       }
+      if (
+        !e.repeat &&
+        keybindingMatchesAction('workspace.markDone', e, getShortcutPlatform(), keybindings)
+      ) {
+        const state = useAppStore.getState()
+        // Why: a multi-row selection is what the right-click status menu acts on. Otherwise the
+        // target is the active row, which arrows move; hover (the delete shortcut's target) is a mouse signal.
+        const targets: readonly MarkDoneTarget[] =
+          selectedWorktrees.length > 1
+            ? selectedWorktrees
+            : state.activeWorktreeId
+              ? [
+                  {
+                    id: state.activeWorktreeId,
+                    hostId: state.activeWorkspaceExecutionHostId ?? undefined
+                  }
+                ]
+              : []
+        if (markWorkspacesDone(state, targets)) {
+          e.preventDefault()
+          return
+        }
+      }
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         // The focused DOM node owns navigation, including while a new terminal mounts.
         e.currentTarget.setAttribute('data-keyboard-navigation', '')
@@ -185,7 +212,7 @@ export function useWorktreeListKeyboardNavigation(args: {
         markDirectScrollInput()
       }
     },
-    [activeModal, markDirectScrollInput, navigateWorktree]
+    [activeModal, keybindings, markDirectScrollInput, navigateWorktree, selectedWorktrees]
   )
 
   return { handleContainerKeyDown }
