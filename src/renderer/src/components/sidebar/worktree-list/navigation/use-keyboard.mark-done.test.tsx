@@ -341,6 +341,24 @@ describe('Delete on the focused workspace list', () => {
     ])
   })
 
+  it('ignores the one-row selection a plain click leaves behind', () => {
+    const state = setState([worktree('a', 'in-progress'), worktree('b', 'in-progress')])
+    // Clicking a leaves it selected; arrowing to b makes b active without touching the selection.
+    const { list } = renderList({
+      activeWorktreeId: 'b',
+      selectedWorktrees: [worktree('a', 'in-progress')]
+    })
+
+    press(list, 'Delete')
+
+    expect(state.updateWorktreeMeta).toHaveBeenCalledTimes(1)
+    expect(state.updateWorktreeMeta).toHaveBeenCalledWith(
+      'b',
+      { workspaceStatus: 'completed' },
+      expect.anything()
+    )
+  })
+
   it('does nothing when no selected row is In progress', () => {
     const selected = [worktree('b', 'in-review'), worktree('c', 'completed')]
     const state = setState([worktree('a', 'in-progress'), ...selected])
