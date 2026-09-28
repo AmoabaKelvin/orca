@@ -19,11 +19,6 @@ export function getPiSubagentRosterSetupSourceLines(): string[] {
     '    const runnerExitListener = (event: unknown) => lifecycleState.onRunnerExit?.(event)',
     '    lifecycleState.runnerExitListener = runnerExitListener',
     "    piEventBus.on('subagent:process-terminal', runnerExitListener)",
-    '  }',
-    '  function resetSubagentRoster(): void {',
-    '    lifecycleState.active.clear()',
-    '    lifecycleState.exited?.clear()',
-    '    lifecycleState.waiting = false',
     '  }'
   ]
 }
