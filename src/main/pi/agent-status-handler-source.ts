@@ -136,16 +136,14 @@ export function getPiAgentStatusHandlerSourceLines(kind: PiAgentKind): string[] 
     ...getPiSubagentRosterSetupSourceLines(),
     ...(kind !== 'pi'
       ? [
-          "  pi.on('session_shutdown', () => { lifecycleState.active.clear(); lifecycleState.exited?.clear(); lifecycleState.waiting = false; resetPostQueue(); clearPendingAgentEndCheck() })"
+          "  pi.on('session_shutdown', () => { resetSubagentRoster(); resetPostQueue(); clearPendingAgentEndCheck() })"
         ]
       : []),
     ...(kind !== 'prime-agent'
       ? [
           "  pi.on('session_switch', (_event, ctx) => {",
           '    if (!isOmpRuntime()) return',
-          '    lifecycleState.active.clear()',
-          '    lifecycleState.exited?.clear()',
-          '    lifecycleState.waiting = false',
+          '    resetSubagentRoster()',
           '    resetPostQueue()',
           '    clearPendingAgentEndCheck()',
           '    updateRuntimeOmpSessionMetadata(ctx)',
@@ -164,7 +162,9 @@ export function getPiAgentStatusHandlerSourceLines(kind: PiAgentKind): string[] 
     `  onStatus('agent_start', (${bareCtxParams}) => {`,
     ...captureSessionMetadata,
     '    clearPendingAgentEndCheck()',
-    '    lifecycleState.waiting = false',
+    // Why: OMP has no end frame for a child it lost track of; a new root run drops such ids.
+    '    if (isOmpRuntime()) resetSubagentRoster()',
+    '    else lifecycleState.waiting = false',
     '    runGeneration += 1',
     // Why: a turn cannot begin under a dialog holding input focus, so this is the one
     // boundary that can recover a modal whose close never arrived.

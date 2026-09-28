@@ -19,12 +19,17 @@ export function getPiSubagentRosterSetupSourceLines(): string[] {
     '    const runnerExitListener = (event: unknown) => lifecycleState.onRunnerExit?.(event)',
     '    lifecycleState.runnerExitListener = runnerExitListener',
     "    piEventBus.on('subagent:process-terminal', runnerExitListener)",
+    '  }',
+    '  function resetSubagentRoster(): void {',
+    '    lifecycleState.active.clear()',
+    '    lifecycleState.exited?.clear()',
+    '    lifecycleState.waiting = false',
     '  }'
   ]
 }
 
-// Expects post() and postAgentEndOnce() from the handler scope; the latter prunes
-// exited runners before deciding whether children still hold the pane.
+// Expects post(), ownsPaneStatus, the run generations and postAgentEndOnce() from the handler scope;
+// the latter prunes exited runners before deciding whether children still hold the pane.
 export function getPiSubagentRosterEventSourceLines(): string[] {
   return [
     // Why: a run that reports its own completion does so ~150ms after its runner exits;
@@ -37,7 +42,18 @@ export function getPiSubagentRosterEventSourceLines(): string[] {
     "    const id = typeof record.id === 'string' && record.id ? record.id : typeof record.runId === 'string' ? record.runId : ''",
     '    const status = forcedStatus ?? (event as { status?: unknown }).status',
     '    if (!id) return',
-    "    if (status === 'started') { lifecycleState.active.add(id); post('agent_start'); return }",
+    // Why: OMP task sessions run their own copy of this extension; only the pane's root copy tracks children.
+    '    if (isOmpRuntime() && !ownsPaneStatus) return',
+    "    if (status === 'started') {",
+    '      lifecycleState.active.add(id)',
+    // Why: a child starting after the root run ended (OMP wake turns) owes the pane a fresh done.
+    '      if (endedRunGeneration === runGeneration) {',
+    '        lifecycleState.waiting = true',
+    '        completionPostedGeneration = -1',
+    '      }',
+    "      post('agent_start')",
+    '      return',
+    '    }',
     "    if (status !== 'completed' && status !== 'failed' && status !== 'aborted') return",
     '    lifecycleState.active.delete(id)',
     '    lifecycleState.exited?.delete(id)',
