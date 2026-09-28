@@ -252,13 +252,24 @@ describe('OMP subagent settlement', () => {
 
   it("ignores children seen by an OMP task session's copy of the extension", async () => {
     const harness = createAgentStatusExtensionHarness({ kind: 'omp' })
-    await harness.callHook('session_start', {}, ompSession('root'))
-    harness.reload()
 
     await harness.callHook('agent_start', {}, ompSession('child', '/sessions/root.jsonl'))
     await lifecycle(harness, 'grandchild', 'started')
     await lifecycle(harness, 'grandchild', 'completed')
 
     expect(harness.fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps OMP pane ownership across an extension reload', async () => {
+    const harness = createAgentStatusExtensionHarness({ kind: 'omp' })
+    await harness.callHook('session_start', {}, ompSession('root'))
+    await hook(harness, 'agent_start')
+    await lifecycle(harness, 'child-1', 'started')
+    await hook(harness, 'agent_end')
+    harness.reload()
+
+    await lifecycle(harness, 'child-1', 'completed')
+
+    expect(postedHookNames(harness.fetchMock).at(-1)).toBe('agent_end')
   })
 })
