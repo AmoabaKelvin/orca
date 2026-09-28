@@ -267,6 +267,7 @@ describe('OMP subagent settlement', () => {
     await lifecycle(harness, 'child-1', 'started')
     await hook(harness, 'agent_end')
     harness.reload()
+    expect(postedHookNames(harness.fetchMock)).not.toContain('agent_end')
 
     await lifecycle(harness, 'child-1', 'completed')
 
