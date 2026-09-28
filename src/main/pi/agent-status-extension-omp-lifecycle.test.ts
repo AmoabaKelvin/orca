@@ -247,6 +247,16 @@ describe('OMP subagent settlement', () => {
     expect(postedHookNames(harness.fetchMock)).not.toContain('agent_end')
   })
 
+  it('settles a child woken before the resumed root has run a turn', async () => {
+    const harness = createAgentStatusExtensionHarness({ kind: 'omp' })
+
+    await harness.callHook('session_start', {}, ompSession('root'))
+    await lifecycle(harness, 'revived', 'started')
+    await lifecycle(harness, 'revived', 'completed')
+
+    expect(postedHookNames(harness.fetchMock)).toEqual(['agent_start', 'agent_end'])
+  })
+
   it("ignores children seen by an OMP task session's copy of the extension", async () => {
     const harness = createAgentStatusExtensionHarness({ kind: 'omp' })
 

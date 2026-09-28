@@ -41,8 +41,8 @@ export function getPiSubagentRosterEventSourceLines(): string[] {
     '    if (isOmpRuntime() && !lifecycleState.ownsPane) return',
     "    if (status === 'started') {",
     '      lifecycleState.active.add(id)',
-    // Why: a child starting after the current run's done was posted (OMP wake turns) owes the pane a fresh one.
-    '      if (completionPostedGeneration === runGeneration) {',
+    // Why: a child starting after the run's done, or before OMP's first run (OMP never re-runs this factory), owes a fresh done.
+    '      if (completionPostedGeneration === runGeneration || (isOmpRuntime() && runGeneration === 0)) {',
     '        lifecycleState.waiting = true',
     '        completionPostedGeneration = -1',
     '      }',
