@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   _internals,
   createCodexAccountStateDb,
@@ -12,8 +14,15 @@ import {
 
 const HOME = '/codex-accounts/account-1/home'
 
+// Why: fails closed if a regression bypasses the fake session — never the real codex or ~/.codex.
 function buildInvocation(): CodexAppServerInvocation {
-  return { command: 'codex', args: ['app-server'], cliPath: 'codex', timeoutMs: 1_000 }
+  return {
+    command: '/nonexistent/orca-test-codex',
+    args: ['app-server'],
+    cliPath: null,
+    env: { CODEX_HOME: join(tmpdir(), 'orca-test-nonexistent-codex-home') },
+    timeoutMs: 1_000
+  }
 }
 
 /** Runs the heal body against a fake app-server that answers thread/read. */
@@ -148,6 +157,29 @@ describe('healCodexAccountSessionIndex', () => {
     expect(readThreadIds).toEqual(['broken'])
   })
 
+  it('remembers a refused thread only for the home that refused it', async () => {
+    const { runSession, readThreadIds } = fakeAppServer((threadId) => {
+      if (readThreadIds.length === 1) {
+        throw new Error(`codex app-server thread/read failed: invalid rollout ${threadId}`)
+      }
+    })
+    const dependencies = {
+      readIndexedThreadIds: () => new Set<string>(),
+      buildInvocation,
+      runSession
+    }
+
+    await healCodexAccountSessionIndex(HOME, bridged('shared'), dependencies)
+    const other = await healCodexAccountSessionIndex(
+      '/codex-accounts/account-2/home',
+      bridged('shared'),
+      dependencies
+    )
+
+    expect(other.healedThreads).toBe(1)
+    expect(readThreadIds).toEqual(['shared', 'shared'])
+  })
+
   it('counts a rollout Codex cannot find as missing and does not reread it', async () => {
     const { runSession, readThreadIds } = fakeAppServer(() => {
       throw new Error('codex app-server thread/read failed: no rollout found for thread id gone')
@@ -190,6 +222,21 @@ describe('healCodexAccountSessionIndex', () => {
     expect(second.outcome).toBe('completed')
     expect(readThreadIds).toEqual(['a'])
     warn.mockRestore()
+  })
+
+  it('reports a session that fails during quit as stopped, not unsupported', async () => {
+    let stopping = false
+    const summary = await healCodexAccountSessionIndex(HOME, bridged('a'), {
+      readIndexedThreadIds: () => new Set(),
+      buildInvocation,
+      runSession: async () => {
+        stopping = true
+        throw new CodexAppServerUnsupportedError('app-server killed during quit')
+      },
+      shouldStop: () => stopping
+    })
+
+    expect(summary.outcome).toBe('stopped')
   })
 
   it('aborts rather than writing off a thread while a live Codex holds the database', async () => {
