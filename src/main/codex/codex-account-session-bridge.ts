@@ -63,7 +63,6 @@ async function isReadyForBridgedHistory(
   ) {
     if (
       !sourceCodexHomePaths.some(hasSessionRollouts) ||
-      stopping ||
       !(await dependencies.createStateDb(targetCodexHomePath))
     ) {
       return false

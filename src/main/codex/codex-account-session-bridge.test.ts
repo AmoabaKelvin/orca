@@ -153,6 +153,26 @@ describe('bridgeCodexSessionsIntoAccountHome', () => {
     expect(summary).toEqual({ scannedFiles: 0, linkedFiles: 0, bridgedThreads: new Map() })
   })
 
+  it('does not hand a rollout it failed to link to the index heal', async () => {
+    const systemHome = join(workspaceRoot, 'system')
+    const targetHome = join(workspaceRoot, 'account')
+    writeRollout(systemHome, ROLLOUT_A, 'session\n')
+    writeRollout(systemHome, ROLLOUT_B, 'session\n')
+    // A file where the target's day directory belongs makes that one link fail.
+    mkdirSync(join(targetHome, 'sessions', '2026', '07'), { recursive: true })
+    writeFileSync(join(targetHome, 'sessions', '2026', '07', '20'), 'not a directory')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const summary = await bridgeCodexSessionsIntoAccountHome({
+      targetCodexHomePath: targetHome,
+      sourceCodexHomePaths: [systemHome]
+    })
+
+    warn.mockRestore()
+    expect(summary.linkedFiles).toBe(1)
+    expect(summary.bridgedThreads).toEqual(new Map([[THREAD_B, '2026-07-21T10-00-00']]))
+  })
+
   it('skips a source home that has no sessions tree', async () => {
     const targetHome = join(workspaceRoot, 'account')
     const summary = await bridgeCodexSessionsIntoAccountHome({
@@ -247,6 +267,16 @@ describe('startCodexAccountSessionBridgeInBackground', () => {
     expect(createStateDb).toHaveBeenCalledTimes(1)
   })
 
+  it('does not start Codex on an empty home when no source has history', async () => {
+    const createStateDb = vi.fn(async () => true)
+
+    await startBridge(join(workspaceRoot, 'account'), [join(workspaceRoot, 'system')], {
+      createStateDb
+    })
+
+    expect(createStateDb).not.toHaveBeenCalled()
+  })
+
   it('does not link history when Codex could not create the state DB', async () => {
     const systemHome = join(workspaceRoot, 'system')
     const targetHome = join(workspaceRoot, 'account')
@@ -337,6 +367,34 @@ describe('startCodexAccountSessionBridgeInBackground', () => {
         shouldStop: expect.any(Function)
       }
     )
+  })
+
+  it('links nothing when the app quits while Codex creates the state DB', async () => {
+    const systemHome = join(workspaceRoot, 'system')
+    const targetHome = join(workspaceRoot, 'account')
+    writeRollout(systemHome, ROLLOUT_A, 'session\n')
+
+    await startBridge(targetHome, [systemHome], {
+      createStateDb: async (home) => {
+        writeCodexStateDbBackfillStatus(home, 'complete')
+        stopCodexAccountSessionBridges()
+        return true
+      }
+    })
+
+    expect(existsSync(rolloutPath(targetHome, ROLLOUT_A))).toBe(false)
+    expect(healIndexStub).not.toHaveBeenCalled()
+  })
+
+  it('does not start Codex on a new home after the app quits', async () => {
+    const systemHome = join(workspaceRoot, 'system')
+    writeRollout(systemHome, ROLLOUT_A, 'session\n')
+    const createStateDb = vi.fn(async () => true)
+    stopCodexAccountSessionBridges()
+
+    await startBridge(join(workspaceRoot, 'account'), [systemHome], { createStateDb })
+
+    expect(createStateDb).not.toHaveBeenCalled()
   })
 
   it('stops indexing and starts no new bridge once the app quits', async () => {
