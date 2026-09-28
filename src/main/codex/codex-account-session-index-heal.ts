@@ -59,12 +59,13 @@ export async function createCodexAccountStateDb(
 }
 
 /**
- * Indexes the bridged threads Codex has not indexed yet. Diffing against the
- * state DB on every pass makes an interrupted heal resume on the next launch.
+ * Indexes the bridged threads Codex has not indexed yet, newest rollout first.
+ * Diffing against the state DB on every pass makes an interrupted heal resume
+ * on the next launch.
  */
 export async function healCodexAccountSessionIndex(
   codexHomePath: string,
-  bridgedThreadIds: ReadonlySet<string>,
+  bridgedThreads: ReadonlyMap<string, string>,
   options: CodexAccountSessionIndexHealOptions = {}
 ): Promise<CodexAccountSessionIndexHealSummary> {
   const summary: CodexAccountSessionIndexHealSummary = {
@@ -73,7 +74,7 @@ export async function healCodexAccountSessionIndex(
     missingThreads: 0,
     failedThreads: 0
   }
-  if (bridgedThreadIds.size === 0) {
+  if (bridgedThreads.size === 0) {
     return summary
   }
   // Why: with no DB in the home, Codex keeps none (older CLI) or uses a
@@ -85,9 +86,12 @@ export async function healCodexAccountSessionIndex(
   const homeKey = normalizeRuntimePathForComparison(codexHomePath)
   const failed = failedThreadIdsByHome.get(homeKey) ?? new Set<string>()
   failedThreadIdsByHome.set(homeKey, failed)
-  const pending = [...bridgedThreadIds]
-    .filter((threadId) => !indexed.has(threadId) && !failed.has(threadId))
-    .map((threadId) => ({ threadId }))
+  // Why: a large history takes minutes to index, and /resume hides unindexed
+  // threads once a directory has any indexed one, so recent work goes first.
+  const pending = [...bridgedThreads]
+    .filter(([threadId]) => !indexed.has(threadId) && !failed.has(threadId))
+    .sort(([, left], [, right]) => (left < right ? 1 : left > right ? -1 : 0))
+    .map(([threadId]) => ({ threadId }))
   if (pending.length === 0) {
     return summary
   }

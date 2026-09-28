@@ -29,8 +29,8 @@ import {
 export type CodexAccountSessionBridgeSummary = {
   scannedFiles: number
   linkedFiles: number
-  /** Threads whose rollout is present in the target home via this bridge. */
-  bridgedThreadIds: Set<string>
+  /** Thread id -> rollout timestamp for every rollout present in the target home via this bridge. */
+  bridgedThreads: Map<string, string>
 }
 
 const backgroundBridgeTasksByTargetHome = new Map<string, Promise<void>>()
@@ -119,7 +119,7 @@ export function startCodexAccountSessionBridgeInBackground(
         return
       }
       const summary = await bridgeCodexSessionsIntoAccountHome(args)
-      await dependencies.healIndex(args.targetCodexHomePath, summary.bridgedThreadIds, {
+      await dependencies.healIndex(args.targetCodexHomePath, summary.bridgedThreads, {
         shouldStop: () => stopping
       })
     })
@@ -152,7 +152,7 @@ export async function bridgeCodexSessionsIntoAccountHome(args: {
   const summary: CodexAccountSessionBridgeSummary = {
     scannedFiles: 0,
     linkedFiles: 0,
-    bridgedThreadIds: new Set()
+    bridgedThreads: new Map()
   }
   const targetSessionsRoot = join(args.targetCodexHomePath, 'sessions')
   for (const sourceHomePath of dedupeSourceHomes(
@@ -176,9 +176,9 @@ export async function bridgeCodexSessionsIntoAccountHome(args: {
       if (result === 'linked') {
         summary.linkedFiles += 1
       }
-      const threadId = parseCodexRolloutThreadId(sourceFilePath)?.threadId
-      if (result !== 'failed' && threadId) {
-        summary.bridgedThreadIds.add(threadId)
+      const rollout = parseCodexRolloutThreadId(sourceFilePath)
+      if (result !== 'failed' && rollout) {
+        summary.bridgedThreads.set(rollout.threadId, rollout.rolloutStamp)
       }
     }
   }

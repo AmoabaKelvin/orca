@@ -80,7 +80,10 @@ describe('bridgeCodexSessionsIntoAccountHome', () => {
     expect(summary).toEqual({
       scannedFiles: 2,
       linkedFiles: 2,
-      bridgedThreadIds: new Set([THREAD_A, THREAD_B])
+      bridgedThreads: new Map([
+        [THREAD_A, '2026-07-20T10-00-00'],
+        [THREAD_B, '2026-07-21T10-00-00']
+      ])
     })
     expect(readFileSync(rolloutPath(targetHome, ROLLOUT_A), 'utf-8')).toBe('system session\n')
     expect(readFileSync(rolloutPath(targetHome, ROLLOUT_B), 'utf-8')).toBe('account a session\n')
@@ -134,7 +137,7 @@ describe('bridgeCodexSessionsIntoAccountHome', () => {
     expect(second).toEqual({
       scannedFiles: 1,
       linkedFiles: 0,
-      bridgedThreadIds: new Set([THREAD_A])
+      bridgedThreads: new Map([[THREAD_A, '2026-07-20T10-00-00']])
     })
   })
 
@@ -147,7 +150,7 @@ describe('bridgeCodexSessionsIntoAccountHome', () => {
       sourceCodexHomePaths: [targetHome, targetHome]
     })
 
-    expect(summary).toEqual({ scannedFiles: 0, linkedFiles: 0, bridgedThreadIds: new Set() })
+    expect(summary).toEqual({ scannedFiles: 0, linkedFiles: 0, bridgedThreads: new Map() })
   })
 
   it('skips a source home that has no sessions tree', async () => {
@@ -157,7 +160,7 @@ describe('bridgeCodexSessionsIntoAccountHome', () => {
       sourceCodexHomePaths: [join(workspaceRoot, 'missing')]
     })
 
-    expect(summary).toEqual({ scannedFiles: 0, linkedFiles: 0, bridgedThreadIds: new Set() })
+    expect(summary).toEqual({ scannedFiles: 0, linkedFiles: 0, bridgedThreads: new Map() })
   })
 })
 
@@ -268,9 +271,13 @@ describe('startCodexAccountSessionBridgeInBackground', () => {
     await startBridge(targetHome, [systemHome], { createStateDb })
 
     expect(readFileSync(rolloutPath(targetHome, compressed), 'utf-8')).toBe('compressed\n')
-    expect(healIndexStub).toHaveBeenCalledWith(targetHome, new Set([THREAD_A]), {
-      shouldStop: expect.any(Function)
-    })
+    expect(healIndexStub).toHaveBeenCalledWith(
+      targetHome,
+      new Map([[THREAD_A, '2026-07-20T10-00-00']]),
+      {
+        shouldStop: expect.any(Function)
+      }
+    )
   })
 
   it('skips linking into a state DB that predates backfill tracking', async () => {
@@ -323,9 +330,13 @@ describe('startCodexAccountSessionBridgeInBackground', () => {
 
     await startBridge(targetHome, [systemHome])
 
-    expect(healIndexStub).toHaveBeenCalledWith(targetHome, new Set([THREAD_A]), {
-      shouldStop: expect.any(Function)
-    })
+    expect(healIndexStub).toHaveBeenCalledWith(
+      targetHome,
+      new Map([[THREAD_A, '2026-07-20T10-00-00']]),
+      {
+        shouldStop: expect.any(Function)
+      }
+    )
   })
 
   it('stops indexing and starts no new bridge once the app quits', async () => {
