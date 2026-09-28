@@ -204,31 +204,38 @@ describe('OMP subagent settlement', () => {
   )
 
   it.each(OMP_RUNTIME_CASES)(
-    'drops a child that never settled when %s starts its next run',
+    'keeps %s working while a child outlives the next run',
     async (_name, args) => {
       const harness = createAgentStatusExtensionHarness(args)
 
       await hook(harness, 'agent_start')
-      await lifecycle(harness, 'leaked', 'started')
+      await lifecycle(harness, 'helper', 'started')
       await hook(harness, 'agent_end')
       await hook(harness, 'agent_start')
       await hook(harness, 'agent_end')
+      expect(postedHookNames(harness.fetchMock)).not.toContain('agent_end')
 
+      await lifecycle(harness, 'helper', 'completed')
       expect(postedHookNames(harness.fetchMock).at(-1)).toBe('agent_end')
     }
   )
 
-  it('keeps OMP working until a child still running at the terminal end finishes', async () => {
-    const harness = createAgentStatusExtensionHarness({ kind: 'omp' })
+  it.each(OMP_RUNTIME_CASES)(
+    'keeps %s working while a late child outlives the next run',
+    async (_name, args) => {
+      const harness = createAgentStatusExtensionHarness(args)
 
-    await hook(harness, 'agent_start')
-    await lifecycle(harness, 'helper', 'started')
-    await hook(harness, 'agent_end')
-    expect(postedHookNames(harness.fetchMock)).not.toContain('agent_end')
+      await hook(harness, 'agent_start')
+      await hook(harness, 'agent_end')
+      await lifecycle(harness, 'wake-1', 'started')
+      await hook(harness, 'agent_start')
+      await hook(harness, 'agent_end')
+      expect(postedHookNames(harness.fetchMock).at(-1)).not.toBe('agent_end')
 
-    await lifecycle(harness, 'helper', 'completed')
-    expect(postedHookNames(harness.fetchMock).at(-1)).toBe('agent_end')
-  })
+      await lifecycle(harness, 'wake-1', 'completed')
+      expect(postedHookNames(harness.fetchMock).at(-1)).toBe('agent_end')
+    }
+  )
 
   it('does not settle OMP when a child finishes mid-run', async () => {
     const harness = createAgentStatusExtensionHarness({ kind: 'omp' })
