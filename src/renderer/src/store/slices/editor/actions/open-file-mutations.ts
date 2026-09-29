@@ -18,6 +18,7 @@ export function createOpenFileMutations(
   | 'setPendingLiveDiskVerification'
   | 'clearSelfMoveEcho'
   | 'clearUntitled'
+  | 'setUntitledFileHasSavedContent'
 > {
   return {
     setActiveFile: (fileId) => {
@@ -193,6 +194,19 @@ export function createOpenFileMutations(
     clearUntitled: (fileId) =>
       set((s) => ({
         openFiles: s.openFiles.map((f) => (f.id === fileId ? { ...f, isUntitled: undefined } : f))
-      }))
+      })),
+    setUntitledFileHasSavedContent: (fileId, hasContent) =>
+      set((s) => {
+        const deleteUntouchedOnClose = hasContent ? false : undefined
+        const file = s.openFiles.find((f) => f.id === fileId)
+        if (!file?.isUntitled || file.deleteUntouchedOnClose === deleteUntouchedOnClose) {
+          return s
+        }
+        return {
+          openFiles: s.openFiles.map((f) =>
+            f.id === fileId ? { ...f, deleteUntouchedOnClose } : f
+          )
+        }
+      })
   }
 }

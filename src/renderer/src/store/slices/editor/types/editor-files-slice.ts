@@ -95,6 +95,8 @@ export type EditorFilesSlice = {
   setRestoredEditorOwnerMigrationPending: (fileId: string, pending: boolean) => boolean
   reparentRestoredEditorFileOwner: (args: RestoredEditorOwnerMigration) => RestoredEditorOwnerResult
   clearUntitled: (fileId: string) => void
+  /** Records whether an untitled file's last save left content on disk; closing never deletes one that did. */
+  setUntitledFileHasSavedContent: (fileId: string, hasContent: boolean) => void
   openDiff: (
     worktreeId: string,
     filePath: string,

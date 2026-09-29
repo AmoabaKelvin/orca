@@ -4,9 +4,9 @@ import { useAppStore } from '../store'
 import {
   ORCA_EDITOR_REQUEST_FILE_CLOSE_EVENT,
   ORCA_EDITOR_SAVE_AND_CLOSE_EVENT,
-  type EditorRequestFileCloseDetail,
-  requestEditorSaveQuiesce
+  type EditorRequestFileCloseDetail
 } from './editor/editor-autosave'
+import { discardEditorFileChangesAndClose } from './editor/discard-editor-file-changes'
 import { translate } from '@/i18n/i18n'
 import type { TerminalEditorCloseQueueController } from './use-terminal-editor-close-queue'
 
@@ -15,10 +15,8 @@ export function useTerminalEditorCloseDialogActions(
 ) {
   const {
     advanceEditorCloseQueue,
-    closeFile,
     inFlightSaveFileIdRef,
     isClosingRef,
-    markFileDirty,
     pendingEditorCloseQueueRef,
     queueEditorCloseRequests,
     releaseCloseDialogGuardAfterDebounce,
@@ -93,26 +91,14 @@ export function useTerminalEditorCloseDialogActions(
     isClosingRef.current = true
     const fileId = saveDialogFileId
     setSaveDialogFileId(null)
-    try {
-      await requestEditorSaveQuiesce({ fileId })
-    } catch (error) {
-      console.warn('Autosave quiesce failed before discard', error)
-    }
-    markFileDirty(fileId, false)
-    closeFile(fileId)
+    await discardEditorFileChangesAndClose(fileId)
     pendingEditorCloseQueueRef.current = pendingEditorCloseQueueRef.current.filter(
       (id) => id !== fileId
     )
     advanceEditorCloseQueue()
     releaseCloseDialogGuardAfterDebounce()
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- controller refs and setters preserve their original stable identities.
-  }, [
-    advanceEditorCloseQueue,
-    closeFile,
-    markFileDirty,
-    releaseCloseDialogGuardAfterDebounce,
-    saveDialogFileId
-  ])
+  }, [advanceEditorCloseQueue, releaseCloseDialogGuardAfterDebounce, saveDialogFileId])
 
   const handleSaveDialogCancel = useCallback(() => {
     if (isClosingRef.current) {
