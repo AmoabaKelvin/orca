@@ -114,4 +114,38 @@ describe('AgentHookServer removed-worktree retirement', () => {
       server.stop()
     }
   })
+
+  it('keeps a pane whose live row now belongs to another owner', async () => {
+    const server = new AgentHookServer()
+    await server.start({ env: 'production', userDataPath })
+    try {
+      const reused = makePaneKey('tab-reused', '77777777-7777-4777-8777-777777777777')
+      const working = { state: 'working', prompt: 'live', agentType: 'codex' } as const
+      // The removed worktree's SSH agent leaves a commitment behind across a disconnect clear.
+      server.ingestRemote(
+        {
+          paneKey: reused,
+          tabId: 'tab-reused',
+          worktreeId: REMOVED,
+          launchToken: 'old',
+          payload: working
+        },
+        'user@box'
+      )
+      server.clearStatusEntriesForConnection('user@box')
+      // The same pane now runs a local agent for another worktree, with no launch token.
+      server.ingestTerminalStatus({
+        paneKey: reused,
+        worktreeId: 'repo-1::/workspace/kept',
+        connectionId: null,
+        payload: working
+      })
+
+      server.dropStatusEntriesForRemovedWorktree(REMOVED, 'ssh:user%40box')
+
+      expect(server.getStatusSnapshot().map((entry) => entry.paneKey)).toContain(reused)
+    } finally {
+      server.stop()
+    }
+  })
 })

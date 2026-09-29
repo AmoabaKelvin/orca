@@ -184,24 +184,30 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
     if (host !== ALL_EXECUTION_HOSTS_SCOPE && (!parsed || parsed.kind === 'runtime')) {
       return
     }
-    const paneKeys = new Set<string>()
-    const claims = [
-      ...this.state.lastStatusByPaneKey.values(),
-      ...this.persistedAuthorityCommitmentsByPaneKey.values()
-    ]
-    for (const claim of claims) {
-      const onHost =
-        !parsed ||
+    const ownedByRemoved = (claim: { connectionId: string | null; worktreeId?: string }): boolean =>
+      Boolean(claim.worktreeId && worktreeIdsEqual(claim.worktreeId, worktreeId)) &&
+      (!parsed ||
         (parsed.kind === 'ssh'
           ? claim.connectionId === parsed.targetId
           : // Why: WSL panes are local; their relay only stamps transport provenance.
-            claim.connectionId === null || isWslHookRelayConnectionId(claim.connectionId))
-      if (onHost && claim.worktreeId && worktreeIdsEqual(claim.worktreeId, worktreeId)) {
+            claim.connectionId === null || isWslHookRelayConnectionId(claim.connectionId)))
+    const paneKeys = new Set<string>()
+    for (const claim of [
+      ...this.state.lastStatusByPaneKey.values(),
+      ...this.persistedAuthorityCommitmentsByPaneKey.values()
+    ]) {
+      if (ownedByRemoved(claim)) {
         paneKeys.add(claim.paneKey)
       }
     }
     for (const paneKey of paneKeys) {
-      const hadStatus = this.state.lastStatusByPaneKey.has(paneKey)
+      const row = this.state.lastStatusByPaneKey.get(paneKey)
+      const commitment = this.persistedAuthorityCommitmentsByPaneKey.get(paneKey)
+      // Why: a commitment can outlive its row, and the pane may since report for another owner.
+      if ((row && !ownedByRemoved(row)) || (commitment && !ownedByRemoved(commitment))) {
+        continue
+      }
+      const hadStatus = row !== undefined
       // Why a pane fence, not a tab one: a surviving same-id host keeps the shared tab.
       this.retirePaneAuthority(paneKey)
       if (hadStatus) {
