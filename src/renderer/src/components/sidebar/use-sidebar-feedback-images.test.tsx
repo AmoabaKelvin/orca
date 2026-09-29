@@ -4,6 +4,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FeedbackImageDraft } from '@/lib/feedback-image-attachments'
+import { toast } from 'sonner'
 import { useSidebarFeedbackImages } from './use-sidebar-feedback-images'
 
 const { readFeedbackImageFiles } = vi.hoisted(() => ({ readFeedbackImageFiles: vi.fn() }))
@@ -13,7 +14,7 @@ vi.mock('@/lib/feedback-image-attachments', async (importOriginal) => ({
   readFeedbackImageFiles
 }))
 
-vi.mock('sonner', () => ({ toast: { warning: vi.fn(), error: vi.fn() } }))
+vi.mock('sonner', () => ({ toast: { info: vi.fn(), warning: vi.fn(), error: vi.fn() } }))
 
 type HookResult = ReturnType<typeof useSidebarFeedbackImages>
 
@@ -80,7 +81,7 @@ describe('useSidebarFeedbackImages', () => {
     })
 
     await act(async () => {
-      finishFirstRead?.({ images: [draft('first', firstBytes)], errors: [] })
+      finishFirstRead?.({ images: [draft('first', firstBytes)], errors: [], notices: [] })
       await Promise.resolve()
       await Promise.resolve()
       // Still inside act: the first batch has committed to the ref, not to state.
@@ -89,5 +90,48 @@ describe('useSidebarFeedbackImages', () => {
     })
 
     expect(readFeedbackImageFiles).toHaveBeenNthCalledWith(2, [second], 1, firstBytes)
+  })
+
+  it('tells the user when an attachment was compressed to fit', async () => {
+    const notice = 'shot.png was compressed from 6.4 MB to 3.1 MB to fit the attachment limit.'
+    readFeedbackImageFiles.mockResolvedValue({
+      images: [draft('shot', 3_100_000)],
+      errors: [],
+      notices: [notice]
+    })
+
+    await act(async () => {
+      latest!.handleAddFiles([new File(['x'], 'shot.png', { type: 'image/png' })])
+    })
+
+    expect(toast.info).toHaveBeenCalledWith(notice)
+    expect(latest!.images.map((image) => image.bytes)).toEqual([3_100_000])
+  })
+
+  // Why: a batch still shrinking has no known size yet; reserving its raw file
+  // size would refuse the next screenshot even though room is left.
+  it('sizes a later add against the shrunk size, not the raw file size', async () => {
+    let finishShrink: ((value: unknown) => void) | undefined
+    readFeedbackImageFiles.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishShrink = resolve
+      })
+    )
+    readFeedbackImageFiles.mockReturnValue(new Promise(() => {}))
+    const retina = new File(['x'], 'retina.png', { type: 'image/png' })
+    Object.defineProperty(retina, 'size', { value: 6_400_000 })
+    const second = new File(['x'], 'second.png', { type: 'image/png' })
+
+    await act(async () => {
+      latest!.handleAddFiles([retina])
+      latest!.handleAddFiles([second])
+    })
+    expect(readFeedbackImageFiles).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      finishShrink?.({ images: [draft('retina', 2_100_000)], errors: [], notices: [] })
+    })
+
+    expect(readFeedbackImageFiles).toHaveBeenNthCalledWith(2, [second], 1, 2_100_000)
   })
 })
