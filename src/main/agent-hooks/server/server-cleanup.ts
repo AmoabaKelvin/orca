@@ -6,6 +6,13 @@ import {
 } from '../../../shared/agent-hook-listener/listener-state'
 import { AGENT_STATUS_2A_CURRENT_PRODUCER_MODE } from '../../../shared/agent-status-legacy-adapter'
 import type { AgentStatusCacheIdentity } from '../../../shared/agent-status-types'
+import {
+  ALL_EXECUTION_HOSTS_SCOPE,
+  parseExecutionHostId,
+  type ExecutionHostScope
+} from '../../../shared/execution-host'
+import { worktreeIdsEqual } from '../../../shared/worktree/id'
+import { isWslHookRelayConnectionId } from '../../../shared/wsl-hook-relay-contract'
 import type { EnrichedAgentHookEventPayload } from './server-types'
 import { AgentHookServerAuthorityFences } from './server-authority-fences'
 
@@ -168,6 +175,39 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
    *  different file. */
   protected hasLiveClaimsForPaneKey(paneKey: string): boolean {
     return paneHasStateClaims(this.state, paneKey)
+  }
+
+  /** Retire every pane a removed worktree owned on `host`; another host's panes, even in a shared tab, stay. */
+  dropStatusEntriesForRemovedWorktree(worktreeId: string, host?: ExecutionHostScope): void {
+    const parsed = host === ALL_EXECUTION_HOSTS_SCOPE ? null : parseExecutionHostId(host ?? 'local')
+    // Why: a runtime host keeps its own store, so no row here is its to retire.
+    if (host !== ALL_EXECUTION_HOSTS_SCOPE && (!parsed || parsed.kind === 'runtime')) {
+      return
+    }
+    const paneKeys = new Set<string>()
+    const claims = [
+      ...this.state.lastStatusByPaneKey.values(),
+      ...this.persistedAuthorityCommitmentsByPaneKey.values()
+    ]
+    for (const claim of claims) {
+      const onHost =
+        !parsed ||
+        (parsed.kind === 'ssh'
+          ? claim.connectionId === parsed.targetId
+          : // Why: WSL panes are local; their relay only stamps transport provenance.
+            claim.connectionId === null || isWslHookRelayConnectionId(claim.connectionId))
+      if (onHost && claim.worktreeId && worktreeIdsEqual(claim.worktreeId, worktreeId)) {
+        paneKeys.add(claim.paneKey)
+      }
+    }
+    for (const paneKey of paneKeys) {
+      const hadStatus = this.state.lastStatusByPaneKey.has(paneKey)
+      // Why a pane fence, not a tab one: a surviving same-id host keeps the shared tab.
+      this.retirePaneAuthority(paneKey)
+      if (hadStatus) {
+        this.emitPaneStatusCleared({ paneKey })
+      }
+    }
   }
 
   /** Clear statuses proven to belong to one lost SSH transport. */

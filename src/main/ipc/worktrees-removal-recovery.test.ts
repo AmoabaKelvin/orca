@@ -6,6 +6,8 @@ import { join } from 'node:path'
 import type { GitWorktreeInfo } from '../../shared/worktree/types'
 import type { RedactableSpan } from '../observability/redactor'
 import { _resetTracerForTests, setActiveSink } from '../observability/tracer'
+import { agentHookServer } from '../agent-hooks/server'
+import { makePaneKey } from '../../shared/stable-pane-id'
 import {
   ORIGINAL_PLATFORM,
   setPlatform,
@@ -158,15 +160,35 @@ describe('registerWorktreeHandlers', () => {
     store.getWorktreeMeta.mockReturnValue(makeWorktreeMeta({ hostId: 'local' }))
     mockKnownFeatureWorktree()
     removeWorktreeMock.mockResolvedValue({})
-
-    await handlers['worktrees:remove'](null, { worktreeId, hostId: 'local' })
-
-    expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local')
-    expect(advertisedUrlWatcherForgetWorktreeMock).not.toHaveBeenCalled()
-    expect(deleteWorktreeHistoryDirMock).not.toHaveBeenCalled()
-    expect(mainWindow.webContents.send).toHaveBeenCalledWith('worktrees:changed', {
-      repoId: 'repo-1'
+    // Both hosts' agents share one tab; only the removed host's pane may be retired.
+    const localPane = makePaneKey('tab-shared', '11111111-1111-4111-8111-111111111111')
+    const sshPane = makePaneKey('tab-shared', '22222222-2222-4222-8222-222222222222')
+    const payload = { state: 'working', prompt: 'stranded', agentType: 'codex' } as const
+    agentHookServer.ingestTerminalStatus({
+      paneKey: localPane,
+      tabId: 'tab-shared',
+      worktreeId,
+      connectionId: null,
+      payload
     })
+    agentHookServer.ingestRemote(
+      { paneKey: sshPane, tabId: 'tab-shared', worktreeId, payload },
+      'conn-1'
+    )
+
+    try {
+      await handlers['worktrees:remove'](null, { worktreeId, hostId: 'local' })
+
+      expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local')
+      expect(advertisedUrlWatcherForgetWorktreeMock).not.toHaveBeenCalled()
+      expect(deleteWorktreeHistoryDirMock).not.toHaveBeenCalled()
+      expect(mainWindow.webContents.send).toHaveBeenCalledWith('worktrees:changed', {
+        repoId: 'repo-1'
+      })
+      expect(agentHookServer.getStatusSnapshot().map((row) => row.paneKey)).toEqual([sshPane])
+    } finally {
+      agentHookServer.dropStatusEntriesByTabPrefix('tab-shared')
+    }
   })
 
   it('tombstones a cleanup-batch removal without scheduling singular sidecar writes', async () => {
