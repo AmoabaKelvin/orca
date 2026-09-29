@@ -177,7 +177,7 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
     return paneHasStateClaims(this.state, paneKey)
   }
 
-  /** Retire every pane a removed worktree owned on `host`; another host's panes, even in a shared tab, stay. */
+  /** Retire what a removed worktree owned on `host`: its panes, or just its claims on a pane another owner shares. */
   dropStatusEntriesForRemovedWorktree(worktreeId: string, host?: ExecutionHostScope): void {
     const parsed = host === ALL_EXECUTION_HOSTS_SCOPE ? null : parseExecutionHostId(host ?? 'local')
     // Why: a runtime host keeps its own store, so no row here is its to retire.
@@ -203,14 +203,27 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
     for (const paneKey of paneKeys) {
       const row = this.state.lastStatusByPaneKey.get(paneKey)
       const commitment = this.persistedAuthorityCommitmentsByPaneKey.get(paneKey)
-      // Why: a commitment can outlive its row, and the pane may since report for another owner.
-      if ((row && !ownedByRemoved(row)) || (commitment && !ownedByRemoved(commitment))) {
+      const rowOwned = row !== undefined && ownedByRemoved(row)
+      const commitmentOwned = commitment !== undefined && ownedByRemoved(commitment)
+      // Why: a commitment outlives its row, so one pane can hold two owners' claims; clear only ours.
+      if ((row && !rowOwned) || (commitment && !commitmentOwned)) {
+        if (commitmentOwned) {
+          this.revokeHydratedAuthorityForPaneKeys(new Set([paneKey]))
+        }
+        const deleted = rowOwned
+          ? this.deleteStatusEntry(paneKey, { preserveAuthority: true })
+          : null
+        if (deleted) {
+          this.commitStatusRowMutation(deleted, undefined)
+          this.notifyStatusChangeListeners()
+          this.emitPaneStatusCleared({ paneKey })
+        }
+        this.scheduleStatusPersist()
         continue
       }
-      const hadStatus = row !== undefined
       // Why a pane fence, not a tab one: a surviving same-id host keeps the shared tab.
       this.retirePaneAuthority(paneKey)
-      if (hadStatus) {
+      if (row) {
         this.emitPaneStatusCleared({ paneKey })
       }
     }
