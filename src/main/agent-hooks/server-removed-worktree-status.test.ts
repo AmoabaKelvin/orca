@@ -7,6 +7,7 @@ import { makePaneKey } from '../../shared/stable-pane-id'
 import { LEAF_1, LEAF_2, LEAF_3, LEAF_4, LEAF_5, recentTs } from './server.test-fixtures'
 
 const REMOVED = 'repo-1::/workspace/removed'
+const KEPT = 'repo-1::/workspace/kept'
 const LOCAL_PANE = makePaneKey('tab-local', LEAF_1)
 const WSL_PANE = makePaneKey('tab-wsl', LEAF_2)
 const SSH_PANE = makePaneKey('tab-ssh', LEAF_3)
@@ -42,7 +43,7 @@ describe('AgentHookServer removed-worktree retirement', () => {
           [LOCAL_PANE]: row(LOCAL_PANE, REMOVED, null),
           [WSL_PANE]: row(WSL_PANE, REMOVED, 'wsl:Ubuntu'),
           [SSH_PANE]: row(SSH_PANE, REMOVED, 'user@box'),
-          [OTHER_PANE]: row(OTHER_PANE, 'repo-1::/workspace/kept', null)
+          [OTHER_PANE]: row(OTHER_PANE, KEPT, null)
         }
       }),
       'utf8'
@@ -115,37 +116,57 @@ describe('AgentHookServer removed-worktree retirement', () => {
     }
   })
 
-  it('keeps a pane whose live row now belongs to another owner', async () => {
-    const server = new AgentHookServer()
-    await server.start({ env: 'production', userDataPath })
-    try {
-      const reused = makePaneKey('tab-reused', '77777777-7777-4777-8777-777777777777')
-      const working = { state: 'working', prompt: 'live', agentType: 'codex' } as const
-      // The removed worktree's SSH agent leaves a commitment behind across a disconnect clear.
-      server.ingestRemote(
-        {
-          paneKey: reused,
-          tabId: 'tab-reused',
-          worktreeId: REMOVED,
-          launchToken: 'old',
+  // A pane keeps an SSH commitment across a disconnect clear, then reports locally with no token.
+  it.each([
+    {
+      removedOwns: 'the SSH commitment',
+      sshWorktree: REMOVED,
+      localWorktree: KEPT,
+      host: 'ssh:user%40box'
+    },
+    { removedOwns: 'the local row', sshWorktree: KEPT, localWorktree: REMOVED, host: 'local' }
+  ] as const)(
+    'clears only $removedOwns when a pane holds claims from two owners',
+    async ({ sshWorktree, localWorktree, host }) => {
+      const server = new AgentHookServer()
+      await server.start({ env: 'production', userDataPath })
+      try {
+        const pane = makePaneKey('tab-reused', '77777777-7777-4777-8777-777777777777')
+        const working = { state: 'working', prompt: 'live', agentType: 'codex' } as const
+        server.ingestRemote(
+          {
+            paneKey: pane,
+            tabId: 'tab-reused',
+            worktreeId: sshWorktree,
+            launchToken: 'ssh',
+            payload: working
+          },
+          'user@box'
+        )
+        server.clearStatusEntriesForConnection('user@box')
+        server.ingestTerminalStatus({
+          paneKey: pane,
+          worktreeId: localWorktree,
+          connectionId: null,
           payload: working
-        },
-        'user@box'
-      )
-      server.clearStatusEntriesForConnection('user@box')
-      // The same pane now runs a local agent for another worktree, with no launch token.
-      server.ingestTerminalStatus({
-        paneKey: reused,
-        worktreeId: 'repo-1::/workspace/kept',
-        connectionId: null,
-        payload: working
-      })
+        })
 
-      server.dropStatusEntriesForRemovedWorktree(REMOVED, 'ssh:user%40box')
+        server.dropStatusEntriesForRemovedWorktree(REMOVED, host)
 
-      expect(server.getStatusSnapshot().map((entry) => entry.paneKey)).toContain(reused)
-    } finally {
-      server.stop()
+        server.flushStatusPersistSync()
+        const file = JSON.parse(readFileSync(lastStatusPath(), 'utf8'))
+        if (localWorktree === KEPT) {
+          // The surviving local row stays, without the removed owner's token hash stamped on it.
+          expect(file.entries[pane]).toMatchObject({ worktreeId: KEPT })
+          expect(file.entries[pane].launchTokenHash).toBeUndefined()
+        } else {
+          // The removed local row goes; the surviving SSH owner keeps its commitment.
+          expect(file.entries[pane]).toBeUndefined()
+          expect(file.authorityCommitments[pane]).toMatchObject({ connectionId: 'user@box' })
+        }
+      } finally {
+        server.stop()
+      }
     }
-  })
+  )
 })
