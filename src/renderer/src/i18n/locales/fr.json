@@ -970,7 +970,8 @@
             "dimensionsTooLarge": "{{fileName}} a des dimensions trop grandes pour un aperçu sans risque.",
             "invalidImage": "{{fileName}} n'est pas une image valide prise en charge.",
             "additionalErrors": "{{count}} images supplémentaires n'ont pas pu être jointes.",
-            "totalTooLarge": "{{fileName}} ferait dépasser {{maxSize}} au total pour les pièces jointes."
+            "totalTooLarge": "{{fileName}} ferait dépasser {{maxSize}} au total pour les pièces jointes.",
+            "compressed": "{{fileName}} a été compressé de {{originalSize}} à {{size}} pour respecter la limite des pièces jointes."
           }
         }
       },
