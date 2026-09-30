@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AiVaultSession } from '../../../shared/ai-vault-types'
-import { prepareAiVaultSessionForResume } from './ai-vault-session-resume-preparation'
+import {
+  dropDeletedSshResumeCwd,
+  prepareAiVaultSessionForResume
+} from './ai-vault-session-resume-preparation'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -92,6 +95,18 @@ describe('prepareAiVaultSessionForResume', () => {
 
     await expect(prepareAiVaultSessionForResume(current)).resolves.toBe(current)
     expect(prepareSessionResume).not.toHaveBeenCalled()
+  })
+})
+
+describe('dropDeletedSshResumeCwd', () => {
+  it('keeps the recorded folder when the SSH host cannot answer', async () => {
+    const pathExists = vi.fn().mockRejectedValue(new Error('CONNECTION_LOST'))
+    vi.stubGlobal('window', { api: { fs: { pathExists } } })
+    const remote = session({ executionHostId: 'ssh:server-1', cwd: '/home/ada/wt/feat-x' })
+
+    // Why: losing the host is not evidence the folder is gone (ssh-execution-boundary.md).
+    await expect(dropDeletedSshResumeCwd(remote)).resolves.toBe(remote)
+    expect(pathExists).toHaveBeenCalled()
   })
 })
 

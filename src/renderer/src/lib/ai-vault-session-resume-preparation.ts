@@ -3,7 +3,10 @@ import {
   isLegacySharedCodexHome,
   isPerAccountManagedCodexHome
 } from '../../../shared/ai-vault-resume-preparation'
-import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
+import {
+  getSshTargetIdForExecutionHost,
+  LOCAL_EXECUTION_HOST_ID
+} from '../../../shared/execution-host'
 
 export async function prepareAiVaultSessionForResume(
   session: AiVaultSession
@@ -42,4 +45,29 @@ export function aiVaultSessionNeedsResumePreparation(
     isPerAccountManagedCodexHome(session.codexHome) &&
     (!session.executionHostId || session.executionHostId === LOCAL_EXECUTION_HOST_ID)
   )
+}
+
+/**
+ * Drops an SSH session's recorded folder once its host confirms the folder is gone, so the resume
+ * opens at the target workspace root, as local resumes already do (#17745). Also drops the
+ * scanner-built command, whose `cd` into that folder would stop the agent from starting.
+ */
+export async function dropDeletedSshResumeCwd<
+  T extends Pick<AiVaultSession, 'cwd'> &
+    Partial<Pick<AiVaultSession, 'executionHostId' | 'resumeCommand'>>
+>(session: T): Promise<T | (Omit<T, 'resumeCommand'> & { cwd: null })> {
+  const connectionId = getSshTargetIdForExecutionHost(session.executionHostId)
+  if (!connectionId || !session.cwd) {
+    return session
+  }
+  try {
+    if (await window.api.fs.pathExists({ filePath: session.cwd, connectionId })) {
+      return session
+    }
+  } catch {
+    // Why: only a definite ENOENT proves the folder is gone; losing the host proves nothing.
+    return session
+  }
+  const { resumeCommand: _scannerCommand, ...rest } = session
+  return { ...rest, cwd: null }
 }
