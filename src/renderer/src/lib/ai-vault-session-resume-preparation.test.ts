@@ -108,6 +108,15 @@ describe('dropDeletedSshResumeCwd', () => {
     await expect(dropDeletedSshResumeCwd(remote)).resolves.toBe(remote)
     expect(pathExists).toHaveBeenCalled()
   })
+
+  it('keeps the recorded folder for an agent that can only resume there', async () => {
+    const pathExists = vi.fn().mockResolvedValue(false)
+    vi.stubGlobal('window', { api: { fs: { pathExists } } })
+    const kimi = session({ agent: 'kimi', executionHostId: 'ssh:server-1', cwd: '/home/ada/wt/x' })
+
+    // Why: kimi-cli 1.52 silently opens a new empty session with the same id from any other folder.
+    await expect(dropDeletedSshResumeCwd(kimi)).resolves.toBe(kimi)
+  })
 })
 
 function stubPreparation(prepareSessionResume: ReturnType<typeof vi.fn>): void {
