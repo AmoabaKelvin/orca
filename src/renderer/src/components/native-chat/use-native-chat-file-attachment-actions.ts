@@ -20,10 +20,7 @@ export function useNativeChatFileAttachmentActions(
 
   const pickAttachment = useCallback(() => {
     void (async () => {
-      const filePath = await window.api.shell.pickAttachment()
-      if (filePath) {
-        attachExternalPaths([filePath])
-      }
+      attachExternalPaths(await window.api.shell.pickAttachments())
     })()
   }, [attachExternalPaths])
 

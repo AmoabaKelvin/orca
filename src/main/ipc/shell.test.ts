@@ -170,6 +170,22 @@ describe('registerShellHandlers', () => {
     })
   })
 
+  it('picks several attachment files in one native dialog', async () => {
+    showOpenDialogMock.mockResolvedValue({
+      canceled: false,
+      filePaths: ['/Users/kaylee/notes.md', '/Users/kaylee/diagram.png']
+    })
+
+    const handler = getHandler('shell:pickAttachments')
+    await expect(handler({})).resolves.toEqual([
+      '/Users/kaylee/notes.md',
+      '/Users/kaylee/diagram.png'
+    ])
+    expect(showOpenDialogMock).toHaveBeenCalledWith({
+      properties: ['openFile', 'multiSelections']
+    })
+  })
+
   describe('shell:openPath', () => {
     it('ignores relative paths', async () => {
       const handler = getHandler('shell:openPath')
