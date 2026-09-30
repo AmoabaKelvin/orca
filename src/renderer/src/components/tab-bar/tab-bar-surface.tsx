@@ -166,7 +166,7 @@ export function renderTabBarSurface({
             ) : null}
           </div>
           <TabStripScrollIndicator
-            metrics={tabStripOverflowState}
+            hasOverflow={tabStripOverflowState.hasOverflow}
             scrollContainerRef={tabStripRef}
             disabled={tabStripDragScroll.isTabDragActive}
           />
