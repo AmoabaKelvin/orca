@@ -14,6 +14,7 @@ import {
   releaseLocalImageSrc
 } from '@/components/editor/useLocalImageSrc'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
+import { copyableNativeChatImageSrc, keepPreviewOpenForChatMenu } from './native-chat-image-copy'
 import { isNativeChatPastedImagePath } from './native-chat-image-paste'
 
 type VisibilityListener = (isVisible: boolean) => void
@@ -93,6 +94,7 @@ function TranscriptImagePreview({
     runtimeContext
   )
   const displaySrc = external && leaseActive ? source : localSrc
+  const copySrc = copyableNativeChatImageSrc(localSrc, filePath)
   const label =
     block.alt?.trim() ||
     (block.path && isNativeChatPastedImagePath(block.path)
@@ -145,6 +147,7 @@ function TranscriptImagePreview({
         type="button"
         aria-label={`${viewImageLabel}: ${label}`}
         title={label}
+        data-native-chat-copy-image-src={copySrc}
         onClick={() => setOpen(true)}
         className="flex size-full items-center justify-center overflow-hidden rounded-md border border-border bg-background transition-colors hover:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
@@ -156,7 +159,7 @@ function TranscriptImagePreview({
           className="size-full object-cover"
         />
       </button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(next) => setOpen(keepPreviewOpenForChatMenu(next))}>
         <DialogContent className="flex max-h-[90vh] max-w-[90vw] flex-col gap-3 border-border bg-background p-3 sm:max-w-4xl">
           <DialogTitle className="truncate text-sm">{label}</DialogTitle>
           <DialogDescription className="sr-only">
@@ -167,6 +170,7 @@ function TranscriptImagePreview({
               <img
                 src={displaySrc}
                 alt={label}
+                data-native-chat-copy-image-src={copySrc}
                 onError={() => setDialogErrorSrc(displaySrc)}
                 className="max-h-[75vh] max-w-full object-contain"
               />
