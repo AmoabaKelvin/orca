@@ -10,8 +10,10 @@ import {
 } from './editor-autosave-controller-test-fixture'
 import { getDiskBaselineSignature } from './diff-content-signature'
 import { useTerminalSaveDialog } from '../terminal/useTerminalSaveDialog'
-import { useTerminalEditorCloseDialogActions } from '../use-terminal-editor-close-dialog-actions'
-import type { TerminalEditorCloseQueueController } from '../use-terminal-editor-close-queue'
+import {
+  useTerminalEditorCloseDialogActions,
+  type TerminalEditorCloseDialogActionsInput
+} from '../use-terminal-editor-close-dialog-actions'
 
 const storeHolder = vi.hoisted((): { store: StoreApi<AppState> | null } => ({ store: null }))
 
@@ -27,22 +29,8 @@ vi.mock('@/lib/connection-context', () => ({ getConnectionIdForFile: vi.fn() }))
 
 const FILE_ID = '/repo/untitled.md'
 
-type DialogActionsInput = Pick<
-  TerminalEditorCloseQueueController,
-  | 'advanceEditorCloseQueue'
-  | 'inFlightSaveFileIdRef'
-  | 'isClosingRef'
-  | 'pendingEditorCloseQueueRef'
-  | 'queueEditorCloseRequests'
-  | 'releaseCloseDialogGuardAfterDebounce'
-  | 'saveDialogFileId'
-  | 'setSaveDialogFileId'
-  | 'waitForFileClosed'
-  | 'windowCloseAfterDirtyRef'
->
-
-function mainWindowDialogController(fileId: string): TerminalEditorCloseQueueController {
-  const input: DialogActionsInput = {
+function mainWindowDialogController(fileId: string): TerminalEditorCloseDialogActionsInput {
+  return {
     advanceEditorCloseQueue: vi.fn(),
     inFlightSaveFileIdRef: { current: null },
     isClosingRef: { current: false },
@@ -54,8 +42,6 @@ function mainWindowDialogController(fileId: string): TerminalEditorCloseQueueCon
     waitForFileClosed: vi.fn(async () => true),
     windowCloseAfterDirtyRef: { current: null }
   }
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: useTerminalEditorCloseDialogActions reads only the DialogActionsInput fields.
-  return input as unknown as TerminalEditorCloseQueueController
 }
 
 describe("Don't Save in the unsaved-changes dialogs on a never-saved untitled note", () => {

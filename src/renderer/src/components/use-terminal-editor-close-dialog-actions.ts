@@ -10,8 +10,22 @@ import { discardEditorFileChangesAndClose } from './editor/discard-editor-file-c
 import { translate } from '@/i18n/i18n'
 import type { TerminalEditorCloseQueueController } from './use-terminal-editor-close-queue'
 
+export type TerminalEditorCloseDialogActionsInput = Pick<
+  TerminalEditorCloseQueueController,
+  | 'advanceEditorCloseQueue'
+  | 'inFlightSaveFileIdRef'
+  | 'isClosingRef'
+  | 'pendingEditorCloseQueueRef'
+  | 'queueEditorCloseRequests'
+  | 'releaseCloseDialogGuardAfterDebounce'
+  | 'saveDialogFileId'
+  | 'setSaveDialogFileId'
+  | 'waitForFileClosed'
+  | 'windowCloseAfterDirtyRef'
+>
+
 export function useTerminalEditorCloseDialogActions(
-  controller: TerminalEditorCloseQueueController
+  controller: TerminalEditorCloseDialogActionsInput
 ) {
   const {
     advanceEditorCloseQueue,

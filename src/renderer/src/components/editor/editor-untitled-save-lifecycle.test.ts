@@ -98,6 +98,8 @@ describe('untitled note save lifecycle', () => {
       typeInto(store, 'my note')
 
       await saveAndClose()
+      // Why: drain any stat → delete chain the close scheduled before asserting the note survived.
+      await vi.advanceTimersByTimeAsync(0)
 
       expect(store.getState().openFiles).toHaveLength(0)
       expect(disk.files.get(FILE_ID)).toBe('my note')
@@ -146,6 +148,8 @@ describe('untitled note save lifecycle', () => {
       const discarded = discardEditorFileChangesAndClose(FILE_ID)
       finishWrite()
       await discarded
+      // Why: the superseded save left the tab looking like a placeholder, so only the size check keeps the note.
+      await vi.advanceTimersByTimeAsync(0)
 
       expect(store.getState().openFiles).toHaveLength(0)
       expect(disk.files.get(FILE_ID)).toBe('my note')
