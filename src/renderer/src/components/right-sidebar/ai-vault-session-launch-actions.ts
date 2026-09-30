@@ -7,7 +7,10 @@ import {
 import { launchAiVaultSessionInNewTab } from '@/lib/launch-ai-vault-session'
 import { useAppStore } from '@/store'
 import type { AiVaultAgent, AiVaultSession } from '../../../../shared/ai-vault-types'
-import { prepareAiVaultSessionForResume } from '@/lib/ai-vault-session-resume-preparation'
+import {
+  dropDeletedSshResumeCwd,
+  prepareAiVaultSessionForResume
+} from '@/lib/ai-vault-session-resume-preparation'
 import type { Worktree } from '../../../../shared/worktree/types'
 import { translate } from '@/i18n/i18n'
 import { agentLabel } from './ai-vault-session-filters'
@@ -52,7 +55,10 @@ export function useAiVaultSessionLaunchActions({
   )
 
   const buildResumeStartup = useCallback(
-    (session: AiVaultSession, worktreeId?: string | null) =>
+    (
+      session: Parameters<typeof buildAiVaultResumeStartupForWorktree>[0]['session'],
+      worktreeId?: string | null
+    ) =>
       buildAiVaultResumeStartupForWorktree({
         state: useAppStore.getState(),
         worktreeId: worktreeId ?? activeWorktreeId ?? activeWorktree?.id ?? null,
@@ -110,6 +116,7 @@ export function useAiVaultSessionLaunchActions({
         )
       }
       void prepareAiVaultSessionForResume(session)
+        .then(dropDeletedSshResumeCwd)
         .then((preparedSession) => {
           const launchResult = launchAiVaultSessionInNewTab({
             agent: session.agent,
