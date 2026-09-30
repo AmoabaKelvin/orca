@@ -80,6 +80,7 @@ function restoreStripLayout(): void {
 }
 
 const NO_HOSTED_ROWS: string[] = []
+let stripRenderCount = 0
 
 /** `hostedRows` render like client-hosted browser rows: a strip slot with no `data-tab-id`. */
 function Strip({
@@ -93,6 +94,7 @@ function Strip({
   hostedRows?: string[]
   activeHostedRow?: string | null
 }): React.JSX.Element {
+  stripRenderCount++
   const navigation = useTabStripOverflowNavigation({
     activeVisibleTabId: active,
     activeDockSlotId: activeHostedRow ?? active,
@@ -299,5 +301,23 @@ describe('tab strip with a docked active tab', () => {
     rerender(<Strip tabs={[...TABS.slice(0, 5), 'N', ...TABS.slice(5)]} active="A" />)
     expect(tabX(strip, 'A')).toBe(0)
     expect(tabX(strip, 'N')).toBe(100)
+  })
+})
+
+describe('tab strip while scrolling', () => {
+  beforeEach(installStripLayout)
+  afterEach(() => {
+    cleanup()
+    restoreStripLayout()
+  })
+
+  it('does not re-render the strip for a scroll that stays between the edges', () => {
+    const { strip } = mountScrolled('E', 300)
+    const rendersBefore = stripRenderCount
+    act(() => {
+      strip.scrollLeft = 400
+      strip.dispatchEvent(new Event('scroll'))
+    })
+    expect(stripRenderCount).toBe(rendersBefore)
   })
 })

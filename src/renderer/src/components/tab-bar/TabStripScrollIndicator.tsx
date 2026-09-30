@@ -1,52 +1,54 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import {
-  computeTabStripThumbLayout,
-  type TabStripScrollMetrics,
-  type TabStripThumbLayout
-} from './tab-strip-scroll-metrics'
-
-const EMPTY_THUMB_LAYOUT: TabStripThumbLayout = { widthPx: 0, leftPx: 0 }
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { computeTabStripThumbLayout } from './tab-strip-scroll-metrics'
+import { bindTabStripContentResizeObservers } from './tab-strip-content-resize-observers'
 
 export type TabStripScrollIndicatorProps = {
-  metrics: TabStripScrollMetrics
+  hasOverflow: boolean
   scrollContainerRef?: React.RefObject<HTMLElement | null>
   disabled?: boolean
 }
 
 export function TabStripScrollIndicator({
-  metrics,
+  hasOverflow,
   scrollContainerRef,
   disabled = false
 }: TabStripScrollIndicatorProps): React.JSX.Element | null {
   const trackRef = useRef<HTMLDivElement>(null)
+  const thumbRef = useRef<HTMLDivElement>(null)
   const cleanupDragRef = useRef<(() => void) | null>(null)
-  const [thumbLayout, setThumbLayout] = useState<TabStripThumbLayout>(EMPTY_THUMB_LAYOUT)
   const [isHovered, setIsHovered] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [isScrolling, setIsScrolling] = useState(false)
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const remeasureThumb = useCallback((): void => {
-    const track = trackRef.current
-    if (!track) {
-      return
-    }
-    setThumbLayout(computeTabStripThumbLayout(track.clientWidth, metrics))
-  }, [metrics])
-
-  useLayoutEffect(() => {
-    remeasureThumb()
-  }, [remeasureThumb])
-
+  // Why write the thumb's style directly: it moves every scroll frame, and React state would re-render per frame.
   useLayoutEffect(() => {
     const track = trackRef.current
-    if (!track) {
+    const thumb = thumbRef.current
+    const scrollContainer = scrollContainerRef?.current
+    if (!track || !thumb || !scrollContainer) {
       return
     }
-    const resizeObserver = new ResizeObserver(remeasureThumb)
-    resizeObserver.observe(track)
-    return () => resizeObserver.disconnect()
-  }, [remeasureThumb])
+    const syncThumb = (): void => {
+      const layout = computeTabStripThumbLayout(track.clientWidth, scrollContainer)
+      thumb.style.width = `${layout.widthPx}px`
+      thumb.style.transform = `translateX(${layout.leftPx}px)`
+    }
+    syncThumb()
+    scrollContainer.addEventListener('scroll', syncThumb, { passive: true })
+    const trackResizeObserver = new ResizeObserver(syncThumb)
+    trackResizeObserver.observe(track)
+    // Why: tabs growing or closing change the strip's scroll width without a scroll event.
+    const disconnectContentObservers = bindTabStripContentResizeObservers(
+      scrollContainer,
+      syncThumb
+    )
+    return () => {
+      scrollContainer.removeEventListener('scroll', syncThumb)
+      trackResizeObserver.disconnect()
+      disconnectContentObservers()
+    }
+  }, [hasOverflow, scrollContainerRef])
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef?.current
@@ -79,10 +81,10 @@ export function TabStripScrollIndicator({
 
   // Why: hiding the indicator mid-drag would otherwise leave window listeners and body cursor/user-select stuck.
   useEffect(() => {
-    if (disabled || !metrics.hasOverflow) {
+    if (disabled || !hasOverflow) {
       cleanupDragRef.current?.()
     }
-  }, [disabled, metrics.hasOverflow])
+  }, [disabled, hasOverflow])
 
   const handleThumbPointerDown = (e: React.PointerEvent<HTMLDivElement>): void => {
     if (e.button !== 0 || disabled) {
@@ -100,7 +102,8 @@ export function TabStripScrollIndicator({
     const startX = e.clientX
     const startScrollLeft = scrollContainer.scrollLeft
     const trackWidth = track.clientWidth
-    const maxLeft = Math.max(1, trackWidth - thumbLayout.widthPx)
+    const thumbWidth = computeTabStripThumbLayout(trackWidth, scrollContainer).widthPx
+    const maxLeft = Math.max(1, trackWidth - thumbWidth)
     const maxScrollLeft = Math.max(0, scrollContainer.scrollWidth - scrollContainer.clientWidth)
 
     if (maxScrollLeft <= 0 || maxLeft <= 0) {
@@ -157,7 +160,7 @@ export function TabStripScrollIndicator({
     const trackRect = track.getBoundingClientRect()
     const clickX = e.clientX - trackRect.left
     const trackWidth = track.clientWidth
-    const thumbWidth = thumbLayout.widthPx
+    const thumbWidth = computeTabStripThumbLayout(trackWidth, scrollContainer).widthPx
     const maxLeft = Math.max(1, trackWidth - thumbWidth)
     const maxScrollLeft = Math.max(0, scrollContainer.scrollWidth - scrollContainer.clientWidth)
 
@@ -184,7 +187,7 @@ export function TabStripScrollIndicator({
     scrollContainer.scrollLeft += delta
   }
 
-  if (!metrics.hasOverflow) {
+  if (!hasOverflow) {
     return null
   }
 
@@ -214,18 +217,15 @@ export function TabStripScrollIndicator({
       aria-hidden
     >
       <div
+        ref={thumbRef}
         data-testid="tab-strip-scroll-thumb"
-        className={`absolute bottom-0 h-full rounded-full transition-colors duration-150 ease-out ${
+        className={`absolute bottom-0 left-0 h-full rounded-full will-change-transform transition-colors duration-150 ease-out ${
           isDragging
             ? 'bg-foreground/70 cursor-grabbing'
             : isHovered
               ? 'bg-muted-foreground/80 cursor-grab'
               : 'bg-muted-foreground/60 cursor-default'
         }`}
-        style={{
-          width: `${thumbLayout.widthPx}px`,
-          left: `${thumbLayout.leftPx}px`
-        }}
         onPointerDown={handleThumbPointerDown}
       />
     </div>
