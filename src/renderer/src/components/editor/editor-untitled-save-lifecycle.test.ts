@@ -11,6 +11,7 @@ import {
 } from './editor-autosave-controller-test-fixture'
 import { discardEditorFileChangesAndClose } from './discard-editor-file-changes'
 import { __clearSelfWriteRegistryForTests } from './editor-self-write-registry'
+import { getDiskBaselineSignature } from './diff-content-signature'
 
 const storeHolder = vi.hoisted((): { store: StoreApi<AppState> | null } => ({ store: null }))
 
@@ -29,6 +30,11 @@ const FILE_ID = '/repo/untitled.md'
 function typeInto(store: StoreApi<AppState>, content: string): void {
   store.getState().setEditorDraft(FILE_ID, content)
   store.getState().markFileDirty(FILE_ID, true)
+}
+
+/** What the editor panel records after a clean (re)load of the tab shows `content` from disk. */
+function loadFromDisk(store: StoreApi<AppState>, content: string): void {
+  store.getState().setLastKnownDiskSignature(FILE_ID, getDiskBaselineSignature(content))
 }
 
 function isReopenable(store: StoreApi<AppState>): boolean {
@@ -56,7 +62,12 @@ describe('untitled note save lifecycle', () => {
     storeHolder.store = null
   })
 
-  it('still deletes an untouched untitled note on close', async () => {
+  it.each([
+    ['before its empty content loads', (): void => {}],
+    ['after its empty content loads', (): void => loadFromDisk(store, '')]
+  ])('still deletes an untouched untitled note closed %s', async (_when, load) => {
+    load()
+
     store.getState().closeFile(FILE_ID)
 
     await vi.waitFor(() => expect(disk.files.has(FILE_ID)).toBe(false))
@@ -81,6 +92,7 @@ describe('untitled note save lifecycle', () => {
       }
     ]
   ])('keeps the typed note after %s', async (_route, saveAndClose) => {
+    loadFromDisk(store, '')
     const cleanup = attachEditorAutosaveController(store)
     try {
       typeInto(store, 'my note')
@@ -114,6 +126,7 @@ describe('untitled note save lifecycle', () => {
   })
 
   it("keeps autosaved content when Don't Save interrupts the in-flight write", async () => {
+    loadFromDisk(store, '')
     let finishWrite: () => void = () => {}
     disk.fs.writeFile.mockImplementationOnce(
       ({ filePath, content }: { filePath: string; content: string }) =>
@@ -137,14 +150,33 @@ describe('untitled note save lifecycle', () => {
       expect(store.getState().openFiles).toHaveLength(0)
       expect(disk.files.get(FILE_ID)).toBe('my note')
       expect(disk.fs.deletePath).not.toHaveBeenCalled()
-      // Only the saved-content flag decides this; the disk check alone would also keep the file.
-      expect(isReopenable(store)).toBe(true)
     } finally {
       cleanup()
     }
   })
 
+  it.each([
+    ['while its tab showed the new text', true],
+    ['while its tab was in the background', false]
+  ])('keeps a note an agent wrote into %s', async (_when, reloaded) => {
+    loadFromDisk(store, '')
+    disk.files.set(FILE_ID, 'agent text')
+    if (reloaded) {
+      loadFromDisk(store, 'agent text')
+    }
+
+    store.getState().closeFile(FILE_ID)
+
+    // Why: a macrotask drains the stat → delete chain before asserting nothing was removed.
+    await vi.advanceTimersByTimeAsync(0)
+    expect(disk.files.get(FILE_ID)).toBe('agent text')
+    expect(disk.fs.deletePath).not.toHaveBeenCalled()
+    // Why: a background tab never reloaded the write, so only the size check knew it was a real note.
+    expect(isReopenable(store)).toBe(reloaded)
+  })
+
   it("removes a never-saved note's placeholder on Don't Save", async () => {
+    loadFromDisk(store, '')
     typeInto(store, 'typed but never saved')
 
     await discardEditorFileChangesAndClose(FILE_ID)

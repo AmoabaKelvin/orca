@@ -116,8 +116,6 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
           clearSelfWrite(liveFile.filePath, liveFile.runtimeEnvironmentId)
           throw error
         }
-        // Why: the write landed even if a quiesce superseded this save, so untitled cleanup must see what disk now holds.
-        store.getState().setUntitledFileHasSavedContent(file.id, contentToSave !== '')
 
         if ((saveGeneration.get(file.id) ?? 0) !== queuedGeneration) {
           return
