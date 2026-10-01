@@ -20,7 +20,8 @@
  * reported as unestablished rather than guessed (docs/reference/ssh-execution-boundary.md).
  */
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
 import { release } from 'node:os'
 import process from 'node:process'
 import { runProcess } from '../shared/child-process/run-process'
@@ -177,6 +178,15 @@ async function probeRelayBuildToolchain(
       timeoutMs: TOOLCHAIN_PROBE_TIMEOUT_MS
     })
     return result.timedOut ? null : parseBuildToolchainProbe(result.stdout)
+  } catch {
+    return null
+  }
+}
+
+/** The install a bare `node-pty` import from `fromDir` loads — Node walks up, so it can be an ancestor's. */
+export function resolveNodePtyInstallDir(fromDir: string): string | null {
+  try {
+    return dirname(createRequire(join(fromDir, 'relay.js')).resolve('node-pty/package.json'))
   } catch {
     return null
   }

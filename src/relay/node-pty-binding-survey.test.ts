@@ -1,4 +1,12 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -7,6 +15,7 @@ import { isFlattenedNodePtyLoaderMessage } from '../main/orcad/node-pty-loader-d
 import {
   collectNodePtyUnavailableDiagnosis,
   readNodeGypBuildRecord,
+  resolveNodePtyInstallDir,
   surveyNodePtyBinding
 } from './node-pty-binding-survey'
 import { formatNodePtyUnavailableMessage } from './node-pty-unavailable-diagnosis'
@@ -70,6 +79,26 @@ describe('readNodeGypBuildRecord', () => {
 
   it('answers nothing rather than guessing when there is no build record', () => {
     expect(readNodeGypBuildRecord(fixture())).toEqual({ nodeAbi: null, arch: null })
+  })
+})
+
+describe('resolveNodePtyInstallDir', () => {
+  it('finds the install an ancestor node_modules supplies, as the bare import does', () => {
+    // realpath: the resolver answers the real path, and macOS tmpdir is a link.
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'orca-node-pty-')))
+    roots.push(root)
+    const installDir = join(root, 'node_modules', 'node-pty')
+    mkdirSync(installDir, { recursive: true })
+    writeFileSync(join(installDir, 'package.json'), '{}\n')
+
+    expect(resolveNodePtyInstallDir(join(root, 'relay', 'abc123'))).toBe(installDir)
+  })
+
+  it('answers nothing when no node_modules up the tree holds node-pty', () => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-node-pty-'))
+    roots.push(root)
+
+    expect(resolveNodePtyInstallDir(root)).toBeNull()
   })
 })
 
