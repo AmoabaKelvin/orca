@@ -58,5 +58,7 @@ export function buildStartupCommandSubmission(
   if (bracketedPasteSafe && (body.includes('\n') || body.includes('\r'))) {
     return `${BRACKETED_PASTE_START}${body}${BRACKETED_PASTE_END}${STARTUP_COMMAND_SUBMIT}`
   }
-  return `${body}${STARTUP_COMMAND_SUBMIT}`
+  // Why normalise interior breaks too: without bracketed paste each line submits itself, and an
+  // interior LF is the same remappable Ctrl+J as a trailing one.
+  return `${body.replace(/\r?\n/g, STARTUP_COMMAND_SUBMIT)}${STARTUP_COMMAND_SUBMIT}`
 }

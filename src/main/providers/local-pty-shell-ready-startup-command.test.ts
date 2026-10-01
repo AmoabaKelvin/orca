@@ -153,6 +153,7 @@ describe('writeStartupCommandWhenShellReady', () => {
     const proc = createMockProc()
     const ready = Promise.resolve()
     const command = 'echo one\necho two'
+    // Why CR between the lines: without bracketed paste each break submits its own line.
     // Why: bracketedPasteSafe defaults false, so keep the raw path to avoid echoing ESC[200~ on shells without bracketed paste.
     writeStartupCommandWhenShellReady(ready, proc, command, () => {})
 
@@ -161,6 +162,6 @@ describe('writeStartupCommandWhenShellReady', () => {
     vi.advanceTimersByTime(30)
     await Promise.resolve()
 
-    expect(proc._writes).toEqual([`${command}\r`])
+    expect(proc._writes).toEqual(['echo one\recho two\r'])
   })
 })
