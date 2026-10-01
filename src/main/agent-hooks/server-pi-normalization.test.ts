@@ -369,6 +369,16 @@ describe('Pi-family child rows through the hook lane', () => {
     expect(server.getStatusSnapshot()[0]?.model).toBeUndefined()
   })
 
+  it('records a run its session ended as a session boundary, not a completion', async () => {
+    await post('pi', { hook_event_name: 'before_agent_start', prompt: 'fan out' })
+    await post('pi', { hook_event_name: 'agent_end', session_boundary: true })
+    expect(server.getStatusSnapshot()[0]).toMatchObject({ state: 'done', sessionBoundary: true })
+
+    await post('pi', { hook_event_name: 'before_agent_start', prompt: 'again' })
+    await post('pi', { hook_event_name: 'agent_end' })
+    expect(server.getStatusSnapshot()[0]?.sessionBoundary).toBeUndefined()
+  })
+
   it('never lets one agent restate another agent row', async () => {
     await post('pi', { hook_event_name: 'before_agent_start', prompt: 'pi turn' })
     await post('omp', { hook_event_name: 'subagents_update', subagents: [SCOUT] })

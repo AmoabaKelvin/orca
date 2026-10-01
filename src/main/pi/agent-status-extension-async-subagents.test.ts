@@ -1,80 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AGENT_STATUS_MAX_SUBAGENTS } from '../../shared/agent-status-types'
+import { createAgentStatusExtensionHarness } from './agent-status-extension-test-harness'
 import {
-  AGENT_STATUS_EXTENSION_SELF_PID,
-  createAgentStatusExtensionHarness,
-  type AgentStatusExtensionHarness
-} from './agent-status-extension-test-harness'
-
-// Event shapes and orderings mirror traces recorded from pi-subagents 0.71.0.
-const WORKFLOW = 'workflow-1'
-const idle = { isIdle: () => true }
-
-type PostedChild = { id: string; state: string; startedAt: number; agentType?: string }
-type PostedPayload = { hook_event_name: string; subagents?: PostedChild[] }
-
-function posts(harness: AgentStatusExtensionHarness): PostedPayload[] {
-  return harness.fetchMock.mock.calls.map((call) => {
-    const body: { payload: PostedPayload } = JSON.parse(String(call[1]?.body))
-    return body.payload
-  })
-}
-
-function postedHookNames(harness: AgentStatusExtensionHarness): string[] {
-  return posts(harness).map((post) => post.hook_event_name)
-}
-
-function agentEndCount(harness: AgentStatusExtensionHarness): number {
-  return postedHookNames(harness).filter((name) => name === 'agent_end').length
-}
-
-function startWorkflow(harness: AgentStatusExtensionHarness): void {
-  harness.emitPiEvent('subagent:async-started', {
-    id: WORKFLOW,
-    mode: 'workflow',
-    agent: 'workflow',
-    pid: AGENT_STATUS_EXTENSION_SELF_PID
-  })
-}
-
-function startChild(harness: AgentStatusExtensionHarness, id: string, parent = WORKFLOW): void {
-  harness.emitPiEvent('subagent:async-started', {
-    id,
-    mode: 'single',
-    pid: 4000,
-    parentWorkflowRunId: parent
-  })
-}
-
-function exitRunner(harness: AgentStatusExtensionHarness, runId: string): void {
-  harness.emitPiEvent('subagent:process-terminal', { runId, state: 'observed' })
-}
-
-function complete(harness: AgentStatusExtensionHarness, id: string): void {
-  harness.emitPiEvent('subagent:async-complete', { id, runId: id, state: 'complete' })
-}
-
-function childIds(payload: PostedPayload | undefined): string[] | undefined {
-  return payload?.subagents?.map((child) => child.id)
-}
-
-function startAsync(harness: AgentStatusExtensionHarness, id: string, agent: string): void {
-  harness.emitPiEvent('subagent:async-started', {
-    id,
-    mode: 'single',
-    agent,
-    task: '[REDACTED]',
-    goal: '[REDACTED]',
-    pid: 4000
-  })
-}
-
-async function endTurn(harness: AgentStatusExtensionHarness): Promise<void> {
-  await harness.callHook('agent_end', {}, idle)
-  await harness.callHook('agent_settled', undefined, idle)
-  await vi.advanceTimersByTimeAsync(0)
-}
+  agentEndCount,
+  childIds,
+  complete,
+  endTurn,
+  exitRunner,
+  postedHookNames,
+  posts,
+  startAsync,
+  startChild,
+  startWorkflow,
+  WORKFLOW
+} from './agent-status-subagent-event-fixtures'
 
 describe('Pi async subagent roster', () => {
   beforeEach(() => {
@@ -186,18 +126,6 @@ describe('Pi async subagent roster', () => {
     harness.emitPiEvent('subagent:async-complete', { runId: 'run-1' })
     await vi.advanceTimersByTimeAsync(0)
 
-    expect(agentEndCount(harness)).toBe(1)
-  })
-
-  it('keeps one runner-exit subscription and the roster across reloads', async () => {
-    const harness = createAgentStatusExtensionHarness({ kind: 'pi' })
-    await harness.callHook('agent_start')
-    startChild(harness, 'child-a', 'tool-call-1')
-    harness.reload()
-    expect(harness.piEventListenerCount('subagent:process-terminal')).toBe(1)
-
-    exitRunner(harness, 'child-a')
-    await endTurn(harness)
     expect(agentEndCount(harness)).toBe(1)
   })
 })
@@ -334,6 +262,40 @@ describe('Pi child rows', () => {
     expect(childIds(posts(harness).at(-1))?.at(-1)).toBe(`run-${AGENT_STATUS_MAX_SUBAGENTS - 1}`)
   })
 
+  it('posts nothing for the end of a run it is not tracking', async () => {
+    const harness = createAgentStatusExtensionHarness({ kind: 'pi' })
+    await harness.callHook('agent_start')
+    complete(harness, 'unknown-run')
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(postedHookNames(harness)).toEqual(['agent_start'])
+  })
+
+  it('labels a reused child id from its latest start, and keeps a running child’s first label', async () => {
+    const harness = createAgentStatusExtensionHarness({ kind: 'omp' })
+    const start = (agent: string) =>
+      harness.emitPiEvent('task:subagent:lifecycle', { id: '0-task', agent, status: 'started' })
+    const labels = () =>
+      posts(harness)
+        .at(-1)
+        ?.subagents?.map((child) => child.agentType)
+    await harness.callHook('agent_start')
+    start('explore')
+    start('review')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(labels()).toEqual(['explore'])
+
+    harness.emitPiEvent('task:subagent:lifecycle', { id: '0-task', status: 'completed' })
+    start('review')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(labels()).toEqual(['review'])
+
+    await harness.callHook('session_switch', { reason: 'new' }, {})
+    start('plan')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(labels()).toEqual(['plan'])
+  })
+
   it('posts no subagents field for a pane without children', async () => {
     const harness = createAgentStatusExtensionHarness({ kind: 'pi' })
     await harness.callHook('before_agent_start', { prompt: 'plain turn' })
@@ -341,31 +303,6 @@ describe('Pi child rows', () => {
     await endTurn(harness)
 
     expect(posts(harness).some((post) => 'subagents' in post)).toBe(false)
-  })
-
-  it('keeps the roster details across an in-process reload', async () => {
-    const harness = createAgentStatusExtensionHarness({ kind: 'pi' })
-    startAsync(harness, 'run-a', 'scout')
-    await vi.advanceTimersByTimeAsync(0)
-    harness.reload()
-    await harness.callHook('tool_execution_start', { toolName: 'bash', args: {} })
-    await vi.advanceTimersByTimeAsync(0)
-
-    expect(posts(harness).at(-1)?.subagents).toEqual([
-      { id: 'run-a', state: 'working', startedAt: expect.any(Number), agentType: 'scout' }
-    ])
-  })
-
-  it('forgets every child on an OMP session switch', async () => {
-    const harness = createAgentStatusExtensionHarness({ kind: 'omp' })
-    harness.emitPiEvent('task:subagent:lifecycle', { id: 'c1', agent: 'task', status: 'started' })
-    await vi.advanceTimersByTimeAsync(0)
-    await harness.callHook('session_switch', {}, {})
-    await harness.callHook('agent_start')
-    await vi.advanceTimersByTimeAsync(0)
-
-    expect(posts(harness).at(-1)).toMatchObject({ hook_event_name: 'agent_start' })
-    expect(posts(harness).at(-1)?.subagents).toBeUndefined()
   })
 
   it('posts one roster update when a runner exit precedes its completion', async () => {
@@ -389,12 +326,14 @@ describe('Pi child rows', () => {
       kind: 'omp',
       fetchImpl: async () => {
         attempts += 1
-        if (attempts === 1) {
+        if (attempts === 2) {
           throw new Error('Orca restarting')
         }
         return { ok: true }
       }
     })
+    await harness.callHook('agent_start')
+    await vi.advanceTimersByTimeAsync(0)
     harness.emitPiEvent('task:subagent:lifecycle', { id: 'c1', agent: 'task', status: 'started' })
     await vi.advanceTimersByTimeAsync(0)
     harness.emitPiEvent('task:subagent:lifecycle', { id: 'c1', status: 'completed' })
@@ -402,23 +341,11 @@ describe('Pi child rows', () => {
 
     expect(posts(harness).map((post) => post.hook_event_name)).toEqual([
       'agent_start',
+      'agent_start',
       'agent_start'
     ])
-    expect(posts(harness)[1]?.subagents).toBeUndefined()
-  })
-
-  it('forgets the previous session children when Pi starts a new session, not on reload', async () => {
-    const harness = createAgentStatusExtensionHarness({ kind: 'pi' })
-    startAsync(harness, 'run-a', 'scout')
-    await harness.callHook('session_start', { reason: 'reload' }, {})
-    await harness.callHook('tool_execution_start', { toolName: 'bash', args: {} })
-    await vi.advanceTimersByTimeAsync(0)
-    expect(childIds(posts(harness).at(-1))).toEqual(['run-a'])
-
-    await harness.callHook('session_start', { reason: 'new' }, {})
-    await harness.callHook('tool_execution_start', { toolName: 'bash', args: {} })
-    await vi.advanceTimersByTimeAsync(0)
-    expect(posts(harness).at(-1)?.subagents).toBeUndefined()
+    expect(childIds(posts(harness)[1])).toEqual(['c1'])
+    expect(posts(harness)[2]?.subagents).toBeUndefined()
   })
 
   it('keeps a workflow run out of the rows while it still holds the pane', async () => {
@@ -437,73 +364,5 @@ describe('Pi child rows', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(postedHookNames(harness).slice(-1)).toEqual(['agent_end'])
     expect(posts(harness).some((post) => childIds(post)?.includes(WORKFLOW))).toBe(false)
-  })
-
-  it('settles the run its children held open when Pi starts a new session', async () => {
-    const harness = createAgentStatusExtensionHarness({ kind: 'pi' })
-    await harness.callHook('agent_start')
-    startAsync(harness, 'run-a', 'scout')
-    await endTurn(harness)
-    expect(agentEndCount(harness)).toBe(0)
-
-    await harness.callHook('session_start', { reason: 'new' }, {})
-    await vi.advanceTimersByTimeAsync(0)
-
-    expect(posts(harness).slice(-2)).toEqual([
-      { hook_event_name: 'agent_end' },
-      { hook_event_name: 'session_start' }
-    ])
-  })
-
-  it('keeps a completion a new Pi session posts behind an in-flight delivery', async () => {
-    const releases: (() => void)[] = []
-    const harness = createAgentStatusExtensionHarness({
-      kind: 'pi',
-      fetchImpl: () =>
-        new Promise((resolve) => {
-          releases.push(() => resolve({ ok: true }))
-        })
-    })
-    await harness.callHook('agent_start')
-    startAsync(harness, 'run-a', 'scout')
-    await endTurn(harness)
-    await harness.callHook('session_start', { reason: 'new' }, {})
-
-    releases.shift()?.()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(posts(harness).at(-1)).toEqual({ hook_event_name: 'agent_end' })
-  })
-
-  it('settles the run its children held open when OMP switches sessions', async () => {
-    const harness = createAgentStatusExtensionHarness({ kind: 'omp' })
-    await harness.callHook('agent_start')
-    harness.emitPiEvent('task:subagent:lifecycle', { id: 'c1', agent: 'task', status: 'started' })
-    await harness.callHook('agent_end', {})
-    await vi.advanceTimersByTimeAsync(0)
-    expect(agentEndCount(harness)).toBe(0)
-
-    await harness.callHook('session_switch', {}, {})
-    await vi.advanceTimersByTimeAsync(0)
-
-    expect(posts(harness).at(-1)).toEqual({ hook_event_name: 'agent_end' })
-  })
-
-  it('keeps working when a dialog closes while children still hold the run', async () => {
-    const harness = createAgentStatusExtensionHarness({ kind: 'pi' })
-    await harness.callHook('agent_start')
-    startAsync(harness, 'run-a', 'scout')
-    await endTurn(harness)
-    await harness.callHook('ui_prompt_start', {})
-    await harness.callHook('ui_prompt_end', {}, idle)
-    await vi.advanceTimersByTimeAsync(0)
-    expect(posts(harness).at(-1)).toMatchObject({
-      hook_event_name: 'ui_prompt_end',
-      is_idle: false
-    })
-    expect(childIds(posts(harness).at(-1))).toEqual(['run-a'])
-
-    complete(harness, 'run-a')
-    await vi.advanceTimersByTimeAsync(0)
-    expect(posts(harness).at(-1)).toEqual({ hook_event_name: 'agent_end' })
   })
 })

@@ -117,6 +117,10 @@ export function normalizePiCompatibleEvent(
     interactivePrompt: snapshot.interactivePrompt,
     lastAssistantMessage: snapshot.lastAssistantMessage,
     lastAssistantMessageIsToolOutput: snapshot.lastAssistantMessageIsToolOutput,
-    subagents
+    subagents,
+    // Why: the extension ends a run whose session was replaced; that is not a completed turn.
+    ...(eventName === 'agent_end' && hookPayload.session_boundary === true
+      ? { sessionBoundary: true }
+      : {})
   })
 }
