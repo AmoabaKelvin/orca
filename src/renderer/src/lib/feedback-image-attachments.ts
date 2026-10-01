@@ -175,18 +175,20 @@ export async function readFeedbackImageFiles(
         )
         break
       }
-      const addSizeError = (): void =>
+      // Why: "larger than" holds only for a file the whole budget could not take;
+      // otherwise it was the space the other attachments use that refused it.
+      const addSizeError = (fitsWholeBudget: boolean): void =>
         addError(() =>
-          file.size > MAX_FEEDBACK_IMAGE_BYTES
+          fitsWholeBudget
             ? translate(
-                'auto.lib.feedback.image.attachments.tooLarge',
-                '{{fileName}} is larger than {{maxSize}}.',
-                { fileName, maxSize: formatFeedbackImageSize(MAX_FEEDBACK_IMAGE_BYTES) }
-              )
-            : translate(
                 'auto.lib.feedback.image.attachments.totalTooLarge',
                 '{{fileName}} would bring the attachments over {{maxSize}} in total.',
                 { fileName, maxSize: formatFeedbackImageSize(MAX_FEEDBACK_IMAGE_TOTAL_BYTES) }
+              )
+            : translate(
+                'auto.lib.feedback.image.attachments.tooLarge',
+                '{{fileName}} is larger than {{maxSize}}.',
+                { fileName, maxSize: formatFeedbackImageSize(MAX_FEEDBACK_IMAGE_BYTES) }
               )
         )
       const addInvalidImageError = (): void =>
@@ -199,7 +201,7 @@ export async function readFeedbackImageFiles(
         )
       const fitBytes = feedbackImageFitBytes(remainingBytes)
       if (!canAttachWithin(file, fitBytes)) {
-        addSizeError()
+        addSizeError(canAttachWithin(file, MAX_FEEDBACK_IMAGE_BYTES))
         continue
       }
       let data = new Uint8Array(await file.arrayBuffer())
@@ -225,7 +227,8 @@ export async function readFeedbackImageFiles(
       let image: Blob = file
       if (file.size > fitBytes) {
         let shrunk: Blob | null = null
-        if (file.type !== 'image/png' || !isAnimatedPng(data)) {
+        const animated = file.type === 'image/png' && isAnimatedPng(data)
+        if (!animated) {
           try {
             // Why: runs after the dimension check above, which bounds the decode.
             shrunk = await shrinkFeedbackImage(file, fitBytes)
@@ -236,7 +239,10 @@ export async function readFeedbackImageFiles(
           }
         }
         if (!shrunk) {
-          addSizeError()
+          addSizeError(
+            file.size <= MAX_FEEDBACK_IMAGE_BYTES ||
+              (!animated && fitBytes < MAX_FEEDBACK_IMAGE_BYTES)
+          )
           continue
         }
         image = shrunk
