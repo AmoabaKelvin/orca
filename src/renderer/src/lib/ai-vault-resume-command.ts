@@ -28,7 +28,7 @@ import {
   resolveAiVaultResumeStartupShell
 } from '@/lib/ai-vault-resume-shell'
 
-type AiVaultResumeCommandSession = Pick<
+export type AiVaultResumeCommandSession = Pick<
   AiVaultSession,
   'agent' | 'sessionId' | 'cwd' | 'codexHome'
 > &

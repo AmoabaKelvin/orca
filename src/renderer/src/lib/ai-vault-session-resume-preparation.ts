@@ -7,6 +7,7 @@ import {
   getSshTargetIdForExecutionHost,
   LOCAL_EXECUTION_HOST_ID
 } from '../../../shared/execution-host'
+import type { AiVaultResumeCommandSession } from './ai-vault-resume-command'
 
 export async function prepareAiVaultSessionForResume(
   session: AiVaultSession
@@ -56,10 +57,9 @@ const RESUMES_ONLY_IN_RECORDED_CWD: ReadonlySet<AiVaultSession['agent']> = new S
  * opens at the target workspace root, as local resumes already do (#17745). Also drops the
  * scanner-built command, whose `cd` into that folder would stop the agent from starting.
  */
-export async function dropDeletedSshResumeCwd<
-  T extends Pick<AiVaultSession, 'agent' | 'cwd'> &
-    Partial<Pick<AiVaultSession, 'executionHostId' | 'resumeCommand'>>
->(session: T): Promise<T | (Omit<T, 'resumeCommand'> & { cwd: null })> {
+export async function dropDeletedSshResumeCwd(
+  session: AiVaultResumeCommandSession
+): Promise<AiVaultResumeCommandSession> {
   const connectionId = getSshTargetIdForExecutionHost(session.executionHostId)
   if (!connectionId || !session.cwd || RESUMES_ONLY_IN_RECORDED_CWD.has(session.agent)) {
     return session
