@@ -207,7 +207,10 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
       const rowOwned = row !== undefined && ownedByRemoved(row)
       const commitmentOwned = commitment !== undefined && ownedByRemoved(commitment)
       // Why: a commitment outlives its row, so one pane can hold two owners' claims; clear only ours.
-      if ((row && !rowOwned) || (commitment && !commitmentOwned)) {
+      const sharedWithSurvivingOwner = Boolean(
+        (row && !rowOwned) || (commitment && !commitmentOwned)
+      )
+      if (sharedWithSurvivingOwner) {
         if (commitmentOwned) {
           this.revokeHydratedAuthorityForPaneKeys(new Set([paneKey]))
         }
