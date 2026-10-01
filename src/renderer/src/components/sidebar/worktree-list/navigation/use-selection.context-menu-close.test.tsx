@@ -170,6 +170,19 @@ describe('sidebar selection when a row context menu closes', () => {
     expect(selection.clearContextMenuSelection).toBe(initial)
   })
 
+  it('keeps a row the user re-selects with a click after an earlier menu cleared it', () => {
+    render(<Probe />)
+    fireEvent.contextMenu(screen.getByTestId('beta'))
+    act(() => selection.clearContextMenuSelection(beta))
+    expect(selectedIds()).toEqual([])
+
+    addToSelection(beta)
+    fireEvent.contextMenu(screen.getByTestId('beta'))
+    act(() => selection.clearContextMenuSelection(beta))
+
+    expect(selectedIds()).toEqual(['beta'])
+  })
+
   it('keeps a row the user selected before opening its menu', () => {
     render(<Probe />)
     addToSelection(beta)
