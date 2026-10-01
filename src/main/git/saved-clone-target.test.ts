@@ -14,17 +14,18 @@ function git(cwd: string, ...args: string[]): void {
   execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@t.invalid', ...args])
 }
 
-// What `git clone url` leaves at <root>/orca; `finished: false` is a clone killed before checkout.
-function checkout(originUrl: string, { finished = true } = {}): string {
+// What `git clone url` leaves at <root>/orca. `finished: false` is a clone killed before checkout;
+// `commits: false` is a finished clone of an empty repository, whose HEAD stays unborn.
+function checkout(originUrl: string, { finished = true, commits = true } = {}): string {
   const root = mkdtempSync(join(tmpdir(), 'orca-saved-clone-target-'))
   roots.push(root)
   const path = join(root, 'orca')
   execFileSync('git', ['init', '-q', path])
   git(path, 'remote', 'add', 'origin', originUrl)
-  if (finished) {
-    git(path, 'commit', '-q', '--allow-empty', '-m', 'init')
-  } else {
+  if (!finished) {
     writeFileSync(join(path, '.git', 'HEAD'), 'ref: refs/heads/.invalid\n')
+  } else if (commits) {
+    git(path, 'commit', '-q', '--allow-empty', '-m', 'init')
   }
   return path
 }
@@ -59,6 +60,25 @@ describe('reuseSavedCloneTarget', () => {
   it('reuses a finished clone of the same repo spelled differently', async () => {
     const project = saved(checkout('git@github.com:stablyai/orca.git'))
     await expect(decide(project, 'https://github.com/stablyai/orca')).resolves.toBe(project)
+  })
+
+  // A brand-new repository has no commits, so a repeat clone must not read as a failed one.
+  it('reuses a finished clone of an empty repository, whose HEAD is unborn', async () => {
+    const project = saved(checkout(url, { commits: false }))
+    await expect(decide(project)).resolves.toBe(project)
+  })
+
+  it('reuses a finished clone left on a detached HEAD', async () => {
+    const path = checkout(url)
+    git(path, 'checkout', '-q', '--detach')
+    const project = saved(path)
+    await expect(decide(project)).resolves.toBe(project)
+  })
+
+  it('does not reuse a folder nested inside a clone of an empty repository', async () => {
+    const nested = join(checkout(url, { commits: false }), 'orca')
+    mkdirSync(nested)
+    await expect(decide(saved(nested))).rejects.toThrow('already an Orca project')
   })
 
   it('refuses a finished clone of a different URL with the same folder name', async () => {

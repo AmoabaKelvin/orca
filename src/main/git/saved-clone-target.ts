@@ -4,43 +4,68 @@ import { isFolderRepo } from '../../shared/repo-kind'
 import type { Repo } from '../../shared/repo-types'
 import { runGitProbeOnHost } from '../repo-git-remote-identity'
 
-/** True only when git on `hostId` shows `repoPath` is its own checkout, with a resolvable HEAD,
- *  whose single origin URL names the same repo as `url` — what a finished `git clone url` leaves. */
+type GitProbe = (args: string[]) => Promise<string | null>
+
+/** Runs read-only git commands in the saved folder, folding "git failed" and "no route to that
+ *  host's git" into null so neither can read as a positive answer. */
+function probeIn(repoPath: string, hostId: ExecutionHostId, signal?: AbortSignal): GitProbe {
+  return async (args) => {
+    // Why: once Cancel has fired, no later probe may spawn git — and a provider that only rejects
+    // on `abort` never settles a command handed an already-aborted signal.
+    if (signal?.aborted) {
+      return null
+    }
+    try {
+      const result = await runGitProbeOnHost(args, repoPath, hostId, { signal })
+      return result?.stdout ?? null
+    } catch {
+      return null
+    }
+  }
+}
+
+/** Only an empty first line means the folder is the checkout's own top level: a subfolder prints
+ *  `../`, and a bare repo prints nothing so whatever follows lands on the first line instead. */
+function isCheckoutTopLevel(cdupStdout: string | null): boolean {
+  return cdupStdout !== null && cdupStdout.split(/\r?\n/)[0] === ''
+}
+
+/** True when git shows `repoPath` is a checkout's own top level whose HEAD git finished writing. */
+async function isFinishedCheckout(probe: GitProbe): Promise<boolean> {
+  // Why: a clone killed before it wrote refs leaves `HEAD -> refs/heads/.invalid`, which --verify
+  // rejects. One command covers a branch and a detached HEAD alike.
+  const settled = await probe(['rev-parse', '--show-cdup', '--verify', 'HEAD'])
+  if (settled !== null) {
+    return isCheckoutTopLevel(settled)
+  }
+  // Why: cloning an empty repository also leaves HEAD unborn, which --verify rejects, so ask the
+  // two questions apart. symbolic-ref resolves an unborn branch but not a killed clone's HEAD.
+  if (!isCheckoutTopLevel(await probe(['rev-parse', '--show-cdup']))) {
+    return false
+  }
+  return (await probe(['symbolic-ref', 'HEAD'])) !== null
+}
+
+/** True only when git on `hostId` shows `repoPath` is a finished checkout whose single origin URL
+ *  names the same repo as `url` — what a finished `git clone url` leaves. */
 async function isFinishedCloneOf(
   repoPath: string,
   url: string,
   hostId: ExecutionHostId,
   signal?: AbortSignal
 ): Promise<boolean> {
-  try {
-    // Why: a killed clone leaves HEAD unresolvable; --show-cdup prints an empty first line only at
-    // the checkout's own top level (a subfolder prints ../, a bare repo prints the hash).
-    const head = await runGitProbeOnHost(
-      ['rev-parse', '--show-cdup', '--verify', 'HEAD'],
-      repoPath,
-      hostId,
-      { signal }
-    )
-    if (!head || head.stdout.split(/\r?\n/)[0] !== '') {
-      return false
-    }
-    const origin = await runGitProbeOnHost(
-      ['config', '--get-all', 'remote.origin.url'],
-      repoPath,
-      hostId,
-      { signal }
-    )
-    const originUrl = origin?.stdout.trim() ?? ''
-    // Why: an origin with several URLs (fetch uses the first) prints one per line; never a match.
-    if (!originUrl || originUrl.includes('\n')) {
-      return false
-    }
-    // Why: `.git`, scheme and user spell one repo several ways; local paths don't normalize.
-    const requestedKey = normalizeGitRemoteUrl(url)
-    return requestedKey ? normalizeGitRemoteUrl(originUrl) === requestedKey : originUrl === url
-  } catch {
+  const probe = probeIn(repoPath, hostId, signal)
+  if (!(await isFinishedCheckout(probe))) {
     return false
   }
+  const originUrl = (await probe(['config', '--get-all', 'remote.origin.url']))?.trim() ?? ''
+  // Why: an origin with several URLs (fetch uses the first) prints one per line; never a match.
+  if (!originUrl || originUrl.includes('\n')) {
+    return false
+  }
+  // Why: `.git`, scheme and user spell one repo several ways; local paths don't normalize.
+  const requestedKey = normalizeGitRemoteUrl(url)
+  return requestedKey ? normalizeGitRemoteUrl(originUrl) === requestedKey : originUrl === url
 }
 
 /**
