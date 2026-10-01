@@ -3,7 +3,7 @@ export function quotePowerShellLiteral(value: string): string {
     return quotePowerShellMultilineLiteral(value)
   }
   // Why: PowerShell also ends single-quoted strings at typographic single quotes.
-  return `'${value.replace(/['‘’‚‛]/g, '$&$&')}'`
+  return `'${value.replace(/['\u2018\u2019\u201A\u201B]/g, '$&$&')}'`
 }
 
 /**
@@ -13,7 +13,7 @@ export function quotePowerShellLiteral(value: string): string {
  * delivered it.
  */
 function quotePowerShellMultilineLiteral(value: string): string {
-  const escaped = value.replace(/[`$"“”„\r\n]/g, (char) =>
+  const escaped = value.replace(/[`$"\u201C\u201D\u201E\r\n]/g, (char) =>
     char === '\r' ? '`r' : char === '\n' ? '`n' : `\`${char}`
   )
   return `"${escaped}"`

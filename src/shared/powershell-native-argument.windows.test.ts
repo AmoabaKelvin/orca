@@ -33,7 +33,7 @@ it.skipIf(process.platform !== 'win32')(
   async () => {
     const root = await mkdtemp(join(tmpdir(), 'orca-ps-multiline-'))
     try {
-      const plain = 'line one\r\nline two $HOME `tick\nO’Brien “double” end'
+      const plain = 'line one\r\nline two $HOME `tick\nO\u2019Brien \u201Cdouble\u201D end'
       expect(await captureNativeArgv(root, quotePowerShellLiteral(plain))).toEqual([plain])
 
       // Why compare with the old raw single-quoted form: 5.1 drops embedded `"` from native argv
