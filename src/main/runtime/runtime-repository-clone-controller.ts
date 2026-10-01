@@ -163,7 +163,10 @@ export class RuntimeRepositoryCloneController {
           return updated
         }
       }
-      // Why: the saved project's folder was just re-created, so its worktrees must be re-read.
+      // Why: git re-created this project's folder, so its worktree root is gone with it and the
+      // authorized-roots cache still holds the answers from before the folder came back.
+      await prepareLocalWorktreeRootForRepo(store, existing)
+      invalidateAuthorizedRootsCache()
       this.invalidate(existing.id)
       return existing
     }
