@@ -274,6 +274,12 @@ describe('TabStripScrollIndicator', () => {
     fireEvent.scroll(scrollContainer)
     expect(thumb.style.transform).toBe('translateX(120px)')
 
+    // The thumb's geometry is not a React prop, so a re-render for hover must not reset it.
+    fireEvent.pointerEnter(getByTestId('tab-strip-scroll-indicator'))
+    expect(getByTestId('tab-strip-scroll-thumb')).toBe(thumb)
+    expect(thumb.style.width).toBe('160px')
+    expect(thumb.style.transform).toBe('translateX(120px)')
+
     // A tab opening grows the strip without a scroll event.
     Object.defineProperty(scrollContainer, 'scrollWidth', { value: 2000, configurable: true })
     stripResizeListeners.forEach((listener) => listener())
