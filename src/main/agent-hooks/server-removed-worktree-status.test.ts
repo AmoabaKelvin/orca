@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -111,6 +112,97 @@ describe('AgentHookServer removed-worktree retirement', () => {
       const panes = server.getStatusSnapshot().map((entry) => entry.paneKey)
       expect(panes).toContain(newPane)
       expect(panes).not.toContain(LOCAL_PANE)
+    } finally {
+      server.stop()
+    }
+  })
+
+  // The mixed-owner branch deletes the removed row without the pane fence the sole-owner path
+  // gets, so the removed worktree's own late turn has to be blocked by its token instead — or the
+  // row this PR exists to delete is written straight back to memory and to last-status.json.
+  it('refuses a late turn from the removed owner after a mixed-owner cleanup', async () => {
+    const server = new AgentHookServer()
+    await server.start({ env: 'production', userDataPath })
+    try {
+      const pane = makePaneKey('tab-mixed', '77777777-7777-4777-8777-777777777777')
+      const working = { state: 'working', prompt: 'live', agentType: 'codex' } as const
+      // The surviving owner's token-bearing SSH claim outlives its row across a disconnect clear.
+      server.ingestRemote(
+        {
+          paneKey: pane,
+          tabId: 'tab-mixed',
+          worktreeId: KEPT,
+          launchToken: 'survivor',
+          payload: working
+        },
+        'user@box'
+      )
+      server.clearStatusEntriesForConnection('user@box')
+      server.ingestTerminalStatus({
+        paneKey: pane,
+        worktreeId: REMOVED,
+        connectionId: null,
+        payload: working
+      })
+
+      server.dropStatusEntriesForRemovedWorktree(REMOVED, 'local')
+      server.ingestTerminalStatus({
+        paneKey: pane,
+        worktreeId: REMOVED,
+        connectionId: null,
+        payload: { state: 'done', prompt: 'late', agentType: 'codex' }
+      })
+
+      expect(server.getStatusSnapshot().map((entry) => entry.paneKey)).not.toContain(pane)
+      server.flushStatusPersistSync()
+      const file = JSON.parse(readFileSync(lastStatusPath(), 'utf8'))
+      expect(file.entries[pane]).toBeUndefined()
+      // The surviving owner is not collateral: its resume identity is still on disk, so a
+      // reattach or a new agent can pick the pane back up.
+      expect(file.authorityCommitments[pane]).toMatchObject({ connectionId: 'user@box' })
+    } finally {
+      server.stop()
+    }
+  })
+
+  // `deleteStatusEntry` drops the pane's authority observation whatever `preserveAuthority` says,
+  // and on a shared pane that observation can belong to the owner that is staying.
+  it('keeps the surviving owner attestable after the removed owner row goes', async () => {
+    const server = new AgentHookServer()
+    await server.start({ env: 'production', userDataPath })
+    try {
+      const pane = makePaneKey('tab-attest', '88888888-8888-4888-8888-888888888888')
+      const working = { state: 'working', prompt: 'live', agentType: 'codex' } as const
+      const launchTokenHash = createHash('sha256').update('survivor').digest('hex')
+      const attest = () =>
+        server.attestCompatibilityAuthority({
+          paneKey: pane,
+          launchTokenHash,
+          connectionId: 'user@box',
+          terminalProvenance: 'current_runtime'
+        })
+      server.ingestRemote(
+        {
+          paneKey: pane,
+          tabId: 'tab-attest',
+          worktreeId: KEPT,
+          launchToken: 'survivor',
+          payload: working
+        },
+        'user@box'
+      )
+      expect(attest()).toMatchObject({ paneKey: pane, source: 'current_hook' })
+      // A tokenless local report rebinds only the row, leaving the SSH owner's claims in place.
+      server.ingestTerminalStatus({
+        paneKey: pane,
+        worktreeId: REMOVED,
+        connectionId: null,
+        payload: working
+      })
+
+      server.dropStatusEntriesForRemovedWorktree(REMOVED, 'local')
+
+      expect(attest()).toMatchObject({ paneKey: pane, source: 'current_hook' })
     } finally {
       server.stop()
     }
