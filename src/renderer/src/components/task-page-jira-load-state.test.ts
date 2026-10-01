@@ -27,6 +27,20 @@ describe('TaskPage Jira load state', () => {
     })
   })
 
+  it('reads the status through the local IPC prefix', () => {
+    expect(
+      createTaskPageJiraLoadFailureState(
+        new Error("Error invoking remote method 'jira:searchIssues': Error: Error 429: Slow down")
+      )
+    ).toEqual({
+      issues: [],
+      error: {
+        title: 'Error 429: Jira rate-limited this issue search. Try again in a moment.',
+        details: 'Slow down'
+      }
+    })
+  })
+
   it('explains malformed JQL errors', () => {
     expect(createTaskPageJiraLoadFailureState(new Error('Malformed JQL'))).toEqual({
       issues: [],

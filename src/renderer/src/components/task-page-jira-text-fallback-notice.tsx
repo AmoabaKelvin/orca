@@ -3,24 +3,25 @@ import { ChevronDown, ChevronRight, Info } from 'lucide-react'
 import { translate } from '@/i18n/i18n'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import type { TaskPageJiraJqlRejection } from './task-page-jira-search'
 
-/** `reason` is null when no fallback happened; '' when Jira gave no reason. */
+/** `rejection` is null when no fallback happened. */
 export function TaskPageJiraTextFallbackNotice({
-  reason
+  rejection
 }: {
-  reason: string | null
+  rejection: TaskPageJiraJqlRejection | null
 }): React.JSX.Element {
   // Why: screen readers announce changes inside an existing live region, not a freshly mounted one.
   return (
     <div role="status">
-      {reason === null ? null : <FallbackNoticeBody key={reason} reason={reason} />}
+      {rejection === null ? null : <FallbackNoticeBody key={rejection.reason} {...rejection} />}
     </div>
   )
 }
 
-function FallbackNoticeBody({ reason }: { reason: string }): React.JSX.Element {
-  // Why: collapsed by default; for plain-text searches Jira's JQL reason is noise.
-  const [open, setOpen] = useState(false)
+function FallbackNoticeBody({ reason, likelyTypo }: TaskPageJiraJqlRejection): React.JSX.Element {
+  // Why: for plain-text searches Jira's JQL reason is noise; for a JQL typo it is the answer.
+  const [open, setOpen] = useState(likelyTypo)
   return (
     <div className="flex items-start gap-2 border-b border-border/50 bg-muted/35 px-4 py-2 text-xs text-muted-foreground">
       <Info className="mt-0.5 size-3.5 flex-none" />

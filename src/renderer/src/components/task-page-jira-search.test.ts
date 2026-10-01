@@ -14,7 +14,7 @@ const ISSUE: JiraIssue = {
   createdAt: '2026-09-25T00:00:00.000Z',
   updatedAt: '2026-09-25T00:00:00.000Z'
 }
-const SYNTAX_ERROR = "Error 400: Error in the JQL Query: Expecting operator but got 'is'."
+const SYNTAX_ERROR = "Error 400: Error in the JQL Query: Expecting operator but got 'slow'."
 // Shape of the same failure when it crosses local Electron IPC.
 const IPC_SYNTAX_ERROR = `Error invoking remote method 'jira:searchIssues': Error: ${SYNTAX_ERROR}`
 
@@ -43,6 +43,37 @@ describe('searchTaskPageJiraIssues', () => {
     expect(search.mock.calls).toEqual([['key = "UTF-8"'], ['text ~ "utf 8*"']])
   })
 
+  it('retries a key-shaped search as text when Jira says the key does not exist', async () => {
+    const search = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error("Error 400: An issue with key 'ABC-999' does not exist for field 'key'.")
+      )
+      .mockResolvedValueOnce([ISSUE])
+    await expect(searchTaskPageJiraIssues('abc-999', search)).resolves.toEqual({
+      issues: [ISSUE],
+      jqlRejection: null
+    })
+    expect(search.mock.calls).toEqual([['key = "ABC-999"'], ['text ~ "abc 999*"']])
+  })
+
+  it('does not mask a key lookup that failed for another reason', async () => {
+    const error = new Error('Error 403: Forbidden')
+    const search = vi.fn().mockRejectedValue(error)
+    await expect(searchTaskPageJiraIssues('abc-999', search)).rejects.toBe(error)
+    expect(search).toHaveBeenCalledTimes(1)
+  })
+
+  it('searches everyday phrases with `in` and `is` as text in one request', async () => {
+    const search = vi.fn().mockResolvedValue([ISSUE])
+    await searchTaskPageJiraIssues('crash in terminal', search)
+    await searchTaskPageJiraIssues('login is slow', search)
+    expect(search.mock.calls).toEqual([
+      ['text ~ "crash in terminal*"'],
+      ['text ~ "login is slow*"']
+    ])
+  })
+
   it('does not retry a key lookup that found the issue', async () => {
     const search = vi.fn().mockResolvedValue([ISSUE])
     await searchTaskPageJiraIssues('sha-256', search)
@@ -65,15 +96,18 @@ describe('searchTaskPageJiraIssues', () => {
         .fn()
         .mockRejectedValueOnce(new Error(message))
         .mockResolvedValueOnce([ISSUE])
-      await expect(searchTaskPageJiraIssues('this is broken', search)).resolves.toEqual({
+      await expect(searchTaskPageJiraIssues('login was slow', search)).resolves.toEqual({
         issues: [ISSUE],
-        jqlRejection: "Error in the JQL Query: Expecting operator but got 'is'."
+        jqlRejection: {
+          reason: "Error in the JQL Query: Expecting operator but got 'slow'.",
+          likelyTypo: false
+        }
       })
-      expect(search.mock.calls).toEqual([['this is broken'], ['text ~ "this is broken*"']])
+      expect(search.mock.calls).toEqual([['login was slow'], ['text ~ "login was slow*"']])
     }
   )
 
-  it('keeps Jira validation errors visible next to the text matches', async () => {
+  it('marks a rejected `=` query as a likely JQL typo', async () => {
     const search = vi
       .fn()
       .mockRejectedValueOnce(
@@ -82,7 +116,10 @@ describe('searchTaskPageJiraIssues', () => {
       .mockResolvedValueOnce([])
     await expect(searchTaskPageJiraIssues('project = NOPE', search)).resolves.toEqual({
       issues: [],
-      jqlRejection: "The value 'NOPE' does not exist for the field 'project'."
+      jqlRejection: {
+        reason: "The value 'NOPE' does not exist for the field 'project'.",
+        likelyTypo: true
+      }
     })
   })
 
@@ -107,7 +144,7 @@ describe('searchTaskPageJiraIssues', () => {
         .fn()
         .mockRejectedValueOnce(new Error(SYNTAX_ERROR))
         .mockRejectedValueOnce(retryError)
-      await expect(searchTaskPageJiraIssues('this is broken', search)).rejects.toBe(retryError)
+      await expect(searchTaskPageJiraIssues('login was slow', search)).rejects.toBe(retryError)
     }
   )
 
@@ -117,7 +154,7 @@ describe('searchTaskPageJiraIssues', () => {
       .fn()
       .mockRejectedValueOnce(jqlError)
       .mockRejectedValueOnce(new Error("Error 400: Unable to parse the text 'x' for field 'text'."))
-    await expect(searchTaskPageJiraIssues('this is broken', search)).rejects.toBe(jqlError)
+    await expect(searchTaskPageJiraIssues('login was slow', search)).rejects.toBe(jqlError)
   })
 
   it('sends partially typed punctuation as plain text', async () => {

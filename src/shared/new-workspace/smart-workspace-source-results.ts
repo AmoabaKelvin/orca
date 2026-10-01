@@ -5,7 +5,7 @@ import type { LinearIssue } from '../linear/issue-types'
 import type { LinearCollectionResult } from '../linear/workspace-types'
 import type { BaseRefSearchResult } from '../repo-types'
 import { parseJiraIssueUrl } from '../jira-issue-url'
-import { buildJiraTextSearchJql } from '../jira-search-input-jql'
+import { buildJiraTextMatchJql } from '../jira-search-input-jql'
 import type { GitHubIssueOrPRLink } from '../github/links'
 import {
   buildSmartWorkspaceUrlSourceRows,
@@ -45,12 +45,12 @@ export function getSmartWorkspaceEmptyHint(mode: SmartNameMode): string {
   return EMPTY_HINT_BY_MODE[mode]
 }
 
-export function buildJiraIssueSearchJql(query: string): string | null {
+/** The trimmed query when it is short enough and has words to search for; null otherwise. */
+export function getJiraIssueSearchQuery(query: string): string | null {
   const trimmed = query.trim()
-  if (!trimmed || !isSmartWorkspaceSourceQueryWithinLimit(trimmed)) {
-    return null
-  }
-  return buildJiraTextSearchJql(trimmed) || null
+  return isSmartWorkspaceSourceQueryWithinLimit(trimmed) && buildJiraTextMatchJql(trimmed)
+    ? trimmed
+    : null
 }
 
 export function isBlockingJiraUrlIntent(mode: SmartNameMode, value: string): boolean {

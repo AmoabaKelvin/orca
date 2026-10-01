@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildJiraIssueKeyJql,
-  buildJiraTextMatchJql,
-  buildJiraTextSearchJql,
-  mayBeJql
-} from './jira-search-input-jql'
+import { buildJiraIssueKeyJql, buildJiraTextMatchJql, mayBeJql } from './jira-search-input-jql'
 
 describe('mayBeJql', () => {
   it.each([
@@ -24,10 +19,15 @@ describe('mayBeJql', () => {
     '"Custom field" = "value"',
     'cf[12345] >= 10',
     'issueFunction in linkedIssuesOf("project = ABC")',
+    'sprint in openSprints ()',
+    'issue in "linkedIssues"("ABC-1")',
+    'status IN(Done)',
+    'labels is not empty',
     'NOT (status = Done OR assignee IS EMPTY)',
-    // Prose with operator words still reaches Jira; its answer decides.
+    // Prose that fits the grammar still reaches Jira; its answer decides.
     'value is null',
-    'this is broken'
+    'crash in terminal (macOS)',
+    'login was slow'
   ])('sends input that could parse as JQL to Jira: %s', (input) => {
     expect(mayBeJql(input)).toBe(true)
   })
@@ -41,20 +41,29 @@ describe('mayBeJql', () => {
     'order the pizza',
     'sign-in page',
     'built-in was-',
+    // IN needs a list or function and IS needs EMPTY or NULL, so Jira rejects all of these.
+    'sign in',
+    'log in page',
+    'crash in terminal',
+    'login is slow',
+    'this is broken',
+    'status is not open',
     '   '
   ])('skips JQL for input with no operator: %s', (input) => {
     expect(mayBeJql(input)).toBe(false)
   })
 })
 
-describe('buildJiraTextSearchJql', () => {
+describe('buildJiraTextMatchJql', () => {
   it.each([
     ['s', 'text ~ "s*"'],
     ['  Fix Login  ', 'text ~ "fix login*"'],
-    ['abc-12', 'key = "ABC-12"'],
+    // The key lookup is the caller's choice, so key shape is ignored here.
+    ['abc-12', 'text ~ "abc 12*"'],
+    ['utf-8', 'text ~ "utf 8*"'],
     ["don't break", 'text ~ "don\'t break*"']
   ])('%s -> %s', (input, expected) => {
-    expect(buildJiraTextSearchJql(input)).toBe(expected)
+    expect(buildJiraTextMatchJql(input)).toBe(expected)
   })
 
   // Each of these returned HTTP 400 or zero results from Jira before being neutralized.
@@ -73,7 +82,7 @@ describe('buildJiraTextSearchJql', () => {
     ['C++ build', 'text ~ "c build*"'],
     ['what?', 'text ~ "what*"']
   ])('treats search syntax in %s as plain text', (input, expected) => {
-    expect(buildJiraTextSearchJql(input)).toBe(expected)
+    expect(buildJiraTextMatchJql(input)).toBe(expected)
   })
 
   // Jira skips word-splitting for a wildcard term, so each of these matched nothing with a trailing *.
@@ -87,7 +96,7 @@ describe('buildJiraTextSearchJql', () => {
     ['foo=bar', 'text ~ "foo=bar"'],
     ['node.js', 'text ~ "node.js"']
   ])('drops the wildcard when the last word has punctuation: %s', (input, expected) => {
-    expect(buildJiraTextSearchJql(input)).toBe(expected)
+    expect(buildJiraTextMatchJql(input)).toBe(expected)
   })
 
   it.each([
@@ -95,7 +104,7 @@ describe('buildJiraTextSearchJql', () => {
     ["don't", 'text ~ "don\'t*"'],
     ['login. fix', 'text ~ "login. fix*"']
   ])('keeps the wildcard on a plain last word: %s', (input, expected) => {
-    expect(buildJiraTextSearchJql(input)).toBe(expected)
+    expect(buildJiraTextMatchJql(input)).toBe(expected)
   })
 
   it.each([
@@ -103,13 +112,13 @@ describe('buildJiraTextSearchJql', () => {
     ['AND x', 'text ~ "and x*"'],
     ['fix NOT login', 'text ~ "fix not login*"']
   ])('keeps boolean words as words: %s', (input, expected) => {
-    expect(buildJiraTextSearchJql(input)).toBe(expected)
+    expect(buildJiraTextMatchJql(input)).toBe(expected)
   })
 
   it.each(['', '   ', '(', '"', '()[]{}', '&& ||'])(
     'returns nothing searchable for %j',
     (input) => {
-      expect(buildJiraTextSearchJql(input)).toBe('')
+      expect(buildJiraTextMatchJql(input)).toBe('')
     }
   )
 })
@@ -126,16 +135,5 @@ describe('buildJiraIssueKeyJql', () => {
 
   it.each(['fix login', 'ABC-', '-12', 'ABC-12x', '', '   '])('is not a key: %j', (input) => {
     expect(buildJiraIssueKeyJql(input)).toBeNull()
-  })
-})
-
-describe('buildJiraTextMatchJql', () => {
-  // Why: the key branch is the caller's choice, so the text builder must ignore key shape.
-  it.each([
-    ['utf-8', 'text ~ "utf 8*"'],
-    ['abc-12', 'text ~ "abc 12*"'],
-    ['  Fix Login  ', 'text ~ "fix login*"']
-  ])('%s -> %s', (input, expected) => {
-    expect(buildJiraTextMatchJql(input)).toBe(expected)
   })
 })

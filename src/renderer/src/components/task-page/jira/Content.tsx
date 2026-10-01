@@ -105,7 +105,7 @@ export function TaskPageJiraContent({
             />
           ) : null}
           <TaskPageJiraTextFallbackNotice
-            reason={jiraStatus.credentialError ? null : jiraJqlRejection}
+            rejection={jiraStatus.credentialError ? null : jiraJqlRejection}
           />
 
           {jiraLoading && jiraIssues.length === 0 ? (

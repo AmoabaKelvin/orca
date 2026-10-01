@@ -1,8 +1,19 @@
 import { JIRA_ISSUE_KEY_PATTERN } from './jira-issue-url'
 
-// Why: JQL's operator set is closed (plugins add functions, not operators), so input with
-// none of these and no leading ORDER BY cannot parse as JQL. Hyphens excluded so `sign-in` stays text.
-const JQL_OPERATOR_PATTERN = /[=~<>]|(?<![\w-])(?:in|is|was|changed)(?![\w-])|^order\s+by\b/i
+// Why: JQL's operator set is closed (plugins add functions, not operators), so input with none
+// of these and no leading ORDER BY cannot parse as JQL. Hyphens excluded so `sign-in` stays text.
+const JQL_OPERATOR_PATTERN = new RegExp(
+  [
+    '[=~<>]',
+    String.raw`(?<![\w-])(?:was|changed)(?![\w-])`,
+    // IN takes only a list or a function call, so `crash in terminal` cannot parse.
+    String.raw`(?<![\w-])in\s*(?:[a-z_][\w.]*|"[^"]+"|'[^']+')?\s*\(`,
+    // IS takes only EMPTY or NULL, so `login is slow` cannot parse.
+    String.raw`(?<![\w-])is\s+(?:not\s+)?(?:empty|null)(?![\w-])`,
+    String.raw`^order\s+by\b`
+  ].join('|'),
+  'i'
+)
 
 // Lucene text-search syntax. Jira's index drops these characters, so spaces keep matches intact.
 const TEXT_SEARCH_SYNTAX_PATTERN = /[+\-&|!(){}[\]^"~*?:\\/]/g
@@ -33,9 +44,4 @@ export function buildJiraTextMatchJql(input: string): string {
   }
   const lastWord = words.slice(words.lastIndexOf(' ') + 1)
   return `text ~ "${words}${WILDCARD_SAFE_WORD_PATTERN.test(lastWord) ? '*' : ''}"`
-}
-
-/** Search issue text, or match an exact issue key. Empty when no searchable words remain. */
-export function buildJiraTextSearchJql(input: string): string {
-  return buildJiraIssueKeyJql(input) ?? buildJiraTextMatchJql(input)
 }

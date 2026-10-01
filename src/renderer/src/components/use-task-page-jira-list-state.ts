@@ -2,6 +2,7 @@ import type { TaskPageLinearViewStateModel } from './use-task-page-linear-view-s
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import type { JiraIssue, JiraProjectStatusOrder, JiraPriority } from '../../../shared/jira-types'
 import type { TaskPageJiraLoadError } from '@/components/task-page-jira-load-state'
+import type { TaskPageJiraJqlRejection } from '@/components/task-page-jira-search'
 import type { JiraPresetId } from '@/components/task-page-localized-options'
 import type {
   JiraIssueSortColumn,
@@ -16,7 +17,7 @@ export function useTaskPageJiraListState(model: TaskPageLinearViewStateModel) {
   const [jiraLoading, setJiraLoading] = useState(false)
   const [jiraError, setJiraError] = useState<TaskPageJiraLoadError | null>(null)
   const [jiraErrorDetailsOpen, setJiraErrorDetailsOpen] = useState(false)
-  const [jiraJqlRejection, setJiraJqlRejection] = useState<string | null>(null)
+  const [jiraJqlRejection, setJiraJqlRejection] = useState<TaskPageJiraJqlRejection | null>(null)
   const [jiraSearchInput, setJiraSearchInput] = useState('')
   const [appliedJiraSearch, setAppliedJiraSearch] = useState('')
   const [activeJiraPreset, setActiveJiraPreset] = useState<JiraPresetId>('assigned')
