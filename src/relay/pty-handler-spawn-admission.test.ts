@@ -327,7 +327,12 @@ describe('PtyHandler', () => {
     expect(handler.activePtyCount).toBe(0)
   })
 
-  function failSpawnWithToolchainProbe(toolchainProbeStdout: string): Promise<string> {
+  const THROWN_LOAD_ERROR =
+    'Failed to load native module: pty.node, checked: build/Release, prebuilds/linux-x64'
+
+  function failSpawnWithToolchainProbe(
+    toolchainProbeStdout: string
+  ): Promise<(Error & { data?: unknown }) | null> {
     const realRunProcess = runProcessModule.runProcess
     vi.spyOn(runProcessModule, 'runProcess').mockImplementation((spec) =>
       spec.program === '/bin/sh'
@@ -341,13 +346,11 @@ describe('PtyHandler', () => {
         : realRunProcess(spec)
     )
     mockPtySpawn.mockImplementationOnce(() => {
-      throw new Error(
-        'Failed to load native module: pty.node, checked: build/Release, prebuilds/linux-x64'
-      )
+      throw new Error(THROWN_LOAD_ERROR)
     })
     return dispatcher.callRequest('pty.spawn', {}).then(
-      () => '',
-      (error: Error) => error.message
+      () => null,
+      (error: Error & { data?: unknown }) => error
     )
   }
 
@@ -362,8 +365,16 @@ describe('PtyHandler', () => {
     // The checkout's own node_modules holds a node-pty an SSH host's relay dir never has.
     vi.spyOn(nodePtyBindingSurvey, 'resolveNodePtyInstallDir').mockReturnValue(null)
 
-    const message = await failSpawnWithToolchainProbe('HAVE python3\nPKG apt-get\n')
+    const rejection = await failSpawnWithToolchainProbe('HAVE python3\nPKG apt-get\n')
+    const message = rejection?.message ?? ''
 
+    // #17830: the load error the relay was handed still travels with the rejection.
+    // No compiler means no rebuild, so the client must not auto-reconnect on this one.
+    expect(rejection?.data).toMatchObject({
+      reason: 'toolchain_missing',
+      repairable: false,
+      rawError: THROWN_LOAD_ERROR
+    })
     expect(message).not.toContain('could not establish why')
     expect(message).toContain('node-pty is not installed at')
     expect(message).toContain('sudo apt-get install -y build-essential python3')
@@ -377,9 +388,9 @@ describe('PtyHandler', () => {
     vi.spyOn(nodePtyBindingSurvey, 'resolveNodePtyInstallDir').mockReturnValue(ancestorInstall)
 
     try {
-      const message = await failSpawnWithToolchainProbe(
-        'HAVE make\nHAVE g++\nHAVE python3\nPKG apt-get\n'
-      )
+      const message =
+        (await failSpawnWithToolchainProbe('HAVE make\nHAVE g++\nHAVE python3\nPKG apt-get\n'))
+          ?.message ?? ''
 
       expect(message).not.toContain('node-pty is not installed at')
       expect(message).toContain(`under ${ancestorInstall}`)
