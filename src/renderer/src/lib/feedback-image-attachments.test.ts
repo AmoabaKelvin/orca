@@ -43,16 +43,23 @@ function pngFile(name: string, size = 24, dimensions = { width: 1, height: 1 }):
   return file
 }
 
-function pngChunk(type: string, payload: Uint8Array): Uint8Array<ArrayBuffer> {
+function pngChunk(
+  type: string,
+  payload: Uint8Array,
+  declaredLength = payload.byteLength
+): Uint8Array<ArrayBuffer> {
   // CRC left zero: the reader does not verify it.
   const chunk = new Uint8Array(new ArrayBuffer(12 + payload.byteLength))
-  new DataView(chunk.buffer).setUint32(0, payload.byteLength)
+  new DataView(chunk.buffer).setUint32(0, declaredLength)
   chunk.set(new TextEncoder().encode(type), 4)
   chunk.set(payload, 8)
   return chunk
 }
 
-function oversizedPng(name: string, chunks: [type: string, payload: Uint8Array][]): File {
+function oversizedPng(
+  name: string,
+  chunks: [type: string, payload: Uint8Array, declaredLength?: number][]
+): File {
   const ihdr = pngChunk('IHDR', new Uint8Array(13))
   new DataView(ihdr.buffer).setUint32(8, 1)
   new DataView(ihdr.buffer).setUint32(12, 1)
@@ -60,7 +67,7 @@ function oversizedPng(name: string, chunks: [type: string, payload: Uint8Array][
     [
       new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
       ihdr,
-      ...chunks.map(([type, payload]) => pngChunk(type, payload))
+      ...chunks.map(([type, payload, declaredLength]) => pngChunk(type, payload, declaredLength))
     ],
     name,
     { type: 'image/png' }
@@ -265,6 +272,21 @@ describe('readFeedbackImageFiles', () => {
     expect(images.map((image) => image.name)).toEqual(['still.png'])
   })
 
+  // Why: a corrupt length past 2^31 must end the walk, not throw or wrap back into the file.
+  it('treats a PNG whose chunk lengths run past its end as still', async () => {
+    const corrupt = oversizedPng('corrupt-length.png', [
+      ['tEXt', new Uint8Array(0)],
+      ['tEXt', new Uint8Array(4), 0x8000_0000],
+      ['acTL', new Uint8Array(8)]
+    ])
+    shrinkFeedbackImage.mockResolvedValue(encoded(3_000_000, 'image/png'))
+
+    const { images, errors } = await readFeedbackImageFiles([corrupt], 0)
+
+    expect(errors).toEqual([])
+    expect(images.map((image) => image.name)).toEqual(['corrupt-length.png'])
+  })
+
   it('refuses a file too large to read before shrinking', async () => {
     const file = pngFile('enormous.png', MAX_FEEDBACK_IMAGE_SOURCE_BYTES + 1)
     file.arrayBuffer = vi.fn()
@@ -288,6 +310,11 @@ describe('readFeedbackImageFiles', () => {
 
     expect(errors).toEqual(['corrupt.png is not a valid supported image.'])
     expect(images.map((image) => image.name)).toEqual(['retina.png'])
+    // The refused image spent none of the budget the next one shrinks into.
+    expect(shrinkFeedbackImage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: 'retina.png' }),
+      MAX_FEEDBACK_IMAGE_BYTES
+    )
   })
 
   it('reports an oversized image that could not be shrunk enough', async () => {
