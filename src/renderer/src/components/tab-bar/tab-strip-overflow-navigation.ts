@@ -66,8 +66,10 @@ export function useTabStripOverflowNavigation({
   tabStripOverflowState: TabStripOverflowState
   activeTabDockSide: ActiveTabDockSide | null
   scrollTabStrip: (direction: 'start' | 'end', behavior?: ScrollBehavior) => void
+  subscribeToStripResize: (listener: () => void) => () => void
 } {
   const tabStripRef = useRef<HTMLDivElement>(null)
+  const stripResizeListenersRef = useRef<Set<() => void>>(new Set())
   const prevStripRef = useRef<{ worktreeId: string; tabIds: ReadonlySet<string> } | null>(null)
   const stickToEndRef = useRef(false)
   const tabClosedThisCommitRef = useRef(false)
@@ -150,6 +152,9 @@ export function useTabStripOverflowNavigation({
         el.scrollLeft = Math.max(0, el.scrollWidth - el.clientWidth)
       }
       recordScrollAnchor()
+      for (const listener of stripResizeListenersRef.current) {
+        listener()
+      }
     }
 
     const disconnectResizeObservers = bindTabStripContentResizeObservers(el, handleStripResize)
@@ -299,5 +304,19 @@ export function useTabStripOverflowNavigation({
     tabClosedThisCommitRef.current = false
   })
 
-  return { tabStripRef, tabStripOverflowState, activeTabDockSide, scrollTabStrip }
+  // Why share these observers: each one watches every tab, so a second set doubles that work.
+  const subscribeToStripResize = useCallback((listener: () => void): (() => void) => {
+    stripResizeListenersRef.current.add(listener)
+    return () => {
+      stripResizeListenersRef.current.delete(listener)
+    }
+  }, [])
+
+  return {
+    tabStripRef,
+    tabStripOverflowState,
+    activeTabDockSide,
+    scrollTabStrip,
+    subscribeToStripResize
+  }
 }

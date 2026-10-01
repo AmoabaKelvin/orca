@@ -231,7 +231,7 @@ describe('TabStripScrollIndicator', () => {
     expect(scrollContainer.scrollLeft).toBe(0)
   })
 
-  it('sizes the thumb when overflow appears and keeps it in step with scrolling and tab changes', async () => {
+  it('sizes the thumb when overflow appears and keeps it in step with scrolling and tab changes', () => {
     const scrollContainer = document.createElement('div')
     Object.defineProperty(scrollContainer, 'scrollWidth', { value: 1000, configurable: true })
     Object.defineProperty(scrollContainer, 'clientWidth', { value: 400, configurable: true })
@@ -246,10 +246,26 @@ describe('TabStripScrollIndicator', () => {
         : clientWidth.get!.call(this)
     })
 
-    const { getByTestId, rerender } = render(
-      <TabStripScrollIndicator hasOverflow={false} scrollContainerRef={scrollContainerRef} />
+    const stripResizeListeners = new Set<() => void>()
+    const subscribeToStripResize = (listener: () => void): (() => void) => {
+      stripResizeListeners.add(listener)
+      return () => stripResizeListeners.delete(listener)
+    }
+
+    const { getByTestId, rerender, unmount } = render(
+      <TabStripScrollIndicator
+        hasOverflow={false}
+        scrollContainerRef={scrollContainerRef}
+        subscribeToStripResize={subscribeToStripResize}
+      />
     )
-    rerender(<TabStripScrollIndicator hasOverflow scrollContainerRef={scrollContainerRef} />)
+    rerender(
+      <TabStripScrollIndicator
+        hasOverflow
+        scrollContainerRef={scrollContainerRef}
+        subscribeToStripResize={subscribeToStripResize}
+      />
+    )
     const thumb = getByTestId('tab-strip-scroll-thumb')
     expect(thumb.style.width).toBe('160px')
     expect(thumb.style.transform).toBe('translateX(0px)')
@@ -260,8 +276,10 @@ describe('TabStripScrollIndicator', () => {
 
     // A tab opening grows the strip without a scroll event.
     Object.defineProperty(scrollContainer, 'scrollWidth', { value: 2000, configurable: true })
-    scrollContainer.append(document.createElement('div'))
-    await Promise.resolve()
+    stripResizeListeners.forEach((listener) => listener())
     expect(thumb.style.width).toBe('80px')
+
+    unmount()
+    expect(stripResizeListeners.size).toBe(0)
   })
 })

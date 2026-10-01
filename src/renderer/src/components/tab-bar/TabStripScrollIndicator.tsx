@@ -1,16 +1,18 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { computeTabStripThumbLayout } from './tab-strip-scroll-metrics'
-import { bindTabStripContentResizeObservers } from './tab-strip-content-resize-observers'
 
 export type TabStripScrollIndicatorProps = {
   hasOverflow: boolean
   scrollContainerRef?: React.RefObject<HTMLElement | null>
+  /** Called when tabs change the strip's size without a scroll event; returns an unsubscribe. */
+  subscribeToStripResize?: (listener: () => void) => () => void
   disabled?: boolean
 }
 
 export function TabStripScrollIndicator({
   hasOverflow,
   scrollContainerRef,
+  subscribeToStripResize,
   disabled = false
 }: TabStripScrollIndicatorProps): React.JSX.Element | null {
   const trackRef = useRef<HTMLDivElement>(null)
@@ -38,17 +40,13 @@ export function TabStripScrollIndicator({
     scrollContainer.addEventListener('scroll', syncThumb, { passive: true })
     const trackResizeObserver = new ResizeObserver(syncThumb)
     trackResizeObserver.observe(track)
-    // Why: tabs growing or closing change the strip's scroll width without a scroll event.
-    const disconnectContentObservers = bindTabStripContentResizeObservers(
-      scrollContainer,
-      syncThumb
-    )
+    const unsubscribeStripResize = subscribeToStripResize?.(syncThumb)
     return () => {
       scrollContainer.removeEventListener('scroll', syncThumb)
       trackResizeObserver.disconnect()
-      disconnectContentObservers()
+      unsubscribeStripResize?.()
     }
-  }, [hasOverflow, scrollContainerRef])
+  }, [hasOverflow, scrollContainerRef, subscribeToStripResize])
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef?.current
