@@ -1,14 +1,16 @@
 // Why: Pi settles its own turn while pi-subagents children keep running, so the
 // generated extension holds the pane's completion until every child it saw start is gone.
 
+import { AGENT_STATUS_MAX_SUBAGENTS } from '../../shared/agent-status-types'
+
 // Module scope: post() reads the roster when a body is built, so a coalesced or
 // retried post always carries the children live at delivery.
 export function getPiSubagentSnapshotSourceLines(): string[] {
   return [
     'type SubagentDetail = { agentType?: string; description?: string; startedAt: number; workflow?: boolean }',
     'type SubagentRoster = { active: Set<string>; exited?: Set<string>; details?: Map<string, SubagentDetail>; waiting: boolean; onEvent?: (event: unknown, forcedStatus?: string) => void; listener?: (event: unknown) => void; onRunnerExit?: (event: unknown) => void; runnerExitListener?: (event: unknown) => void }',
-    '// Mirrors AGENT_STATUS_MAX_SUBAGENTS; the host enforces the same cap.',
-    'const MAX_SUBAGENT_SNAPSHOT = 32',
+    // Why: interpolated, not re-typed, so the extension cap cannot drift from the host's.
+    `const MAX_SUBAGENT_SNAPSHOT = ${AGENT_STATUS_MAX_SUBAGENTS}`,
     'let subagentRoster: SubagentRoster | null = null',
     '',
     // Why: an exited runner is already gone, and a pi-subagents workflow run is the lead
