@@ -29,8 +29,7 @@ export const FEEDBACK_IMAGE_FILE_ACCEPT = SUPPORTED_FEEDBACK_IMAGE_TYPES.join(',
 const MAX_FEEDBACK_IMAGE_DETAIL_ERRORS = 4
 // Why: an oversized image is read whole before it can be shrunk, so cap the read.
 export const MAX_FEEDBACK_IMAGE_SOURCE_BYTES = 32 * 1024 * 1024
-// Why: the smallest shrink step of a full-screen capture is ~200 KB, so below
-// this shrinking only burns encodes before refusing.
+// Why: a Retina screenshot's smallest step measured ~110 KB; below this, shrinks only burn encodes.
 export const MIN_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES = 64 * 1024
 // Why: a shrink keeps the largest step that fits, so given the whole budget the
 // first screenshot leaves the next only a blurry JPEG and the third no room.
@@ -109,6 +108,34 @@ export function hasAttachableFeedbackImage(
       (file) => isSupportedType(file.type) && file.size > 0 && canAttachWithin(file, fitBytes)
     )
   )
+}
+
+/**
+ * The most a batch can commit, for the paste gate to reserve while it is read:
+ * each file's own size if it fits the space left, else its capped shrink target.
+ */
+export function maxFeedbackImageBatchBytes(
+  files: readonly File[],
+  existingCount: number,
+  existingBytes: number
+): number {
+  let remaining = MAX_FEEDBACK_IMAGE_COUNT - existingCount
+  let remainingBytes = MAX_FEEDBACK_IMAGE_TOTAL_BYTES - existingBytes
+  let batchBytes = 0
+  for (const file of files) {
+    if (remaining <= 0) {
+      break
+    }
+    const fitBytes = feedbackImageFitBytes(remainingBytes)
+    if (!isSupportedType(file.type) || file.size === 0 || !canAttachWithin(file, fitBytes)) {
+      continue
+    }
+    const fileBytes = file.size <= fitBytes ? file.size : feedbackImageShrinkTargetBytes(fitBytes)
+    remaining -= 1
+    remainingBytes -= fileBytes
+    batchBytes += fileBytes
+  }
+  return batchBytes
 }
 
 export function releaseFeedbackImageDraft(draft: FeedbackImageDraft): void {
