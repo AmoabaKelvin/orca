@@ -30,9 +30,9 @@ export const KEYBINDING_DEFINITION_CORE_4: readonly KeybindingDefinition[] = [
     group: 'Workspace List',
     scope: 'worktreeList',
     searchKeywords: ['shortcut', 'workspace', 'worktree', 'status', 'done', 'complete', 'board'],
-    // Why: only fires while the workspace list itself has focus; the Mac "delete" key sends Backspace.
+    // Why: bare Backspace is a typing key on Mac and the list can hold focus after re-clicking the active card; match the file explorer's Cmd+Backspace.
     defaultBindings: {
-      darwin: ['Backspace', 'Delete'],
+      darwin: ['Mod+Backspace', 'Delete'],
       linux: ['Delete'],
       win32: ['Delete']
     },
