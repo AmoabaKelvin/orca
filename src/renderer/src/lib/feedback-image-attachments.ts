@@ -177,6 +177,14 @@ export async function readFeedbackImageFiles(
                 { fileName, maxSize: formatFeedbackImageSize(MAX_FEEDBACK_IMAGE_TOTAL_BYTES) }
               )
         )
+      const addInvalidImageError = (): void =>
+        addError(() =>
+          translate(
+            'auto.lib.feedback.image.attachments.invalidImage',
+            '{{fileName}} is not a valid supported image.',
+            { fileName }
+          )
+        )
       const fitBytes = feedbackImageFitBytes(remainingBytes)
       if (!canAttachWithin(file, fitBytes)) {
         addSizeError()
@@ -197,24 +205,24 @@ export async function readFeedbackImageFiles(
           continue
         }
         if (error instanceof Error && error.message === INVALID_RASTER_IMAGE_PREVIEW_ERROR) {
-          addError(() =>
-            translate(
-              'auto.lib.feedback.image.attachments.invalidImage',
-              '{{fileName}} is not a valid supported image.',
-              { fileName }
-            )
-          )
+          addInvalidImageError()
           continue
         }
         throw error
       }
       let image: Blob = file
       if (file.size > fitBytes) {
-        // Why: runs after the dimension check above, which bounds the decode.
-        const shrunk =
-          file.type === 'image/png' && isAnimatedPng(data)
-            ? null
-            : await shrinkFeedbackImage(file, fitBytes).catch(() => null)
+        let shrunk: Blob | null = null
+        if (file.type !== 'image/png' || !isAnimatedPng(data)) {
+          try {
+            // Why: runs after the dimension check above, which bounds the decode.
+            shrunk = await shrinkFeedbackImage(file, fitBytes)
+          } catch {
+            // Why: its header passed the check above, but the browser could not decode it.
+            addInvalidImageError()
+            continue
+          }
+        }
         if (!shrunk) {
           addSizeError()
           continue
