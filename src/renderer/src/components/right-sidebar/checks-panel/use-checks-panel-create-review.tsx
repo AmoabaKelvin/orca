@@ -1,75 +1,53 @@
 import { useCallback } from 'react'
 import { toast } from 'sonner'
-import { refreshHostedReviewCard } from '@/store/slices/hosted-review-card-refresh'
 import { openHttpLink } from '@/lib/http-link-routing'
-import { resolveCreatedHostedReviewLink } from '../source-control-created-review-link'
 import { formatCreateError } from '../create-pull-request-review-copy'
 import { stripBaseRef } from '../create-pull-request-base-ref-normalization'
 import { normalizeHostedReviewHeadRef } from '../../../../../shared/hosted-review-refs'
-import {
-  hostedReviewProviderSupportsDraft,
-  type HostedReviewProvider
-} from '../../../../../shared/hosted-review'
+import { hostedReviewProviderSupportsDraft } from '../../../../../shared/hosted-review'
 import type { ChecksPanelReviewState } from './use-checks-panel-review-state'
 import type { ChecksPanelControllerState } from './use-checks-panel-controller-state'
-import type { ChecksPanelContextState } from './use-checks-panel-context-state'
-import type { ChecksPanelPollingState } from './use-checks-panel-polling'
 import type { ChecksPanelComposerState } from './use-checks-panel-composer-state'
 import type { ChecksPanelBranchActionsState } from './use-checks-panel-branch-actions'
-import type { ChecksPanelCheckAndReviewActionsState } from './use-checks-panel-check-and-review-actions'
 import { clearPullRequestGenerationRequiresPushBeforeCreate } from '@/store/slices/pull-request-generation'
 import { translate } from '@/i18n/i18n'
 import type { PullRequestGenerationFields } from '@/store/slices/pull-request-generation'
 import { useGenerateBeforeCreatePullRequest } from '../use-generate-before-create-pull-request'
 import { createdReviewIsForeground } from '../created-review-foreground'
+import {
+  useChecksPanelCreatedReview,
+  type ChecksPanelCreatedReviewInput
+} from './use-checks-panel-created-review'
 
-type ChecksPanelCreateReviewInput = Pick<
-  ChecksPanelReviewState,
-  | 'activePullRequestGenerationKey'
-  | 'createComposerOpen'
-  | 'createPrPushFirst'
-  | 'hostedReviewCreateCopy'
-  | 'hostedReviewCreateProvider'
-  | 'hostedReviewCreation'
-  | 'prCreationDefaults'
-> &
+type ChecksPanelCreateReviewInput = ChecksPanelCreatedReviewInput &
+  Pick<
+    ChecksPanelReviewState,
+    | 'activePullRequestGenerationKey'
+    | 'createComposerOpen'
+    | 'createPrPushFirst'
+    | 'hostedReviewCreateCopy'
+    | 'hostedReviewCreateProvider'
+    | 'hostedReviewCreation'
+    | 'prCreationDefaults'
+  > &
   Pick<
     ChecksPanelControllerState,
-    | 'activeWorktreeId'
     | 'activeWorktreePath'
-    | 'branch'
     | 'createHostedReview'
     | 'createPrInFlightRef'
     | 'createStackedHostedReview'
-    | 'fetchHostedReviewForBranch'
-    | 'mountedRef'
     | 'ownerSettings'
     | 'panelContextKey'
     | 'panelContextKeyRef'
-    | 'repo'
     | 'setCreatePrError'
     | 'setGitStatusRefreshNonce'
     | 'setIsCreatingPr'
-    | 'setRightSidebarOpen'
-    | 'setRightSidebarTab'
     | 'updatePullRequestGenerationRecord'
-    | 'updateWorktreeMeta'
   > &
-  Pick<
-    ChecksPanelContextState,
-    | 'fallbackGitHubPRNumber'
-    | 'linkedAzureDevOpsPR'
-    | 'linkedBitbucketPR'
-    | 'linkedGiteaPR'
-    | 'linkedGitLabMR'
-    | 'linkedPR'
-  > &
-  Pick<ChecksPanelPollingState, 'fetchGitLabDetails'> &
   Pick<ChecksPanelComposerState, 'prBase' | 'prBody' | 'prDraft' | 'prGenerating' | 'prTitle'> &
   Pick<ChecksPanelComposerState, 'handleGeneratePullRequestFields' | 'prAiGenerationEnabled'> &
   Pick<ChecksPanelComposerState, 'prFieldsAreSeedPlaceholders'> &
-  Pick<ChecksPanelBranchActionsState, 'pushBeforeCreatePullRequest'> &
-  Pick<ChecksPanelCheckAndReviewActionsState, 'refreshLinkedGitHubPullRequest'>
+  Pick<ChecksPanelBranchActionsState, 'pushBeforeCreatePullRequest'>
 
 export function useChecksPanelCreateReview(model: ChecksPanelCreateReviewInput) {
   const {
@@ -82,18 +60,10 @@ export function useChecksPanelCreateReview(model: ChecksPanelCreateReviewInput) 
     createPrInFlightRef,
     createPrPushFirst,
     createStackedHostedReview,
-    fallbackGitHubPRNumber,
-    fetchGitLabDetails,
-    fetchHostedReviewForBranch,
     handleGeneratePullRequestFields,
     hostedReviewCreateCopy,
     hostedReviewCreateProvider,
     hostedReviewCreation,
-    linkedAzureDevOpsPR,
-    linkedBitbucketPR,
-    linkedGiteaPR,
-    linkedGitLabMR,
-    linkedPR,
     ownerSettings,
     panelContextKey,
     panelContextKeyRef,
@@ -106,92 +76,13 @@ export function useChecksPanelCreateReview(model: ChecksPanelCreateReviewInput) 
     prGenerating,
     prTitle,
     pushBeforeCreatePullRequest,
-    refreshLinkedGitHubPullRequest,
     repo,
     setCreatePrError,
     setGitStatusRefreshNonce,
     setIsCreatingPr,
-    setRightSidebarOpen,
-    setRightSidebarTab,
-    updatePullRequestGenerationRecord,
-    updateWorktreeMeta
+    updatePullRequestGenerationRecord
   } = model
-  const handlePullRequestCreated = useCallback(
-    async (result: {
-      provider: HostedReviewProvider
-      number: number
-      url: string
-    }): Promise<void> => {
-      if (!repo || !branch) {
-        return
-      }
-      if (createdReviewIsForeground(activeWorktreeId, model.mountedRef.current)) {
-        setRightSidebarOpen(true)
-        setRightSidebarTab('checks')
-      }
-      try {
-        const createdLink = resolveCreatedHostedReviewLink(result.provider, result.number)
-        if (activeWorktreeId && result.provider !== 'unsupported') {
-          await updateWorktreeMeta(activeWorktreeId, createdLink.worktree)
-        }
-        const linkedReviewNumbers = {
-          linkedGitHubPR: linkedPR,
-          fallbackGitHubPR: fallbackGitHubPRNumber,
-          linkedGitLabMR,
-          linkedBitbucketPR,
-          linkedAzureDevOpsPR,
-          linkedGiteaPR,
-          ...createdLink.lookup
-        }
-        if (result.provider === 'gitlab') {
-          const refreshedReview = await refreshHostedReviewCard(fetchHostedReviewForBranch, {
-            repoPath: repo.path,
-            repoId: repo.id,
-            branch,
-            ...linkedReviewNumbers
-          })
-          const refreshedGitLabReview =
-            refreshedReview?.provider === 'gitlab' ? refreshedReview : null
-          await fetchGitLabDetails({
-            mrNumberOverride: result.number,
-            headShaOverride: refreshedGitLabReview?.headSha,
-            commitAsCurrent: true
-          })
-          return
-        }
-        if (result.provider !== 'github') {
-          await refreshHostedReviewCard(fetchHostedReviewForBranch, {
-            repoPath: repo.path,
-            repoId: repo.id,
-            branch,
-            ...linkedReviewNumbers
-          })
-          return
-        }
-        await refreshLinkedGitHubPullRequest(result.number)
-      } catch {
-        // The success toast keeps the hosted URL available; Checks can be refreshed manually.
-      }
-    },
-    [
-      branch,
-      fallbackGitHubPRNumber,
-      fetchGitLabDetails,
-      fetchHostedReviewForBranch,
-      linkedAzureDevOpsPR,
-      linkedBitbucketPR,
-      linkedGiteaPR,
-      linkedGitLabMR,
-      linkedPR,
-      model.mountedRef,
-      refreshLinkedGitHubPullRequest,
-      repo,
-      setRightSidebarOpen,
-      setRightSidebarTab,
-      activeWorktreeId,
-      updateWorktreeMeta
-    ]
-  )
+  const handlePullRequestCreated = useChecksPanelCreatedReview(model)
 
   const createPullRequest = useCallback(
     async (stacked = false, generated?: PullRequestGenerationFields): Promise<void> => {
