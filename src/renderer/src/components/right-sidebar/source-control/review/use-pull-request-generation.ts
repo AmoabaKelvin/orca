@@ -6,6 +6,7 @@ import {
   type RuntimeGeneratePullRequestFieldsOverrides
 } from '@/runtime/runtime-git-client'
 import type { PullRequestGenerationOutcome } from '../../create-pull-request-dialog-field-model'
+import { settlePullRequestGenerationRequest } from '../../pull-request-generation-request-outcome'
 import { useAppStore } from '@/store'
 import {
   createRunningPullRequestGenerationRecord,
@@ -111,67 +112,67 @@ export function useSourceControlPullRequestGeneration({
         createRunningPullRequestGenerationRecord(context, seed, fieldRevisions, options?.autoSubmit)
       )
 
-      try {
-        const result = await generateRuntimePullRequestFields(
-          {
-            // Why: route generation by the repo OWNER host, not the focused runtime.
-            settings: context.runtimeTargetSettings,
-            worktreeId: context.worktreeId,
-            worktreePath: context.worktreePath,
-            connectionId: context.connectionId
-          },
-          {
-            base: stripBaseRef(seed.base.trim()),
-            title: seed.title,
-            body: seed.body,
-            draft: seed.draft,
-            provider: hostedReviewCreateProvider,
-            useTemplate: resolvedPrCreationDefaults.useTemplate
-          },
-          overrides
-        )
-        if (result.branchChangedByPreparation) {
-          await refreshGitStatusAfterPullRequestGeneration(context)
-        }
-        if (result.success) {
-          useAppStore.getState().recordFeatureInteraction('ai-pr-generation')
-        }
-        updatePullRequestGenerationRecord(generationKey, (record) => {
-          if (!result.success) {
-            return resolvePullRequestGenerationFailure({
+      const request = (async (): Promise<void> => {
+        try {
+          const result = await generateRuntimePullRequestFields(
+            {
+              // Why: route generation by the repo OWNER host, not the focused runtime.
+              settings: context.runtimeTargetSettings,
+              worktreeId: context.worktreeId,
+              worktreePath: context.worktreePath,
+              connectionId: context.connectionId
+            },
+            {
+              base: stripBaseRef(seed.base.trim()),
+              title: seed.title,
+              body: seed.body,
+              draft: seed.draft,
+              provider: hostedReviewCreateProvider,
+              useTemplate: resolvedPrCreationDefaults.useTemplate
+            },
+            overrides
+          )
+          if (result.branchChangedByPreparation) {
+            await refreshGitStatusAfterPullRequestGeneration(context)
+          }
+          if (result.success) {
+            useAppStore.getState().recordFeatureInteraction('ai-pr-generation')
+          }
+          updatePullRequestGenerationRecord(generationKey, (record) => {
+            if (!result.success) {
+              return resolvePullRequestGenerationFailure({
+                record,
+                requestId,
+                canceled: result.canceled,
+                error: result.canceled ? null : result.error
+              })
+            }
+            if (!record) {
+              return null
+            }
+            return resolvePullRequestGenerationSuccess({
               record,
               requestId,
-              canceled: result.canceled,
-              error: result.canceled ? null : result.error
+              result: {
+                base: stripBaseRef(result.fields.base),
+                title: result.fields.title,
+                body: result.fields.body,
+                draft: result.fields.draft
+              }
             })
-          }
-          if (!record) {
-            return null
-          }
-          return resolvePullRequestGenerationSuccess({
-            record,
-            requestId,
-            result: {
-              base: stripBaseRef(result.fields.base),
-              title: result.fields.title,
-              body: result.fields.body,
-              draft: result.fields.draft
-            }
           })
-        })
-      } catch (error) {
-        updatePullRequestGenerationRecord(generationKey, (record) =>
-          resolvePullRequestGenerationFailure({
-            record,
-            requestId,
-            error:
-              error instanceof Error ? error.message : 'Failed to generate pull request details'
-          })
-        )
-      }
-      const record = useAppStore.getState().pullRequestGenerationRecords[generationKey]
-      // Why: failed, stopped, or superseded runs carry no result for this request.
-      return { result: record?.context.requestId === requestId ? record.result : null }
+        } catch (error) {
+          updatePullRequestGenerationRecord(generationKey, (record) =>
+            resolvePullRequestGenerationFailure({
+              record,
+              requestId,
+              error:
+                error instanceof Error ? error.message : 'Failed to generate pull request details'
+            })
+          )
+        }
+      })()
+      return await settlePullRequestGenerationRequest(generationKey, requestId, request)
     },
     [
       activePullRequestGenerationKey,

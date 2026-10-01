@@ -3,6 +3,8 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { useRef, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type * as RuntimeGitClient from '@/runtime/runtime-git-client'
+import type { RuntimeGeneratePullRequestFieldsResult } from '@/runtime/runtime-git-client-context'
 import { useAppStore } from '@/store'
 import {
   createRunningPullRequestGenerationRecord,
@@ -25,6 +27,18 @@ import {
 import { useSourceControlHostedReviewCreation } from './use-hosted-review-creation'
 import { useSourceControlHostedReviewEligibility } from './use-hosted-review-eligibility'
 import { useSourceControlHostedReviewState } from './use-hosted-review-state'
+import { useSourceControlPullRequestGeneration } from './use-pull-request-generation'
+
+const runtime = vi.hoisted(() => ({ cancel: vi.fn(), generate: vi.fn() }))
+
+vi.mock('@/runtime/runtime-git-client', async (importOriginal) => {
+  const original = await importOriginal<typeof RuntimeGitClient>()
+  return {
+    ...original,
+    cancelRuntimeGeneratePullRequestFields: runtime.cancel,
+    generateRuntimePullRequestFields: runtime.generate
+  }
+})
 
 type Input = Parameters<typeof useSourceControlHostedReviewCreation>[0]
 
@@ -63,6 +77,8 @@ const readyEligibility: HostedReviewCreationEligibility = {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  runtime.cancel.mockReset()
+  runtime.generate.mockReset()
   useAppStore.setState({ pullRequestGenerationRecords: {}, activeWorktreeId: null })
 })
 
@@ -414,14 +430,9 @@ describe('useSourceControlHostedReviewCreation', () => {
   })
 
   it.each([
-    { name: 'fails', result: null, stop: false },
-    {
-      name: 'is stopped, refusing clicks until it winds down',
-      result: generatedFields,
-      stop: true
-    },
-    { name: 'creates', result: generatedFields, stop: false }
-  ])('releases the in-flight hold when the run $name', async ({ result, stop }) => {
+    { name: 'fails', result: null },
+    { name: 'creates', result: generatedFields }
+  ])('releases the in-flight hold when the run $name', async ({ result }) => {
     const { generate, finish } = deferredGeneration()
     const input = makeInput({ handleGeneratePullRequestFields: generate })
     const { result: hook } = renderHook(() => useSourceControlHostedReviewCreation(input))
@@ -438,21 +449,87 @@ describe('useSourceControlHostedReviewCreation', () => {
       click = hook.current.handleCreatePullRequest()
     })
     expect(inFlight()).toBe(true)
-    if (stop) {
-      useAppStore
-        .getState()
-        .setPullRequestGenerationRecord(GENERATION_KEY, { ...runningRecord, status: 'canceled' })
-      // Like the disabled Create button: the click stays in flight until the stopped request returns.
-      await act(async () => hook.current.handleCreatePullRequest())
-      expect(input.createHostedReview).not.toHaveBeenCalled()
-      expect(inFlight()).toBe(true)
-    }
     await act(async () => {
       finish(result)
       await click
     })
 
     expect(inFlight()).toBe(false)
+  })
+
+  it('releases the hold as soon as Stop lands, so the next click submits as shown while the stopped request is still pending', async () => {
+    let answer: (result: RuntimeGeneratePullRequestFieldsResult) => void = () => {}
+    runtime.generate.mockImplementation(
+      () =>
+        new Promise<RuntimeGeneratePullRequestFieldsResult>((resolve) => {
+          answer = resolve
+        })
+    )
+    // The cancel never reaches the host, so the stopped request stays pending.
+    runtime.cancel.mockReturnValue(new Promise(() => {}))
+    const base = makeInput()
+    // Wires the real store-routed generation and Stop to the real create and its hold, as the Source Control panel does.
+    const { result } = renderHook(() => {
+      const [inFlight, setCreatePrInFlightByWorktree] = useState<Record<string, boolean>>({})
+      const createPrInFlightRef = useRef<Record<string, boolean>>({})
+      const prGenerationRecords = useAppStore((s) => s.pullRequestGenerationRecords)
+      const generation = useSourceControlPullRequestGeneration({
+        activeRepo: base.activeRepo,
+        activeRepoSettings: null,
+        activeWorktreeId: 'wt-1',
+        allocatePullRequestGenerationRequestId:
+          useAppStore.getState().allocatePullRequestGenerationRequestId,
+        branchName: 'fix-readme-typo',
+        hostedReviewCreateProvider: 'github',
+        prGenerationRecords,
+        refreshGitStatusAfterPullRequestGeneration: vi.fn(),
+        resolvedPrCreationDefaults: DEFAULT_SOURCE_CONTROL_AI_PR_CREATION_DEFAULTS,
+        setPullRequestGenerationRecord: useAppStore.getState().setPullRequestGenerationRecord,
+        updatePullRequestGenerationRecord: useAppStore.getState().updatePullRequestGenerationRecord,
+        worktreePath: '/repo'
+      })
+      const creation = useSourceControlHostedReviewCreation({
+        ...base,
+        activePullRequestGenerationKey: generation.activePullRequestGenerationKey,
+        createPrInFlightRef,
+        handleGeneratePullRequestFields: (overrides, options) =>
+          generation.handleGeneratePullRequestFieldsForActive(
+            { base: base.prBase, title: base.prTitle, body: base.prBody, draft: base.prDraft },
+            { base: 0, title: 0, body: 0, draft: 0 },
+            overrides,
+            options
+          ),
+        prGenerating: generation.activePullRequestGenerationRecord?.status === 'running',
+        setCreatePrInFlightByWorktree
+      })
+      return { creation, generation, inFlight: inFlight['wt-1'] === true }
+    })
+
+    let firstClick: Promise<void> = Promise.resolve()
+    act(() => {
+      firstClick = result.current.creation.handleCreatePullRequest()
+    })
+    expect(runtime.generate).toHaveBeenCalledTimes(1)
+    expect(result.current.inFlight).toBe(true)
+
+    await act(async () =>
+      result.current.generation.handleCancelGeneratePullRequestFieldsForActive()
+    )
+    expect(result.current.inFlight).toBe(false)
+    await act(async () => result.current.creation.handleCreatePullRequest())
+
+    expect(runtime.generate).toHaveBeenCalledTimes(1)
+    expect(base.createHostedReview).toHaveBeenCalledTimes(1)
+    expect(base.createHostedReview).toHaveBeenCalledWith(
+      '/repo',
+      expect.objectContaining({ title: 'Fix readme typo', body: '' })
+    )
+    // The stopped request's late result creates nothing.
+    await act(async () => {
+      answer({ success: true, fields: generatedFields })
+      await firstClick
+    })
+    expect(base.createHostedReview).toHaveBeenCalledTimes(1)
   })
 
   it('creates the clicked branch PR without revealing Checks when the panel moved to another worktree mid-run', async () => {

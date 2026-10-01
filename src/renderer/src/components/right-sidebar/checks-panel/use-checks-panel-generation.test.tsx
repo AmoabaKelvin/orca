@@ -215,4 +215,72 @@ describe('useChecksPanelGeneration outcome', () => {
 
     await expect(outcome).resolves.toEqual({ result: null })
   })
+
+  it('settles with no result as soon as Stop lands, without waiting for the stopped request, and drops its late result', async () => {
+    const generationKey = 'repo-1::worktree-1::feature'
+    let answer: (result: RuntimeGeneratePullRequestFieldsResult) => void = () => {}
+    runtime.generate.mockImplementation(
+      () =>
+        new Promise<RuntimeGeneratePullRequestFieldsResult>((resolve) => {
+          answer = resolve
+        })
+    )
+    // The cancel never reaches the host, so the stopped request stays pending.
+    runtime.cancel.mockReturnValue(new Promise(() => {}))
+    const { setPullRequestGenerationRecord, updatePullRequestGenerationRecord } =
+      useAppStore.getState()
+    const { result } = renderHook(() =>
+      useChecksPanelGeneration({
+        activePullRequestGenerationKey: generationKey,
+        activePullRequestGenerationRecord: null,
+        activeWorktreeId: 'worktree-1',
+        activeWorktreePath: '/workspace/repo',
+        allocatePullRequestGenerationRequestId: vi.fn(() => 11),
+        branch: 'feature',
+        handleBranchChangedByPullRequestGeneration: vi.fn(),
+        hostedReviewCreateProvider: 'github',
+        ownerSettings: null,
+        prCreationDefaults: {
+          draft: false,
+          generateDetailsOnOpen: false,
+          openAfterCreate: false,
+          useTemplate: true
+        },
+        prGenerationRecords: useAppStore((s) => s.pullRequestGenerationRecords),
+        repo: {
+          id: 'repo-1',
+          path: '/workspace/repo',
+          displayName: 'repo',
+          badgeColor: '#000',
+          addedAt: 0
+        },
+        setPullRequestGenerationRecord,
+        updatePullRequestGenerationRecord
+      })
+    )
+    let outcome: Promise<unknown> = Promise.resolve()
+    act(() => {
+      outcome = result.current.handleGeneratePullRequestFieldsForActive(
+        { base: 'main', title: 'Feature', body: '', draft: false },
+        { base: 0, title: 0, body: 0, draft: 0 },
+        undefined,
+        { autoSubmit: true }
+      )
+    })
+
+    act(() => result.current.handleCancelGeneratePullRequestFieldsForActive())
+    expect(runtime.cancel).toHaveBeenCalledTimes(1)
+    const stillPending = new Promise((resolve) => setTimeout(() => resolve('still pending'), 50))
+    await expect(Promise.race([outcome, stillPending])).resolves.toEqual({ result: null })
+
+    answer({
+      success: true,
+      fields: { base: 'develop', title: 'Late run', body: 'Late.', draft: false }
+    })
+    await act(async () => {})
+    expect(useAppStore.getState().pullRequestGenerationRecords[generationKey]).toMatchObject({
+      status: 'canceled',
+      result: null
+    })
+  })
 })
