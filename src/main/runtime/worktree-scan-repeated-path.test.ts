@@ -95,4 +95,33 @@ describe('worktree scan with a repeated path', () => {
     const detected = await runtime.listDetectedManagedWorktrees(`id:${REPO_ID}`)
     expect(detected.worktrees.map((worktree) => worktree.id)).toEqual(expectedIds)
   })
+
+  it('keeps a linked folder reachable by its live branch when a stale row comes first', async () => {
+    // Git orders repeats of a linked path by registration name, not by which one is live.
+    const linkedPath = '/home/me/fileLoc-feature'
+    listWorktreesStrictMock.mockResolvedValue([
+      { path: REPO_PATH, head: 'abc', branch: 'dev_ops', isBare: false, isMainWorktree: true },
+      { path: linkedPath, head: 'old', branch: 'stale', isBare: false, isMainWorktree: false },
+      { path: linkedPath, head: 'new', branch: 'live', isBare: false, isMainWorktree: false },
+      { path: linkedPath, head: 'new', branch: 'live', isBare: false, isMainWorktree: false }
+    ])
+
+    await expect(makeRuntime().showManagedWorktree('branch:live')).resolves.toMatchObject({
+      id: `${REPO_ID}::${linkedPath}`,
+      branch: 'live'
+    })
+  })
+
+  it('keeps the checkout when the main row was relabelled with its folder', async () => {
+    // A separate-git-dir repo opened through a linked worktree: the scan gives the main row that folder's path.
+    listWorktreesStrictMock.mockResolvedValue([
+      { path: REPO_PATH, head: 'old', branch: 'main', isBare: false, isMainWorktree: true },
+      { path: REPO_PATH, head: 'abc', branch: 'dev_ops', isBare: false, isMainWorktree: false }
+    ])
+
+    await expect(makeRuntime().showManagedWorktree('branch:dev_ops')).resolves.toMatchObject({
+      id: MAIN_WORKTREE_ID,
+      branch: 'dev_ops'
+    })
+  })
 })
