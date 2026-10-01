@@ -94,13 +94,19 @@ export async function reuseSavedCloneTarget(
     return current?.id === saved.id ? current : null
   }
   const requestedKey = normalizeGitRemoteUrl(url)
-  const stored = saved.gitRemoteIdentity
+  // Why: `origin` is the only stored remote that names the project's own repo. `upstream` names the
+  // repo a fork came from, and so do `Repo.upstream` and the GitHub avatar `repoIcon` derived from it.
+  const storedOrigin =
+    saved.gitRemoteIdentity?.remoteName === 'origin' ? saved.gitRemoteIdentity : null
   // Why: the project was this repo, so its settings still belong once git re-creates the folder.
-  // A stored identity read from `upstream` names the repo a fork came from, not the fork.
-  if (requestedKey && stored?.remoteName === 'origin' && stored.canonicalKey === requestedKey) {
+  if (requestedKey && storedOrigin?.canonicalKey === requestedKey) {
     return null
   }
   throw new Error(
-    `"${saved.displayName}" is already an Orca project at ${saved.path}, and Orca couldn't confirm that folder is a clone of this URL: it may hold a different repository, or have been moved or deleted. Remove the project from Orca or choose another folder.`
+    `"${saved.displayName}" is already an Orca project at ${saved.path}, and Orca couldn't confirm that folder is a clone of this URL: ${
+      storedOrigin
+        ? `Orca has that project recorded as ${storedOrigin.remoteUrl}`
+        : 'Orca has no record of which repository that project holds, so it cannot tell whether the folder is missing or holds something else'
+    }. Remove the project from Orca or choose another folder.`
   )
 }

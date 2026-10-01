@@ -86,6 +86,23 @@ describe('reuseSavedCloneTarget', () => {
     await expect(decide(project)).rejects.toThrow('"orca" is already an Orca project')
   })
 
+  // The two reasons a clone can be refused need different things from the user, so say which it is.
+  it('names the repository it has on record when the project was a different one', async () => {
+    const project = saved(join(tmpdir(), 'orca-saved-clone-target-absent'), {
+      gitRemoteIdentity: {
+        canonicalKey: 'github.com/someone/orca',
+        remoteName: 'origin',
+        remoteUrl: 'https://github.com/someone/orca.git'
+      }
+    })
+    await expect(decide(project)).rejects.toThrow('recorded as https://github.com/someone/orca.git')
+  })
+
+  it('says it has no record of the repository when the project never stored an origin', async () => {
+    const project = saved(join(tmpdir(), 'orca-saved-clone-target-absent'))
+    await expect(decide(project)).rejects.toThrow('no record of which repository')
+  })
+
   it('refuses a finished clone of a different local path, which does not normalize', async () => {
     const project = saved(checkout('/srv/other/orca'))
     await expect(decide(project, '/srv/mine/orca')).rejects.toThrow('already an Orca project')
