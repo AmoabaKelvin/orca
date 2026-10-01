@@ -1,5 +1,9 @@
 import type { JiraIssue } from '../../../shared/jira-types'
-import { buildJiraTextSearchJql, mayBeJql } from '../../../shared/jira-search-input-jql'
+import {
+  buildJiraIssueKeyJql,
+  buildJiraTextMatchJql,
+  mayBeJql
+} from '../../../shared/jira-search-input-jql'
 import { getJiraBadRequestReason } from './task-page-jira-load-state'
 
 export type TaskPageJiraSearchResult = {
@@ -13,7 +17,17 @@ export async function searchTaskPageJiraIssues(
   search: (jql: string) => Promise<JiraIssue[]>
 ): Promise<TaskPageJiraSearchResult> {
   const trimmed = query.trim()
-  const textJql = buildJiraTextSearchJql(trimmed)
+  const textJql = buildJiraTextMatchJql(trimmed)
+  const keyJql = buildJiraIssueKeyJql(trimmed)
+  if (keyJql) {
+    const issues = await search(keyJql)
+    // Why: `utf-8` and `sha-256` are key-shaped but meant as text, so an empty key lookup
+    // is a wrong guess, not an answer.
+    if (issues.length > 0 || !textJql) {
+      return { issues, jqlRejection: null }
+    }
+    return { issues: await search(textJql), jqlRejection: null }
+  }
   if (!mayBeJql(trimmed)) {
     // Why: the runtime RPC rejects empty JQL.
     return { issues: textJql ? await search(textJql) : [], jqlRejection: null }

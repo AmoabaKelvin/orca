@@ -34,6 +34,21 @@ describe('searchTaskPageJiraIssues', () => {
     expect(search.mock.calls).toEqual([['key = "ABC-1"']])
   })
 
+  it('retries a key-shaped search as text when no issue has that key', async () => {
+    const search = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([ISSUE])
+    await expect(searchTaskPageJiraIssues('utf-8', search)).resolves.toEqual({
+      issues: [ISSUE],
+      jqlRejection: null
+    })
+    expect(search.mock.calls).toEqual([['key = "UTF-8"'], ['text ~ "utf 8*"']])
+  })
+
+  it('does not retry a key lookup that found the issue', async () => {
+    const search = vi.fn().mockResolvedValue([ISSUE])
+    await searchTaskPageJiraIssues('sha-256', search)
+    expect(search.mock.calls).toEqual([['key = "SHA-256"']])
+  })
+
   it('runs input Jira accepts as JQL unchanged', async () => {
     const search = vi.fn().mockResolvedValue([ISSUE])
     await expect(searchTaskPageJiraIssues('status WAS Done', search)).resolves.toEqual({

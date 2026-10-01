@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { buildJiraTextSearchJql, mayBeJql } from './jira-search-input-jql'
+import {
+  buildJiraIssueKeyJql,
+  buildJiraTextMatchJql,
+  buildJiraTextSearchJql,
+  mayBeJql
+} from './jira-search-input-jql'
 
 describe('mayBeJql', () => {
   it.each([
@@ -107,4 +112,30 @@ describe('buildJiraTextSearchJql', () => {
       expect(buildJiraTextSearchJql(input)).toBe('')
     }
   )
+})
+
+describe('buildJiraIssueKeyJql', () => {
+  it.each([
+    ['abc-12', 'key = "ABC-12"'],
+    ['  ABC-12  ', 'key = "ABC-12"'],
+    // Key-shaped text a user may well mean literally; the caller retries these as text.
+    ['utf-8', 'key = "UTF-8"']
+  ])('%s -> %s', (input, expected) => {
+    expect(buildJiraIssueKeyJql(input)).toBe(expected)
+  })
+
+  it.each(['fix login', 'ABC-', '-12', 'ABC-12x', '', '   '])('is not a key: %j', (input) => {
+    expect(buildJiraIssueKeyJql(input)).toBeNull()
+  })
+})
+
+describe('buildJiraTextMatchJql', () => {
+  // Why: the key branch is the caller's choice, so the text builder must ignore key shape.
+  it.each([
+    ['utf-8', 'text ~ "utf 8*"'],
+    ['abc-12', 'text ~ "abc 12*"'],
+    ['  Fix Login  ', 'text ~ "fix login*"']
+  ])('%s -> %s', (input, expected) => {
+    expect(buildJiraTextMatchJql(input)).toBe(expected)
+  })
 })
