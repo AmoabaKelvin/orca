@@ -89,7 +89,7 @@ export function useSidebarFeedbackImages(params: {
         const committed = liveImageDraftsRef.current
         return readFeedbackImageFiles(files, committed.length, sumImageBytes(committed))
       })
-      readQueueRef.current = read.then(
+      const settled = read.then(
         ({ images: added, errors, notices }) => {
           pendingReads.count -= files.length
           pendingReads.bytes -= batchBytes
@@ -121,6 +121,11 @@ export function useSidebarFeedbackImages(params: {
           }
         }
       )
+      // Why: the tail is what the next batch waits on, so a throw inside either
+      // callback would leave it rejected and report every later attach as unreadable.
+      readQueueRef.current = settled.catch((error: unknown) => {
+        console.error('Failed to settle a feedback image batch:', error)
+      })
     },
     [params.isSubmitting, params.mountedRef]
   )
