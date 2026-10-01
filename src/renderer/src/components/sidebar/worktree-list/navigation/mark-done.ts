@@ -35,7 +35,8 @@ export function markWorkspacesDone(
 ): boolean {
   const statuses = state.workspaceStatuses
   // Why: statuses are user-editable; a board without Done has nothing to move to.
-  if (!isWorkspaceStatusId(DONE_WORKSPACE_STATUS_ID, statuses)) {
+  const doneStatus = statuses.find((status) => status.id === DONE_WORKSPACE_STATUS_ID)
+  if (!doneStatus) {
     return false
   }
   const worktrees = targets.flatMap((target) => {
@@ -62,23 +63,25 @@ export function markWorkspacesDone(
       }
     )
   }
-  showMarkedDoneToast(worktrees)
+  showMarkedDoneToast(worktrees, doneStatus.label)
   return true
 }
 
 // Why: a key press has no visible confirmation, and the row can move into a collapsed Done section.
-function showMarkedDoneToast(worktrees: readonly Worktree[]): void {
+function showMarkedDoneToast(worktrees: readonly Worktree[], statusLabel: string): void {
   const [first] = worktrees
   toast(
     worktrees.length === 1 && first
-      ? translate('auto.components.sidebar.markDone.markedOne', 'Marked {{name}} Done', {
-          name: first.displayName
+      ? translate('auto.components.sidebar.markDone.movedOne', 'Moved {{name}} to {{status}}', {
+          name: first.displayName,
+          status: statusLabel
         })
       : translate(
-          'auto.components.sidebar.markDone.markedMany',
-          'Marked {{count}} workspaces Done',
+          'auto.components.sidebar.markDone.movedMany',
+          'Moved {{count}} workspaces to {{status}}',
           {
-            count: worktrees.length
+            count: worktrees.length,
+            status: statusLabel
           }
         ),
     {

@@ -12,7 +12,8 @@ import type { WorktreeDeleteState } from '../../../../store/slices/worktree-help
 import type { HostSectionRow } from '../../host-section-rows'
 import { repo, worktree as worktreeFixture } from '../../worktree-list-groups-test-fixtures'
 
-type FakeWorktree = Pick<Worktree, 'id' | 'repoId' | 'workspaceStatus' | 'hostId'>
+type FakeWorktree = Pick<Worktree, 'id' | 'repoId' | 'workspaceStatus' | 'hostId'> &
+  Partial<Pick<Worktree, 'displayName'>>
 
 type FakeState = {
   keybindings: KeybindingOverrides | undefined
@@ -200,6 +201,18 @@ describe('Delete on the focused workspace list', () => {
     const options = state.updateWorktreeMeta.mock.calls[1]?.[2]
     expect(options.shouldApply(worktree('a', 'completed'))).toBe(true)
     expect(options.shouldApply(worktree('a', 'in-review'))).toBe(false)
+  })
+
+  it('names the Done column by the label the user gave it', () => {
+    const state = setState([{ ...worktree('a', 'in-progress'), displayName: 'feature-x' }])
+    state.workspaceStatuses = state.workspaceStatuses.map((status) =>
+      status.id === 'completed' ? { ...status, label: 'Shipped' } : status
+    )
+    const { list } = renderList({ activeWorktreeId: 'a' })
+
+    press(list, 'Delete')
+
+    expect(mocks.toast).toHaveBeenCalledWith('Moved feature-x to Shipped', expect.anything())
   })
 
   it('treats a workspace with no stored status as In progress', () => {
@@ -399,7 +412,7 @@ describe('Delete on the focused workspace list', () => {
       ['b', 'local'],
       ['d', 'ssh:box']
     ])
-    expect(mocks.toast).toHaveBeenCalledWith('Marked 2 workspaces Done', expect.anything())
+    expect(mocks.toast).toHaveBeenCalledWith('Moved 2 workspaces to Done', expect.anything())
   })
 
   it('ignores the one-row selection a plain click leaves behind', () => {
