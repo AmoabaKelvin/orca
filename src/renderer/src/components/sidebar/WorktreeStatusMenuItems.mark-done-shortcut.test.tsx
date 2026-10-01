@@ -32,14 +32,14 @@ const { WorktreeStatusMenuItems } = await import('./WorktreeStatusMenuItems')
 let container: HTMLDivElement
 let root: Root
 
-function render(contextWorkspaceStatus: string): void {
+function render(contextWorkspaceStatus: string, markDoneShortcutApplies = true): void {
   act(() =>
     root.render(
       <WorktreeStatusMenuItems
         contextWorkspaceStatus={contextWorkspaceStatus}
         deletingContext={false}
         isMultiContext={false}
-        markDoneShortcutApplies
+        markDoneShortcutApplies={markDoneShortcutApplies}
         onAssignWorkspaceStatus={() => {}}
         workspaceStatuses={DEFAULT_WORKSPACE_STATUSES}
       />
@@ -67,7 +67,7 @@ afterEach(() => {
 })
 
 describe('Move to Status submenu', () => {
-  it('advertises the mark-Done shortcut on Done for an In progress workspace', () => {
+  it('advertises the mark-Done shortcut on Done when the key applies', () => {
     render('in-progress')
 
     expect(shortcutLabelMock).toHaveBeenCalledWith('workspace.markDone')
@@ -75,14 +75,11 @@ describe('Move to Status submenu', () => {
     expect(shortcutOnStatus('in-review')).toBeUndefined()
   })
 
-  it.each(['in-review', 'completed', 'todo'])(
-    'hides the shortcut for a %s workspace, which the key does not move',
-    (status) => {
-      render(status)
+  it('hides the shortcut when the key would not move these rows', () => {
+    render('in-progress', false)
 
-      expect(shortcutOnStatus('completed')).toBeUndefined()
-    }
-  )
+    expect(shortcutOnStatus('completed')).toBeUndefined()
+  })
 
   it('hides the shortcut when the user unbound it', () => {
     shortcutLabelMock.mockReturnValue(null)

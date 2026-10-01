@@ -11,10 +11,7 @@ import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import { getWorkspaceStatusVisualMeta } from './workspace-status'
 import { useOptionalShortcutLabel } from '@/hooks/useShortcutLabel'
-import {
-  DEFAULT_WORKSPACE_STATUS_ID,
-  DONE_WORKSPACE_STATUS_ID
-} from '../../../../shared/workspace-statuses'
+import { DONE_WORKSPACE_STATUS_ID } from '../../../../shared/workspace-statuses'
 import type { WorkspaceStatusDefinition } from '../../../../shared/worktree/types'
 
 export function WorktreeStatusMenuItems(props: {
@@ -25,12 +22,8 @@ export function WorktreeStatusMenuItems(props: {
   onAssignWorkspaceStatus: (status: string) => void
   workspaceStatuses: readonly WorkspaceStatusDefinition[]
 }) {
-  // Why: the mark-Done key only acts on In progress rows, so only advertise it there.
   const markDoneShortcut = useOptionalShortcutLabel('workspace.markDone')
-  const showMarkDoneShortcut =
-    props.markDoneShortcutApplies &&
-    markDoneShortcut !== null &&
-    props.contextWorkspaceStatus === DEFAULT_WORKSPACE_STATUS_ID
+  const showMarkDoneShortcut = props.markDoneShortcutApplies && markDoneShortcut !== null
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger disabled={props.deletingContext}>

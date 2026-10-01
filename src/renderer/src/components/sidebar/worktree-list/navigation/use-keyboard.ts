@@ -19,7 +19,7 @@ import {
   resolveCycledWorktreeId
 } from '../../worktree-keyboard-cycle'
 import { findPreferredRenderRowIndexForWorktreeIdentity } from './render-row-lookup'
-import { getMarkDoneTargets, markWorkspacesDone } from './mark-done'
+import { markWorkspacesDone } from './mark-done'
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -177,8 +177,7 @@ export function useWorktreeListKeyboardNavigation(args: {
         !e.repeat &&
         keybindingMatchesAction('workspace.markDone', e, getShortcutPlatform(), keybindings)
       ) {
-        const state = useAppStore.getState()
-        if (markWorkspacesDone(state, getMarkDoneTargets(state, selectedWorktrees))) {
+        if (markWorkspacesDone(useAppStore.getState(), selectedWorktrees)) {
           e.preventDefault()
           return
         }
