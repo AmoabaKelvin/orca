@@ -18,6 +18,9 @@ import {
 } from './feedback-image-shrink'
 import type * as FeedbackImageShrinkModule from './feedback-image-shrink'
 
+// Spelled out rather than read from the cap constant, so the policy is what is pinned.
+const HALF_THE_BUDGET = MAX_FEEDBACK_IMAGE_TOTAL_BYTES / 2
+
 const { shrinkFeedbackImage } = vi.hoisted(() => ({ shrinkFeedbackImage: vi.fn() }))
 
 // Why: happy-dom has no image decoder; the shrink steps are covered in their own test.
@@ -203,7 +206,7 @@ describe('hasAttachableFeedbackImage', () => {
 
         expect(hasAttachableFeedbackImage([file], 1, existingBytes)).toBe(images.length === 1)
         for (const [, maxBytes] of shrinkFeedbackImage.mock.calls) {
-          expect(maxBytes).toBeLessThanOrEqual(MAX_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES)
+          expect(maxBytes).toBeLessThanOrEqual(HALF_THE_BUDGET)
         }
       }
     }
@@ -289,9 +292,7 @@ describe('readFeedbackImageFiles', () => {
       ['image/png', 1_510_000],
       ['image/jpeg', 730_000]
     ])
-    expect(attached.every((image) => image.bytes <= MAX_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES)).toBe(
-      true
-    )
+    expect(attached.every((image) => image.bytes <= HALF_THE_BUDGET)).toBe(true)
     expect(attached.reduce((total, image) => total + image.bytes, 0)).toBeLessThanOrEqual(
       MAX_FEEDBACK_IMAGE_TOTAL_BYTES
     )
