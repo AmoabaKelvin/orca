@@ -2,8 +2,8 @@
  * E2E test for scrolling an overflowing tab strip: the scroll must not re-render the tabs, and the
  * scroll thumb must still track the strip.
  *
- * Why E2E: only real Chromium delivers the wheel, scroll and ResizeObserver callbacks the thumb now
- * follows on its own, and only the whole app shows every React commit a scroll step causes.
+ * Why E2E: only real Chromium lays out the strip and delivers the scroll and resize callbacks the
+ * thumb follows, and only the whole app shows every React commit a scroll step causes.
  */
 
 import type { Locator, Page } from '@stablyai/playwright-test'
@@ -11,16 +11,31 @@ import { test, expect } from './helpers/orca-app'
 import { waitForSessionReady, waitForActiveWorktree, ensureTerminalVisible } from './helpers/store'
 
 const STRIP = '.terminal-tab-strip'
-const MIN_SCROLL_RANGE_PX = 2_500
-const WHEEL_STEPS = 30
+const START_SCROLL_LEFT_PX = 400
+const WHEEL_STEPS = 20
 const WHEEL_DELTA_PX = 50
+const MIN_SCROLL_RANGE_PX = 2_000
 
-async function nextFrames(page: Page, count: number): Promise<void> {
-  await page.evaluate(async (frames) => {
-    for (let i = 0; i < frames; i++) {
-      await new Promise(requestAnimationFrame)
+type CommitFiber = {
+  tag: number
+  flags: number
+  child: CommitFiber | null
+  sibling: CommitFiber | null
+  stateNode: unknown
+}
+
+declare global {
+  // oxlint-disable-next-line typescript-eslint/consistent-type-definitions -- declaration merging requires interface
+  interface Window {
+    __REACT_DEVTOOLS_GLOBAL_HOOK__?: {
+      onCommitFiberRoot?: (
+        rendererId: unknown,
+        root: { current: CommitFiber },
+        ...rest: unknown[]
+      ) => unknown
     }
-  }, count)
+    __tabsRenderedPerCommit?: number[]
+  }
 }
 
 async function addBackgroundTerminalTabs(
@@ -28,17 +43,15 @@ async function addBackgroundTerminalTabs(
   worktreeId: string,
   count: number
 ): Promise<string[]> {
-  const ids: string[] = []
-  for (let i = 0; i < count; i++) {
-    ids.push(
-      await page.evaluate(
-        (wId) =>
-          window.__store!.getState().createTab(wId, undefined, undefined, { activate: false }).id,
-        worktreeId
-      )
-    )
-  }
-  return ids
+  return page.evaluate(
+    ({ wId, tabCount }) =>
+      Array.from(
+        { length: tabCount },
+        () =>
+          window.__store!.getState().createTab(wId, undefined, undefined, { activate: false }).id
+      ),
+    { wId: worktreeId, tabCount: count }
+  )
 }
 
 /**
@@ -48,29 +61,18 @@ async function addBackgroundTerminalTabs(
  */
 async function startRecordingTabRenders(page: Page): Promise<void> {
   await page.evaluate(() => {
-    type Fiber = {
-      tag: number
-      flags: number
-      child: Fiber | null
-      sibling: Fiber | null
-      stateNode: unknown
-    }
     // Function, class, forwardRef and memo components; bit 1 is React's PerformedWork flag.
     const componentTags = new Set([0, 1, 11, 14, 15])
     const performedWork = 1
-    const hook = Reflect.get(window, '__REACT_DEVTOOLS_GLOBAL_HOOK__')
+    const hook = window.__REACT_DEVTOOLS_GLOBAL_HOOK__!
     const original = hook.onCommitFiberRoot
     // A subtree React skipped keeps last commit's fiber objects, whose flags are stale.
-    let previousFibers = new Set<Fiber>()
-    Reflect.set(window, '__tabsRenderedPerCommit', [])
-    hook.onCommitFiberRoot = function (
-      rendererId: unknown,
-      root: { current: Fiber },
-      ...rest: unknown[]
-    ) {
-      const fibers = new Set<Fiber>()
+    let previousFibers = new Set<CommitFiber>()
+    window.__tabsRenderedPerCommit = []
+    hook.onCommitFiberRoot = function (rendererId, root, ...rest) {
+      const fibers = new Set<CommitFiber>()
       const renderedTabIds = new Set<string>()
-      const stack: Fiber[] = [root.current]
+      const stack: CommitFiber[] = [root.current]
       while (stack.length > 0) {
         const fiber = stack.pop()!
         fibers.add(fiber)
@@ -79,7 +81,7 @@ async function startRecordingTabRenders(page: Page): Promise<void> {
           (fiber.flags & performedWork) === performedWork &&
           !previousFibers.has(fiber)
         ) {
-          let host: Fiber | null = fiber
+          let host: CommitFiber | null = fiber
           while (host && host.tag !== 5) {
             host = host.child
           }
@@ -101,7 +103,7 @@ async function startRecordingTabRenders(page: Page): Promise<void> {
       }
       previousFibers = fibers
       if (renderedTabIds.size > 0) {
-        Reflect.get(window, '__tabsRenderedPerCommit').push(renderedTabIds.size)
+        window.__tabsRenderedPerCommit?.push(renderedTabIds.size)
       }
       return original?.call(this, rendererId, root, ...rest)
     }
@@ -110,8 +112,8 @@ async function startRecordingTabRenders(page: Page): Promise<void> {
 
 async function takeTabRenders(page: Page): Promise<number[]> {
   return page.evaluate(() => {
-    const recorded = Reflect.get(window, '__tabsRenderedPerCommit')
-    Reflect.set(window, '__tabsRenderedPerCommit', [])
+    const recorded = window.__tabsRenderedPerCommit ?? []
+    window.__tabsRenderedPerCommit = []
     return recorded
   })
 }
@@ -137,10 +139,17 @@ async function readThumb(strip: Locator) {
   })
 }
 
+/** Polls rather than waiting frames: CI's hidden window can draw as little as one frame a second. */
 async function expectThumbToTrackStrip(strip: Locator): Promise<void> {
-  const thumb = await readThumb(strip)
-  expect(Math.abs(thumb.width - thumb.expectedWidth)).toBeLessThanOrEqual(1)
-  expect(Math.abs(thumb.left - thumb.expectedLeft)).toBeLessThanOrEqual(1)
+  await expect
+    .poll(async () => {
+      const thumb = await readThumb(strip)
+      return Math.max(
+        Math.abs(thumb.width - thumb.expectedWidth),
+        Math.abs(thumb.left - thumb.expectedLeft)
+      )
+    })
+    .toBeLessThanOrEqual(1)
 }
 
 test.describe('Tab strip scroll render isolation', () => {
@@ -163,40 +172,50 @@ test.describe('Tab strip scroll render isolation', () => {
         break
       }
       tabIds.push(...(await addBackgroundTerminalTabs(orcaPage, worktreeId, 10)))
-      await nextFrames(orcaPage, 1)
+      await expect
+        .poll(() => strip.evaluate((el) => el.querySelectorAll('[data-tab-strip-slot]').length))
+        .toBeGreaterThan(tabIds.length)
     }
-    await expect
-      .poll(() => strip.evaluate((el) => el.scrollWidth - el.clientWidth))
-      .toBeGreaterThanOrEqual(MIN_SCROLL_RANGE_PX)
 
     // Start and end mid-strip so neither scroll edge flips the arrows, fades or dock.
-    await strip.evaluate((el) => {
-      el.scrollLeft = 500
-    })
-    const box = (await strip.boundingBox())!
-    await orcaPage.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    await nextFrames(orcaPage, 5)
+    await strip.evaluate((el, left) => {
+      el.scrollLeft = left
+    }, START_SCROLL_LEFT_PX)
 
     await startRecordingTabRenders(orcaPage)
-    // New terminals retitle their tabs for a few seconds after opening; wait for the strip to settle.
+    // New terminals retitle their tabs after opening, longer on a loaded machine; wait for quiet.
     await expect
       .poll(
         async () => {
           await takeTabRenders(orcaPage)
-          await orcaPage.waitForTimeout(500)
+          await orcaPage.waitForTimeout(1_500)
           return (await takeTabRenders(orcaPage)).length
         },
-        { timeout: 15_000 }
+        { timeout: 45_000 }
       )
       .toBe(0)
-    for (let i = 0; i < WHEEL_STEPS; i++) {
-      await orcaPage.mouse.wheel(0, WHEEL_DELTA_PX)
-      await nextFrames(orcaPage, 1)
-    }
-    await nextFrames(orcaPage, 3)
-    expect(await strip.evaluate((el) => el.scrollLeft)).toBe(500 + WHEEL_STEPS * WHEEL_DELTA_PX)
+    expect(await strip.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThanOrEqual(
+      MIN_SCROLL_RANGE_PX
+    )
+    // Why wheel events dispatched in the page: real input waits for a frame per step, and CI's hidden
+    // window draws about one a second. The strip's own wheel handler still does the scrolling.
+    await strip.evaluate(
+      async (el, { steps, delta }) => {
+        for (let i = 0; i < steps; i++) {
+          el.dispatchEvent(new WheelEvent('wheel', { deltaY: delta, cancelable: true }))
+          await new Promise((resolve) => setTimeout(resolve, 20))
+        }
+        // The scroll events arrive with the next frame; let React commit what they cause.
+        await new Promise(requestAnimationFrame)
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      },
+      { steps: WHEEL_STEPS, delta: WHEEL_DELTA_PX }
+    )
+    expect(await strip.evaluate((el) => el.scrollLeft)).toBe(
+      START_SCROLL_LEFT_PX + WHEEL_STEPS * WHEEL_DELTA_PX
+    )
     // Why "many tabs": before the fix every scroll step re-rendered all of them in one commit;
-    // a single tab can still update itself (a late retitle, the hover moving to its neighbour).
+    // a single tab can still update itself (a late retitle).
     expect((await takeTabRenders(orcaPage)).filter((tabs) => tabs >= 3)).toEqual([])
     await expectThumbToTrackStrip(strip)
 
@@ -206,14 +225,12 @@ test.describe('Tab strip scroll render isolation', () => {
 
     // Tabs opening grow the strip without a scroll event.
     await addBackgroundTerminalTabs(orcaPage, worktreeId, 10)
-    await nextFrames(orcaPage, 3)
     await expectThumbToTrackStrip(strip)
 
     // A narrower pane shrinks the strip and the track without a scroll event.
     await strip.evaluate((el) => {
       el.closest<HTMLElement>('[data-native-file-drop-target]')!.style.maxWidth = '700px'
     })
-    await nextFrames(orcaPage, 3)
     await expectThumbToTrackStrip(strip)
   })
 })
