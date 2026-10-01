@@ -370,6 +370,8 @@ export function useWorktreeContextMenuModel({
     isDeleting,
     isMultiContext,
     lineageDescendantCount,
+    // Why: only the sidebar list handles workspace.markDone; board cards wire their own status callback.
+    markDoneShortcutApplies: !onAssignWorkspaceStatus,
     menuOpen,
     menuPoint,
     onContextMenuSelect,

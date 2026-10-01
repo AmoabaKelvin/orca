@@ -4,6 +4,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_WORKSPACE_STATUSES } from '../../../../shared/workspace-statuses'
 import type { Worktree } from '../../../../shared/worktree/types'
 import WorktreeContextMenu from './WorktreeContextMenu'
 
@@ -86,7 +87,7 @@ vi.mock('@/i18n/i18n', () => ({
 const defaultStoreState = {
   updateWorktreeMeta: vi.fn(),
   setWorktreesPinnedAndReveal: vi.fn(),
-  workspaceStatuses: [],
+  workspaceStatuses: DEFAULT_WORKSPACE_STATUSES,
   openModal: vi.fn(),
   projectGroups: [],
   createProjectGroup: vi.fn(),
@@ -141,13 +142,16 @@ vi.mock('./WorkspaceSleepMenuItems', () => ({
 
 const mounted: { container: HTMLDivElement; root: Root }[] = []
 
-function renderContextMenu(worktree: Worktree) {
+function renderContextMenu(
+  worktree: Worktree,
+  onAssignWorkspaceStatus?: (worktreeIds: readonly string[], status: string) => void
+) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
   act(() => {
     root.render(
-      <WorktreeContextMenu worktree={worktree}>
+      <WorktreeContextMenu worktree={worktree} onAssignWorkspaceStatus={onAssignWorkspaceStatus}>
         <div data-testid="card-child">Card Content</div>
       </WorktreeContextMenu>
     )
@@ -241,5 +245,53 @@ describe('WorktreeContextMenu delete shortcut display', () => {
 
     const shortcuts = container.querySelectorAll('[data-testid="dropdown-menu-shortcut"]')
     expect(shortcuts.length).toBe(0)
+  })
+})
+
+describe('WorktreeContextMenu mark-Done shortcut display', () => {
+  const inProgressWorktree = {
+    id: 'repo::wt-1',
+    repoId: 'repo',
+    name: 'wt-1',
+    path: '/path/to/wt-1',
+    isMainWorktree: false,
+    workspaceStatus: 'in-progress'
+  } as unknown as Worktree
+
+  function openMenuShortcuts(container: HTMLDivElement): string[] {
+    const target = container.querySelector('[data-worktree-context-menu-scope]') as HTMLElement
+    act(() => {
+      target.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })
+      )
+    })
+    return Array.from(
+      container.querySelectorAll('[data-testid="dropdown-menu-shortcut"]'),
+      (el) => el.textContent ?? ''
+    )
+  }
+
+  beforeEach(() => {
+    shortcutLabelMock.mockImplementation((action: string) =>
+      action === 'workspace.markDone' ? 'Del' : null
+    )
+  })
+
+  afterEach(() => {
+    for (const { root, container } of mounted) {
+      act(() => {
+        root.unmount()
+      })
+      container.remove()
+    }
+    mounted.length = 0
+  })
+
+  it('advertises the key in the sidebar list, which handles it', () => {
+    expect(openMenuShortcuts(renderContextMenu(inProgressWorktree))).toEqual(['Del'])
+  })
+
+  it('does not advertise the key on a board card, where it does nothing', () => {
+    expect(openMenuShortcuts(renderContextMenu(inProgressWorktree, () => {}))).toEqual([])
   })
 })
