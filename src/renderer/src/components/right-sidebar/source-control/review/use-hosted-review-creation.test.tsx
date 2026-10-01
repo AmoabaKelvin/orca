@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { act, cleanup, renderHook } from '@testing-library/react'
+import { useRef, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import {
@@ -22,6 +23,8 @@ import {
   getDefaultSourceControlAiSettings
 } from '../../../../../../shared/source-control-ai-settings'
 import { useSourceControlHostedReviewCreation } from './use-hosted-review-creation'
+import { useSourceControlHostedReviewEligibility } from './use-hosted-review-eligibility'
+import { useSourceControlHostedReviewState } from './use-hosted-review-state'
 
 type Input = Parameters<typeof useSourceControlHostedReviewCreation>[0]
 
@@ -320,6 +323,134 @@ describe('useSourceControlHostedReviewCreation', () => {
       expect(openUrl).toHaveBeenCalledTimes(reveals ? 1 : 0)
     }
   )
+
+  it('creates after generation even though generation ending refreshes eligibility', async () => {
+    const { generate, finish } = deferredGeneration()
+    const base = makeInput({ handleGeneratePullRequestFields: generate })
+    // Why: the first probe confirms the branch; any refetch stays pending, as a real one does for a while.
+    const getEligibility = vi
+      .fn<() => Promise<HostedReviewCreationEligibility>>()
+      .mockResolvedValueOnce(readyEligibility)
+      .mockReturnValue(new Promise(() => {}))
+    // Wires the real eligibility probe to the real create, as the Source Control panel does.
+    const { result } = renderHook(() => {
+      const [inFlight, setCreatePrInFlightByWorktree] = useState<Record<string, boolean>>({})
+      const createPrInFlightRef = useRef<Record<string, boolean>>({})
+      const prGenerating = useAppStore(
+        (s) => s.pullRequestGenerationRecords[GENERATION_KEY]?.status === 'running'
+      )
+      const state = useSourceControlHostedReviewState({
+        activePrFromQueue: null,
+        activeRepoId: 'repo-1',
+        activeWorktreeId: 'wt-1',
+        branchName: 'fix-readme-typo',
+        hostedReviewCacheKey: null,
+        hostedReviewEntryData: null,
+        linkedPR: null,
+        suppressedGitHubPR: null
+      })
+      useSourceControlHostedReviewEligibility({
+        activeRepoConnectionId: null,
+        activeRepoExecutionHostId: null,
+        activeRepoId: 'repo-1',
+        activeRepoPath: '/repo',
+        activeWorktreeId: 'wt-1',
+        branchName: 'fix-readme-typo',
+        effectiveBaseRef: 'main',
+        fallbackGitHubPRNumber: null,
+        getHostedReviewCreationEligibility: getEligibility,
+        hasUncommittedEntries: false,
+        isBranchVisible: true,
+        isCreatePrIntentInFlight: false,
+        isCreatingPr: inFlight['wt-1'] === true,
+        isFolder: false,
+        linkedAzureDevOpsPR: null,
+        linkedBitbucketPR: null,
+        linkedGitHubPR: null,
+        linkedGitLabMR: null,
+        linkedGiteaPR: null,
+        prGenerating,
+        provisionalHostedReviewProvider: 'github',
+        remoteStatus: undefined,
+        hostedReviewCreationProviderHintRef: state.hostedReviewCreationProviderHintRef,
+        setHostedReviewCreationRequestState: state.setHostedReviewCreationRequestState,
+        setHostedReviewCreationState: state.setHostedReviewCreationState,
+        worktreePath: '/repo'
+      })
+      return useSourceControlHostedReviewCreation({
+        ...base,
+        createPrInFlightRef,
+        hostedReviewCreation: state.hostedReviewCreation,
+        prGenerating,
+        setCreatePrInFlightByWorktree
+      })
+    })
+    await act(async () => {})
+
+    let click: Promise<void> = Promise.resolve()
+    act(() => {
+      click = result.current.handleCreatePullRequest()
+    })
+    // A repeated click returns at once and must not release the first click's hold.
+    await act(async () => result.current.handleCreatePullRequest())
+    // The run's record settles and the panel re-renders before the click's continuation resumes.
+    await act(async () => {
+      useAppStore
+        .getState()
+        .updatePullRequestGenerationRecord(GENERATION_KEY, (record) =>
+          resolvePullRequestGenerationSuccess({ record, requestId: 7, result: generatedFields })
+        )
+    })
+    await act(async () => {
+      finish(generatedFields)
+      await click
+    })
+
+    expect(base.createHostedReview).toHaveBeenCalledWith(
+      '/repo',
+      expect.objectContaining({ title: 'Correct README install steps' })
+    )
+  })
+
+  it.each([
+    { name: 'fails', result: null, stopAndClickAgain: false },
+    {
+      name: 'is stopped and Create PR is clicked again',
+      result: generatedFields,
+      stopAndClickAgain: true
+    },
+    { name: 'creates', result: generatedFields, stopAndClickAgain: false }
+  ])('releases the in-flight hold when the run $name', async ({ result, stopAndClickAgain }) => {
+    const { generate, finish } = deferredGeneration()
+    const input = makeInput({ handleGeneratePullRequestFields: generate })
+    const { result: hook } = renderHook(() => useSourceControlHostedReviewCreation(input))
+    const inFlight = (): boolean | undefined =>
+      vi
+        .mocked(input.setCreatePrInFlightByWorktree)
+        .mock.calls.reduce<Record<string, boolean>>(
+          (state, [update]) => (typeof update === 'function' ? update(state) : update),
+          {}
+        )['wt-1']
+
+    let click: Promise<void> = Promise.resolve()
+    act(() => {
+      click = hook.current.handleCreatePullRequest()
+    })
+    expect(inFlight()).toBe(true)
+    if (stopAndClickAgain) {
+      useAppStore
+        .getState()
+        .setPullRequestGenerationRecord(GENERATION_KEY, { ...runningRecord, status: 'canceled' })
+      await act(async () => hook.current.handleCreatePullRequest())
+      expect(input.createHostedReview).toHaveBeenCalledTimes(1)
+    }
+    await act(async () => {
+      finish(result)
+      await click
+    })
+
+    expect(inFlight()).toBe(false)
+  })
 
   it('leaves the details in the form instead of creating when the panel shows another branch', async () => {
     const { generate, finish } = deferredGeneration()

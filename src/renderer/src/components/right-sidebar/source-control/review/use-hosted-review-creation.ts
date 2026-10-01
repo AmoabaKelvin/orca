@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import { normalizeHostedReviewHeadRef } from '../../../../../../shared/hosted-review-refs'
@@ -272,16 +272,45 @@ export function useSourceControlHostedReviewCreation({
     ]
   )
 
-  const { handleCreatePullRequest } = useGenerateBeforeCreatePullRequest({
-    aiGenerationEnabled: prAiGenerationEnabled,
-    canCreate: hostedReviewCreation?.canCreate === true,
-    createPullRequest,
-    fieldsAreSeedPlaceholders: prFieldsAreSeedPlaceholders,
-    generatePullRequestFields: handleGeneratePullRequestFields,
-    generationKey: activePullRequestGenerationKey,
-    repo: activeRepo,
-    settings
-  })
+  const { handleCreatePullRequest: generateThenCreatePullRequest } =
+    useGenerateBeforeCreatePullRequest({
+      aiGenerationEnabled: prAiGenerationEnabled,
+      canCreate: hostedReviewCreation?.canCreate === true,
+      createPullRequest,
+      fieldsAreSeedPlaceholders: prFieldsAreSeedPlaceholders,
+      generatePullRequestFields: handleGeneratePullRequestFields,
+      generationKey: activePullRequestGenerationKey,
+      repo: activeRepo,
+      settings
+    })
+
+  const heldClicksRef = useRef<Record<string, number>>({})
+  const handleCreatePullRequest = useCallback(
+    async (stacked = false): Promise<void> => {
+      const worktreeId = activeWorktreeId
+      if (!worktreeId) {
+        return
+      }
+      // Why: like the prepare-branch route, the click stays in flight through generation; otherwise the eligibility refresh that starts when generation ends clears the eligibility the create checks.
+      heldClicksRef.current[worktreeId] = (heldClicksRef.current[worktreeId] ?? 0) + 1
+      setCreatePrInFlightByWorktree((prev) => ({ ...prev, [worktreeId]: true }))
+      try {
+        await generateThenCreatePullRequest(stacked)
+      } finally {
+        const held = (heldClicksRef.current[worktreeId] ?? 1) - 1
+        heldClicksRef.current[worktreeId] = held
+        if (held === 0 && !createPrInFlightRef.current[worktreeId]) {
+          setCreatePrInFlightByWorktree((prev) => ({ ...prev, [worktreeId]: false }))
+        }
+      }
+    },
+    [
+      activeWorktreeId,
+      createPrInFlightRef,
+      generateThenCreatePullRequest,
+      setCreatePrInFlightByWorktree
+    ]
+  )
 
   return { handleCreatePullRequest }
 }
