@@ -105,9 +105,8 @@ export function markWorkspacesDone(
   if (!doneStatus || worktrees.length === 0) {
     return false
   }
-  for (const worktree of worktrees) {
-    // Why: same write as the right-click status menu, so a failed save reverts silently there too.
-    void state.updateWorktreeMeta(
+  const writes = worktrees.map((worktree) =>
+    state.updateWorktreeMeta(
       worktree.id,
       { workspaceStatus: DONE_WORKSPACE_STATUS_ID },
       {
@@ -115,15 +114,16 @@ export function markWorkspacesDone(
         shouldApply: (current) => hasStatus(current, DEFAULT_WORKSPACE_STATUS_ID, statuses)
       }
     )
-  }
-  showMarkedDoneToast(worktrees, doneStatus.label)
+  )
+  const toastId = showMarkedDoneToast(worktrees, doneStatus.label)
+  reportFailedMoves(worktrees, writes, doneStatus.label, toastId)
   return true
 }
 
 // Why: a key press has no visible confirmation, and the row can move into a collapsed Done section.
-function showMarkedDoneToast(worktrees: readonly Worktree[], statusLabel: string): void {
+function showMarkedDoneToast(worktrees: readonly Worktree[], statusLabel: string): string | number {
   const [first] = worktrees
-  toast(
+  return toast(
     worktrees.length === 1 && first
       ? translate('auto.components.sidebar.markDone.movedOne', 'Moved {{name}} to {{status}}', {
           name: first.displayName,
@@ -148,11 +148,14 @@ function showMarkedDoneToast(worktrees: readonly Worktree[], statusLabel: string
 
 function undoMarkedDone(worktrees: readonly Worktree[]): void {
   const { updateWorktreeMeta, workspaceStatuses } = useAppStore.getState()
-  if (!isWorkspaceStatusId(DEFAULT_WORKSPACE_STATUS_ID, workspaceStatuses)) {
+  const inProgressStatus = workspaceStatuses.find(
+    (status) => status.id === DEFAULT_WORKSPACE_STATUS_ID
+  )
+  if (!inProgressStatus) {
     return
   }
-  for (const worktree of worktrees) {
-    void updateWorktreeMeta(
+  const writes = worktrees.map((worktree) =>
+    updateWorktreeMeta(
       worktree.id,
       { workspaceStatus: DEFAULT_WORKSPACE_STATUS_ID },
       {
@@ -161,5 +164,63 @@ function undoMarkedDone(worktrees: readonly Worktree[]): void {
         shouldApply: (current) => hasStatus(current, DONE_WORKSPACE_STATUS_ID, workspaceStatuses)
       }
     )
+  )
+  reportFailedMoves(worktrees, writes, inProgressStatus.label)
+}
+
+type StatusWriteResult = Awaited<ReturnType<AppState['updateWorktreeMeta']>>
+
+function getWriteError(result: PromiseSettledResult<StatusWriteResult> | undefined): string | null {
+  if (!result) {
+    return null
   }
+  if (result.status === 'rejected') {
+    return result.reason instanceof Error ? result.reason.message : String(result.reason)
+  }
+  return result.value.ok ? null : result.value.error
+}
+
+// Why: the toast is optimistic; a failed save (e.g. an unreachable SSH host) has already reverted the row.
+function reportFailedMoves(
+  worktrees: readonly Worktree[],
+  writes: readonly Promise<StatusWriteResult>[],
+  statusLabel: string,
+  optimisticToastId?: string | number
+): void {
+  void Promise.allSettled(writes)
+    .then((results) => {
+      const failures = worktrees.flatMap((worktree, index) => {
+        const error = getWriteError(results[index])
+        return error === null ? [] : [{ worktree, error }]
+      })
+      const [first] = failures
+      if (!first) {
+        return
+      }
+      if (optimisticToastId !== undefined) {
+        toast.dismiss(optimisticToastId)
+      }
+      toast.error(
+        failures.length === 1
+          ? translate(
+              'auto.components.sidebar.markDone.failedOne',
+              'Could not move {{name}} to {{status}}',
+              { name: first.worktree.displayName, status: statusLabel }
+            )
+          : translate(
+              'auto.components.sidebar.markDone.failedMany',
+              'Could not move {{count}} workspaces to {{status}}',
+              { count: failures.length, status: statusLabel }
+            ),
+        {
+          description:
+            failures.length === 1
+              ? first.error
+              : failures.map((failure) => failure.worktree.displayName).join(', ')
+        }
+      )
+    })
+    .catch((error: unknown) => {
+      console.error('Failed to report workspace status write failures:', error)
+    })
 }
