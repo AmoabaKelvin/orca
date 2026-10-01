@@ -17432,6 +17432,7 @@
         "copyImage": "画像をコピー",
         "copyImageFailed": "画像をコピーできませんでした",
         "copyImageTooLarge": "画像が大きすぎるためコピーできません。",
+        "imageCopied": "画像をコピーしました",
         "workspaceAttachmentMismatch": "ファイルはソースワークスペースにのみ添付できます。",
         "attachmentOwnerChanged": "このワークスペースは接続中にホストを変更しました。ファイルを再度ドロップしてください。",
         "attachmentUnreadable": "ドロップされたファイルを読み取れませんでした。"

@@ -31,17 +31,22 @@ export function readNativeChatCopyImage(target: EventTarget | null): Promise<Blo
   return image
 }
 
-/** Keeps an image preview open when a close comes from using the chat context menu. */
-export function keepPreviewOpenForChatMenu(open: boolean): boolean {
-  // Why: Radix dismisses the dialog after a click on the menu (rendered outside it), while the
-  // menu's exit animation keeps the focused item mounted; a real close moves focus off the menu.
-  return open || document.activeElement?.closest('[data-native-chat-context-menu]') != null
+/** Keeps an image preview open through clicks on the chat context menu. */
+export function keepPreviewOpenForChatMenu(event: {
+  target: EventTarget | null
+  preventDefault: () => void
+}): void {
+  // Why: the menu portals outside the preview, so Radix counts a click on it as outside.
+  if (event.target instanceof Element && event.target.closest('[data-native-chat-context-menu]')) {
+    event.preventDefault()
+  }
 }
 
 export async function copyNativeChatImage(image: Promise<Blob>): Promise<void> {
   try {
     const png = await convertImageBlobToPng(await image)
     await window.api.ui.writeClipboardImage(`data:image/png;base64,${await blobToBase64(png)}`)
+    toast.success(translate('components.native-chat.composer.imageCopied', 'Image copied'))
   } catch (error) {
     toast.error(
       translate('components.native-chat.composer.copyImageFailed', "Couldn't copy image"),

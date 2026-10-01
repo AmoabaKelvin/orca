@@ -16,7 +16,11 @@ import {
 type ItemProps = { onSelect?: () => void; children?: ReactNode }
 
 const items = vi.hoisted(() => ({ list: [] as ItemProps[] }))
-const imageCopy = vi.hoisted(() => ({ convertImageBlobToPng: vi.fn(), toastError: vi.fn() }))
+const imageCopy = vi.hoisted(() => ({
+  convertImageBlobToPng: vi.fn(),
+  toastError: vi.fn(),
+  toastSuccess: vi.fn()
+}))
 
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: { children?: ReactNode }) => children,
@@ -62,7 +66,9 @@ vi.mock('@/lib/image-blob-png', async (importOriginal) => ({
   convertImageBlobToPng: imageCopy.convertImageBlobToPng
 }))
 
-vi.mock('sonner', () => ({ toast: { error: imageCopy.toastError } }))
+vi.mock('sonner', () => ({
+  toast: { error: imageCopy.toastError, success: imageCopy.toastSuccess }
+}))
 
 vi.mock('@/components/tab-bar/TabWorkspaceLayoutMenuSection', () => ({
   TabWorkspaceLayoutMenuSection: () => 'Move Tab to Split'
@@ -170,6 +176,7 @@ describe('useNativeChatContextMenu', () => {
     vi.unstubAllGlobals()
     imageCopy.convertImageBlobToPng.mockReset()
     imageCopy.toastError.mockReset()
+    imageCopy.toastSuccess.mockReset()
   })
 
   it('copies the right-clicked image as a PNG of its full-size source', async () => {
@@ -182,6 +189,7 @@ describe('useNativeChatContextMenu', () => {
         `data:image/png;base64,${Buffer.from('png:blob:full-size').toString('base64')}`
       )
     )
+    expect(imageCopy.toastSuccess).toHaveBeenCalledWith('Image copied')
     expect(imageCopy.toastError).not.toHaveBeenCalled()
   })
 
@@ -228,6 +236,7 @@ describe('useNativeChatContextMenu', () => {
 
     await waitFor(() => expect(imageCopy.toastError).toHaveBeenCalled())
     expect(writeClipboardImage).not.toHaveBeenCalled()
+    expect(imageCopy.toastSuccess).not.toHaveBeenCalled()
     expect(imageCopy.toastError).toHaveBeenCalledWith("Couldn't copy image", {
       description: 'The image is too large to copy.'
     })

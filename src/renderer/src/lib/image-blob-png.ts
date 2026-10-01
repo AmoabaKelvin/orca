@@ -21,6 +21,10 @@ export async function convertImageBlobToPng(blob: Blob): Promise<Blob> {
   const bitmap = await createImageBitmap(blob)
   try {
     assertClipboardImageDimensionsWithinLimit(bitmap)
+    // Why: re-encoding a PNG costs time and can grow it past the clipboard size limit.
+    if (blob.type === 'image/png') {
+      return blob
+    }
     const canvas = document.createElement('canvas')
     canvas.width = bitmap.width
     canvas.height = bitmap.height
