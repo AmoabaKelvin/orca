@@ -9,6 +9,7 @@ import {
   MAX_FEEDBACK_IMAGE_TOTAL_BYTES,
   MIN_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES,
   hasAttachableFeedbackImage,
+  maxFeedbackImageBatchBytes,
   readFeedbackImageFiles
 } from './feedback-image-attachments'
 import {
@@ -178,8 +179,6 @@ describe('hasAttachableFeedbackImage', () => {
     )
   })
 
-  // Why: the paste gate must mirror the shrink rule, or a pasted screenshot that
-  // would have been compressed falls through to the textarea and is lost.
   // Why: consuming the paste would drop co-pasted text for an image that cannot fit anyway.
   it('is false when too little budget is left to shrink into', () => {
     const almostSpent = MAX_FEEDBACK_IMAGE_TOTAL_BYTES - MIN_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES + 1
@@ -188,6 +187,8 @@ describe('hasAttachableFeedbackImage', () => {
     )
   })
 
+  // Why: the paste gate must mirror the shrink rule, or a pasted screenshot that
+  // would have been compressed falls through to the textarea and is lost.
   it('is true for an oversized screenshot that can be shrunk into the space left', () => {
     expect(hasAttachableFeedbackImage([pngFile('retina.png', 6_400_000)])).toBe(true)
     expect(hasAttachableFeedbackImage([pngFile('second.png', 2_000_000)], 1, 3_000_000)).toBe(true)
@@ -210,6 +211,41 @@ describe('hasAttachableFeedbackImage', () => {
         }
       }
     }
+  })
+})
+
+describe('maxFeedbackImageBatchBytes', () => {
+  // Why: the paste gate reads this reservation while a batch shrinks, so it must
+  // cover what the reader commits without reserving a file size it never will.
+  it('covers what the reader commits on every budget left, and nothing it refuses', async () => {
+    shrinkFeedbackImage.mockImplementation(async (_file: File, maxBytes: number) =>
+      encoded(maxBytes, 'image/png')
+    )
+    const floor = MAX_FEEDBACK_IMAGE_TOTAL_BYTES - MIN_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES
+    for (const existingBytes of [0, 1_000_000, 2_500_000, floor, floor + 1]) {
+      for (const file of [
+        pngFile('retina.png', 6_400_000),
+        pngFile('mid.png', 2_500_000),
+        gifFile('anim.gif', MAX_FEEDBACK_IMAGE_BYTES + 1)
+      ]) {
+        const { images } = await readFeedbackImageFiles([file], 1, existingBytes)
+
+        expect(maxFeedbackImageBatchBytes([file], 1, existingBytes)).toBe(images[0]?.bytes ?? 0)
+      }
+    }
+  })
+
+  it('reserves each file in a batch against the space the ones before it reserved', () => {
+    const batch = [
+      pngFile('first.png', 6_400_000),
+      pngFile('second.png', 6_400_000),
+      pngFile('third.png', 6_400_000)
+    ]
+
+    expect(maxFeedbackImageBatchBytes(batch, 0, 0)).toBe(2 * HALF_THE_BUDGET)
+    expect(maxFeedbackImageBatchBytes([pngFile('a.png', 1000)], MAX_FEEDBACK_IMAGE_COUNT, 0)).toBe(
+      0
+    )
   })
 })
 

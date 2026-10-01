@@ -487,6 +487,51 @@ describe('SidebarFeedbackDialog image submission', () => {
     expect(paste.defaultPrevented).toBe(false)
   })
 
+  // Why: a screenshot still shrinking will commit at most half the budget; holding
+  // its raw size against the gate would let a second paste spill into the textarea.
+  it('consumes a second oversized paste while the first is still shrinking', async () => {
+    const shrunk = (name: string) => ({
+      images: [
+        {
+          id: name,
+          name: `${name}.png`,
+          contentType: 'image/png',
+          bytes: 1_750_000,
+          data: new Uint8Array([1]),
+          previewUrl: `blob:${name}`
+        }
+      ],
+      errors: [],
+      notices: []
+    })
+    let finishFirstShrink: ((value: unknown) => void) | undefined
+    mocks.readFeedbackImageFiles
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishFirstShrink = resolve
+        })
+      )
+      .mockResolvedValueOnce(shrunk('second'))
+    render(<SidebarFeedbackDialog open onOpenChange={vi.fn()} />)
+    const textarea = screen.getByPlaceholderText('What could we improve?')
+    const pasteScreenshot = (name: string): Event => {
+      const file = new File(['x'], `${name}.png`, { type: 'image/png' })
+      Object.defineProperty(file, 'size', { value: 6 * 1024 * 1024 })
+      const paste = new Event('paste', { bubbles: true, cancelable: true })
+      Object.defineProperty(paste, 'clipboardData', { value: { files: [file] } })
+      fireEvent(textarea, paste)
+      return paste
+    }
+
+    expect(pasteScreenshot('first').defaultPrevented).toBe(true)
+    expect(pasteScreenshot('second').defaultPrevented).toBe(true)
+    await act(async () => finishFirstShrink?.(shrunk('first')))
+
+    await screen.findByRole('button', { name: 'Remove first.png' })
+    await screen.findByRole('button', { name: 'Remove second.png' })
+    expect(mocks.readFeedbackImageFiles).toHaveBeenNthCalledWith(2, expect.any(Array), 1, 1_750_000)
+  })
+
   it('stops offering Attach once the byte budget is spent, below the count limit', async () => {
     mocks.readFeedbackImageFiles.mockResolvedValue({
       images: [

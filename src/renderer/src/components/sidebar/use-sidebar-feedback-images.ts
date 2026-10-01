@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import {
+  maxFeedbackImageBatchBytes,
   readFeedbackImageFiles,
   releaseFeedbackImageDraft,
   type FeedbackImageDraft
@@ -26,7 +27,7 @@ export function useSidebarFeedbackImages(params: {
   handleRemoveImage: (id: string) => void
   clearImages: () => void
   hasPendingImageReads: () => boolean
-  /** Live committed+pending count and bytes, for the paste and attach gates. */
+  /** Live committed+pending count and bytes, for the synchronous paste gate. */
   getReservedImageCapacity: () => { count: number; bytes: number }
 } {
   const [images, setImages] = useState<FeedbackImageDraft[]>([])
@@ -79,8 +80,11 @@ export function useSidebarFeedbackImages(params: {
         )
         return
       }
+      const reserved = getReservedImageCapacity()
       const pendingReads = pendingImageReadsRef.current
-      const batchBytes = files.reduce((total, file) => total + file.size, 0)
+      // Why: an oversized screenshot commits at most its shrink target, so reserving
+      // its file size would turn the paste gate against the next one while it shrinks.
+      const batchBytes = maxFeedbackImageBatchBytes(files, reserved.count, reserved.bytes)
       pendingReads.count += files.length
       pendingReads.bytes += batchBytes
       setPendingImageReadCount((current) => current + files.length)
@@ -130,7 +134,7 @@ export function useSidebarFeedbackImages(params: {
         console.error('Failed to settle a feedback image batch:', error)
       })
     },
-    [params.isSubmitting, params.mountedRef]
+    [getReservedImageCapacity, params.isSubmitting, params.mountedRef]
   )
 
   const handleRemoveImage = useCallback((id: string) => {
