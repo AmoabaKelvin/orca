@@ -65,13 +65,14 @@ export class OrcaRuntimeWithRefreshRepoWorktreeScan extends OrcaRuntimeWithListK
       if (current !== null && current === reusable.adminFingerprint) {
         return {
           result: reusable.result,
+          repeatedRowsSettled: reusable.repeatedRowsSettled,
           adminFingerprint: current,
           adminFingerprintProbe: null,
           scannedAt: reusable.scannedAt
         }
       }
     }
-    const result = await resolveRepeatedWorktreeRows(
+    const repeatedRows = resolveRepeatedWorktreeRows(
       await this.listRepoWorktreesForResolutionUncached(repo, projectRuntime),
       (worktreePath) =>
         readCheckedOutWorktreeHead(
@@ -80,7 +81,7 @@ export class OrcaRuntimeWithRefreshRepoWorktreeScan extends OrcaRuntimeWithListK
           worktreePath
         )
     )
-    return { result, adminFingerprint: null, adminFingerprintProbe: probe, scannedAt }
+    return { ...repeatedRows, adminFingerprint: null, adminFingerprintProbe: probe, scannedAt }
   }
 
   /**
@@ -148,7 +149,8 @@ export class OrcaRuntimeWithRefreshRepoWorktreeScan extends OrcaRuntimeWithListK
     for (const keys of [
       this.worktreeScanGenerations.keys(),
       this.worktreeScanCache.keys(),
-      this.worktreeScanInFlight.keys()
+      this.worktreeScanInFlight.keys(),
+      this.worktreeScanOvertaken.keys()
     ]) {
       for (const key of keys) {
         if (key.startsWith(prefix)) {
@@ -160,6 +162,8 @@ export class OrcaRuntimeWithRefreshRepoWorktreeScan extends OrcaRuntimeWithListK
       this.worktreeScanGenerations.set(key, (this.worktreeScanGenerations.get(key) ?? 0) + 1)
       this.worktreeScanCache.delete(key)
       this.worktreeScanInFlight.delete(key)
+      this.worktreeScanOvertaken.get(key)?.abort()
+      this.worktreeScanOvertaken.delete(key)
     }
   }
 
@@ -178,6 +182,8 @@ export class OrcaRuntimeWithRefreshRepoWorktreeScan extends OrcaRuntimeWithListK
       this.worktreeScanGenerations.set(key, (this.worktreeScanGenerations.get(key) ?? 0) + 1)
       this.worktreeScanCache.delete(key)
       this.worktreeScanInFlight.delete(key)
+      this.worktreeScanOvertaken.get(key)?.abort()
+      this.worktreeScanOvertaken.delete(key)
     }
     if (affectedScopeKeys.size > 0) {
       this.resolvedWorktrees.invalidateResolved()

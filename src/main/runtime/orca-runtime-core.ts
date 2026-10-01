@@ -28,6 +28,8 @@ export type RuntimeWorktreeScanCache = {
   generation: number
   runtimeKey: string
   result: RuntimeWorktreeScanResult
+  /** Pending folder verdict on rows git repeated; cleared, with `result` replaced, once it lands. */
+  repeatedRowsSettled: Promise<RuntimeWorktreeScanResult> | null
   expiresAt: number
   adminFingerprint: string | null
   scannedAt: number
@@ -41,6 +43,7 @@ export type RuntimeWorktreeScanInFlight = {
 
 export type RuntimeWorktreeScanRefresh = {
   result: RuntimeWorktreeScanResult
+  repeatedRowsSettled: Promise<RuntimeWorktreeScanResult> | null
   adminFingerprint: string | null
   adminFingerprintProbe: Promise<string | null> | null
   scannedAt: number

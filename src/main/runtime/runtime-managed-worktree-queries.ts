@@ -40,7 +40,8 @@ type Dependencies = {
   listResolved(): Promise<ResolvedWorktree[]>
   resolveRepo(selector: string): Promise<Repo>
   selectRepos(selector: string): Repo[]
-  scanRepo(repo: Repo): Promise<RuntimeWorktreeScanResult>
+  /** `askedAt` is when the listing was first asked for, so re-runs of an overtaken scan share one wait budget. */
+  scanRepo(repo: Repo, askedAt: number): Promise<RuntimeWorktreeScanResult>
   /** Hosts this runtime has repos or workspaces on, so a host with no rows is still named. */
   listKnownHostIds(): Iterable<ExecutionHostId>
 }
@@ -137,8 +138,9 @@ export class RuntimeManagedWorktreeQueries {
         worktrees: projectResolvedWorktreeLineage(detected, store.getAllWorktreeLineage?.() ?? {})
       }
     }
+    const askedAt = Date.now()
     const scan = await scanRuntimeWorktreesUntilNotOvertaken(store, repo, (target) =>
-      this.deps.scanRepo(target)
+      this.deps.scanRepo(target, askedAt)
     )
     // Why a still-overtaken scan is published non-authoritative rather than rejected: this method
     // has no stale reply, and a thrown error makes the client drop the repo's rows. Non-authoritative

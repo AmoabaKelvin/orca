@@ -4,7 +4,11 @@ import type { ResolvedWorktree } from './runtime-worktree-path-identity'
 import { splitWorktreeIdForFilesystem } from '../../shared/worktree/id'
 import { isPathInsideOrEqual } from '../../shared/cross-platform-path'
 import type { ResolvedWorktreeSnapshot } from './runtime-resolved-worktree-cache'
-import { RESOLVED_WORKTREE_CACHE_TTL_MS } from './orca-runtime-postlude'
+import {
+  RESOLVED_WORKTREE_CACHE_TTL_MS,
+  WORKTREE_SCAN_REPEATED_ROWS_WAIT_MS
+} from './orca-runtime-postlude'
+import { awaitRepeatedRowsWithinBudget, type RepeatedWorktreeRows } from './repeated-worktree-rows'
 import { getWorktreeScanMutationRevision } from '../local-worktree-scan-generation'
 import {
   resolveLocalProjectRuntimeForRepo,
@@ -134,7 +138,9 @@ export class OrcaRuntimeWithListKnownResolvedWorktreesForExplicitTarget extends 
 
   protected async listRepoWorktreesForResolution(
     repo: Repo,
-    projectRuntimeByRepoId?: ReadonlyMap<string, ProjectExecutionRuntimeResolution>
+    projectRuntimeByRepoId?: ReadonlyMap<string, ProjectExecutionRuntimeResolution>,
+    // Why carried through re-runs: an overtaken scan lists again, but the caller's budget does not restart.
+    askedAt = Date.now()
   ): Promise<RuntimeWorktreeScanResult> {
     // Resolve the execution host, not the raw field: an `executionHostId: 'ssh:*'` row with no
     // `connectionId` would otherwise get a local project runtime and a `local:default` cache key,
@@ -161,15 +167,35 @@ export class OrcaRuntimeWithListKnownResolvedWorktreesForExplicitTarget extends 
       cached.runtimeKey === runtimeKey &&
       cached.expiresAt > now
     ) {
+      // Why no wait on a pending verdict here: a folder that hangs must not slow every cached read.
       return cached.result
     }
+    const isOvertaken = (): boolean =>
+      generation !== (this.worktreeScanGenerations.get(scanScopeKey) ?? 0)
+    // Why per scope, not per scan: a joiner can outlive the in-flight entry of the scan it joined.
+    const overtakenSignal = (): AbortSignal => {
+      const controller = this.worktreeScanOvertaken.get(scanScopeKey) ?? new AbortController()
+      this.worktreeScanOvertaken.set(scanScopeKey, controller)
+      return controller.signal
+    }
+    const relist = (): Promise<RuntimeWorktreeScanResult> =>
+      this.listRepoWorktreesForResolution(repo, projectRuntimeByRepoId, askedAt)
+    const awaitVerdict = (refresh: RepeatedWorktreeRows): Promise<RuntimeWorktreeScanResult> =>
+      awaitRepeatedRowsWithinBudget(
+        refresh,
+        askedAt,
+        WORKTREE_SCAN_REPEATED_ROWS_WAIT_MS,
+        overtakenSignal()
+      )
     const inFlight = this.worktreeScanInFlight.get(scanScopeKey)
     if (inFlight?.generation === generation && inFlight.runtimeKey === runtimeKey) {
       const refresh = await inFlight.promise
-      if (generation !== (this.worktreeScanGenerations.get(scanScopeKey) ?? 0)) {
-        return this.listRepoWorktreesForResolution(repo, projectRuntimeByRepoId)
+      if (isOvertaken()) {
+        return relist()
       }
-      return refresh.result
+      const result = await awaitVerdict(refresh)
+      // Why again: rows listed before a change that landed during the wait would report a new worktree as gone.
+      return isOvertaken() ? relist() : result
     }
     const reusableCached =
       cached?.generation === generation && cached.runtimeKey === runtimeKey ? cached : null
@@ -177,8 +203,16 @@ export class OrcaRuntimeWithListKnownResolvedWorktreesForExplicitTarget extends 
     this.worktreeScanInFlight.set(scanScopeKey, { generation, runtimeKey, promise })
     try {
       const refresh = await promise
-      if (generation !== (this.worktreeScanGenerations.get(scanScopeKey) ?? 0)) {
-        return this.listRepoWorktreesForResolution(repo, projectRuntimeByRepoId)
+      const listedAt = Date.now()
+      // Why before the verdict wait: an overtaken scan's verdict is discarded, and waiting on it
+      // spends the budget the re-run's listing needs.
+      if (isOvertaken()) {
+        return relist()
+      }
+      const result = await awaitVerdict(refresh)
+      // Why again: as for a joiner above.
+      if (isOvertaken()) {
+        return relist()
       }
       if (
         (refresh.result.ok || !sshConnectionId) &&
@@ -187,19 +221,26 @@ export class OrcaRuntimeWithListKnownResolvedWorktreesForExplicitTarget extends 
         const entry: RuntimeWorktreeScanCache = {
           generation,
           runtimeKey,
-          result: refresh.result,
-          expiresAt: Date.now() + resolveWorktreeScanCacheTtlMs(repo),
+          result,
+          repeatedRowsSettled: refresh.repeatedRowsSettled,
+          // Why from the listing: the verdict wait must not lengthen how long these rows are served.
+          expiresAt: listedAt + resolveWorktreeScanCacheTtlMs(repo),
           adminFingerprint: refresh.adminFingerprint,
           scannedAt: refresh.scannedAt
         }
         this.worktreeScanCache.set(scanScopeKey, entry)
+        // Why in place: a verdict that lands after this caller's budget still fixes the next read.
+        void refresh.repeatedRowsSettled?.then((settled) => {
+          entry.result = settled
+          entry.repeatedRowsSettled = null
+        })
         void refresh.adminFingerprintProbe?.then((fingerprint) => {
           if (this.worktreeScanCache.get(scanScopeKey) === entry) {
             entry.adminFingerprint = fingerprint
           }
         })
       }
-      return refresh.result
+      return result
     } finally {
       if (this.worktreeScanInFlight.get(scanScopeKey)?.promise === promise) {
         this.worktreeScanInFlight.delete(scanScopeKey)

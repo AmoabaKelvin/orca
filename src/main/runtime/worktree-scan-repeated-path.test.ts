@@ -1,5 +1,5 @@
 // Git lists a path twice when a linked registration's gitdir names the main checkout (#23631).
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const electronMocks = vi.hoisted(() => {
   const ipcMain = {
@@ -33,14 +33,17 @@ vi.mock('../git/runner', async (importOriginal) => ({
 }))
 
 const getSshGitProviderMock = vi.hoisted(() => vi.fn())
+const getSshGitProviderGenerationMock = vi.hoisted(() => vi.fn(() => 0))
 vi.mock('../providers/ssh-git-dispatch', () => ({
   getSshGitProvider: getSshGitProviderMock,
-  getSshGitProviderGeneration: vi.fn(() => 0),
+  getSshGitProviderGeneration: getSshGitProviderGenerationMock,
   SSH_GIT_PROVIDER_UNAVAILABLE_MESSAGE: 'unavailable',
   requireSshGitProvider: (connectionId: string) => getSshGitProviderMock(connectionId)
 }))
 
+import { bumpLocalWorktreeScanGeneration } from '../local-worktree-scan-generation'
 import { OrcaRuntimeService } from './orca-runtime'
+import { RESOLVED_WORKTREE_REPO_TIMEOUT_MS } from './repo-worktree-row-resolution'
 
 const REPO_ID = 'repo-local'
 const REPO_PATH = '/home/me/fileLoc'
@@ -117,6 +120,7 @@ describe('worktree scan with a repeated path', () => {
     listWorktreesStrictMock.mockReset()
     gitExecFileAsyncMock.mockReset()
     getSshGitProviderMock.mockReset()
+    getSshGitProviderGenerationMock.mockReset().mockReturnValue(0)
   })
 
   describe('rows that match', () => {
@@ -191,6 +195,186 @@ describe('worktree scan with a repeated path', () => {
         `${LINKED_WORKTREE_ID} refs/heads/stale`,
         `${LINKED_WORKTREE_ID} refs/heads/live`
       ])
+    })
+
+    describe('inside the caller budget', () => {
+      const ALL_GIT_ROWS = [
+        `${MAIN_WORKTREE_ID} refs/heads/dev_ops`,
+        `${LINKED_WORKTREE_ID} refs/heads/stale`,
+        `${LINKED_WORKTREE_ID} refs/heads/live`
+      ]
+
+      beforeEach(() => {
+        vi.useFakeTimers()
+      })
+
+      afterEach(() => {
+        vi.useRealTimers()
+      })
+
+      it('answers with every git row when the folder is slow to reply', async () => {
+        // Past the budget the caller restores persisted rows, which would hide a listing git already gave.
+        gitExecFileAsyncMock.mockReturnValue(new Promise(() => {}))
+
+        const listed = listedRows(makeRuntime())
+        await vi.advanceTimersByTimeAsync(RESOLVED_WORKTREE_REPO_TIMEOUT_MS)
+
+        await expect(listed).resolves.toEqual(ALL_GIT_ROWS)
+      })
+
+      it('serves the folder verdict to later reads when it lands after the first caller left', async () => {
+        const lateMs = RESOLVED_WORKTREE_REPO_TIMEOUT_MS - 500
+        gitExecFileAsyncMock.mockReturnValue(
+          new Promise((resolve) => {
+            setTimeout(() => resolve({ stdout: FOLDER_ON_LIVE, stderr: '' }), lateMs)
+          })
+        )
+        const runtime = makeRuntime()
+
+        const first = listedRows(runtime)
+        await vi.advanceTimersByTimeAsync(lateMs - 400)
+        await expect(first).resolves.toEqual(ALL_GIT_ROWS)
+
+        // A cached read never waits on a pending verdict: a folder that hangs must not slow every read.
+        const cachedRead = await runtime.listDetectedManagedWorktrees(`id:${REPO_ID}`)
+        expect(cachedRead.worktrees).toHaveLength(ALL_GIT_ROWS.length)
+
+        await vi.advanceTimersByTimeAsync(1_400)
+        await expect(listedRows(runtime)).resolves.toEqual([
+          `${MAIN_WORKTREE_ID} refs/heads/dev_ops`,
+          `${LINKED_WORKTREE_ID} refs/heads/live`
+        ])
+        expect(listWorktreesStrictMock).toHaveBeenCalledTimes(1)
+        expect(gitExecFileAsyncMock).toHaveBeenCalledTimes(1)
+      })
+
+      it('re-lists at once when a change lands during a slow listing', async () => {
+        // Waiting on the overtaken scan's verdict first would spend the budget the second listing needs.
+        gitExecFileAsyncMock.mockReturnValue(new Promise(() => {}))
+        const runtime = makeRuntime()
+        const slowListing = (): Promise<unknown> =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve([MAIN_ROW, STALE_LINKED_ROW, LIVE_LINKED_ROW]), 1_600)
+          })
+        listWorktreesStrictMock.mockImplementationOnce(() => {
+          runtime.invalidateWorktreeCatalog(REPO_ID)
+          return slowListing()
+        })
+        listWorktreesStrictMock.mockImplementation(slowListing)
+
+        const listed = listedRows(runtime)
+        await vi.advanceTimersByTimeAsync(RESOLVED_WORKTREE_REPO_TIMEOUT_MS)
+
+        await expect(listed).resolves.toEqual(ALL_GIT_ROWS)
+      })
+
+      it('re-lists at once when a change lands while it waits on the folder', async () => {
+        // Rows listed before the change would report the new worktree as gone.
+        gitExecFileAsyncMock.mockReturnValue(new Promise(() => {}))
+        const runtime = makeRuntime()
+        const createdRow = {
+          ...LIVE_LINKED_ROW,
+          path: '/home/me/fileLoc-new',
+          branch: 'refs/heads/new'
+        }
+        listWorktreesStrictMock.mockResolvedValueOnce([MAIN_ROW, STALE_LINKED_ROW, LIVE_LINKED_ROW])
+        listWorktreesStrictMock.mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              setTimeout(
+                () => resolve([MAIN_ROW, STALE_LINKED_ROW, LIVE_LINKED_ROW, createdRow]),
+                1_600
+              )
+            })
+        )
+
+        const listed = listedRows(runtime)
+        await vi.advanceTimersByTimeAsync(1_000)
+        runtime.invalidateWorktreeCatalog(REPO_ID)
+        await vi.advanceTimersByTimeAsync(RESOLVED_WORKTREE_REPO_TIMEOUT_MS - 1_000)
+
+        await expect(listed).resolves.toEqual([
+          ...ALL_GIT_ROWS,
+          `${REPO_ID}::/home/me/fileLoc-new refs/heads/new`
+        ])
+      })
+
+      it('re-lists at once for a caller whose scan was started, and finished, by someone else', async () => {
+        gitExecFileAsyncMock.mockReturnValue(new Promise(() => {}))
+        const runtime = makeRuntime()
+        listWorktreesStrictMock.mockResolvedValueOnce([MAIN_ROW, STALE_LINKED_ROW, LIVE_LINKED_ROW])
+        listWorktreesStrictMock.mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              setTimeout(() => resolve([MAIN_ROW, LIVE_LINKED_ROW]), 1_600)
+            })
+        )
+
+        const starter = listedRows(runtime)
+        await vi.advanceTimersByTimeAsync(3_000)
+        const joiner = runtime.showManagedWorktree(`id:${LINKED_WORKTREE_ID}`)
+        await vi.advanceTimersByTimeAsync(600)
+        await expect(starter).resolves.toEqual(ALL_GIT_ROWS)
+        // The starter has left; the joiner must still hear about the change instead of waiting out its budget.
+        runtime.invalidateWorktreeCatalog(REPO_ID)
+        await vi.advanceTimersByTimeAsync(RESOLVED_WORKTREE_REPO_TIMEOUT_MS)
+
+        await expect(joiner).resolves.toMatchObject({ branch: 'refs/heads/live' })
+      })
+
+      it('gives overlapping callers each their own budget across a worktree change', async () => {
+        gitExecFileAsyncMock.mockReturnValue(new Promise(() => {}))
+        const runtime = makeRuntime()
+
+        const first = listedRows(runtime)
+        await vi.advanceTimersByTimeAsync(1_000)
+        runtime.invalidateWorktreeCatalog(REPO_ID)
+        await vi.advanceTimersByTimeAsync(1_000)
+        const second = listedRows(runtime)
+        await vi.advanceTimersByTimeAsync(RESOLVED_WORKTREE_REPO_TIMEOUT_MS - 2_000)
+
+        await expect(first).resolves.toEqual(ALL_GIT_ROWS)
+        await vi.advanceTimersByTimeAsync(RESOLVED_WORKTREE_REPO_TIMEOUT_MS)
+        await expect(second).resolves.toEqual(ALL_GIT_ROWS)
+      })
+
+      it('keeps one budget when the paired-client listing re-runs an overtaken scan', async () => {
+        // A replaced SSH provider changes the scan's cache key, so the re-run cannot answer from the cache.
+        getSshGitProviderMock.mockReturnValue({
+          listWorktrees: vi.fn(async () => [MAIN_ROW, STALE_LINKED_ROW, LIVE_LINKED_ROW]),
+          exec: vi.fn(() => new Promise(() => {}))
+        })
+        const runtime = makeRuntime({ connectionId: 'builder' })
+        let answered = false
+
+        void runtime.listDetectedManagedWorktrees(`id:${REPO_ID}`).then(() => {
+          answered = true
+        })
+        await vi.advanceTimersByTimeAsync(1_000)
+        getSshGitProviderGenerationMock.mockReturnValue(1)
+        bumpLocalWorktreeScanGeneration(REPO_ID)
+        await vi.advanceTimersByTimeAsync(RESOLVED_WORKTREE_REPO_TIMEOUT_MS - 1_000)
+
+        expect(answered).toBe(true)
+      })
+
+      it('answers with every git row once the listing has used the budget', async () => {
+        gitExecFileAsyncMock.mockReturnValue(new Promise(() => {}))
+        listWorktreesStrictMock.mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              setTimeout(
+                () => resolve([MAIN_ROW, STALE_LINKED_ROW, LIVE_LINKED_ROW]),
+                RESOLVED_WORKTREE_REPO_TIMEOUT_MS - 1_000
+              )
+            })
+        )
+
+        const listed = listedRows(makeRuntime())
+        await vi.advanceTimersByTimeAsync(RESOLVED_WORKTREE_REPO_TIMEOUT_MS)
+
+        await expect(listed).resolves.toEqual(ALL_GIT_ROWS)
+      })
     })
 
     it('asks the SSH host for a remote repo', async () => {

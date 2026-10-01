@@ -50,6 +50,11 @@ export const WORKTREE_SCAN_FALLBACK_ALLOWANCE_MS = 1500
 export const WORKTREE_SCAN_ADMIN_FINGERPRINT_TIMEOUT_MS =
   RESOLVED_WORKTREE_REPO_TIMEOUT_MS - WORKTREE_SCAN_FALLBACK_ALLOWANCE_MS
 
+// Why inside the same budget: a caller waits this long, from when it asked, for folders to decide
+// rows git repeated; past it git's rows are a better answer than the persisted-row fallback.
+export const WORKTREE_SCAN_REPEATED_ROWS_WAIT_MS =
+  RESOLVED_WORKTREE_REPO_TIMEOUT_MS - WORKTREE_SCAN_FALLBACK_ALLOWANCE_MS
+
 export const PTY_CONTROLLER_LIST_TIMEOUT_MS = 3000
 
 export const PTY_CONTROLLER_LIST_PROVIDER_MARGIN_MS = 500
