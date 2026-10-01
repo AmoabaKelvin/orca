@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 
+import { useEffect } from 'react'
 import type React from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -53,6 +54,47 @@ function Probe(): React.JSX.Element {
       ))}
     </>
   )
+}
+
+const CLOSE_ALL = 'test-close-all-context-menus'
+
+// Mirrors the card menu: every mounted card closes on the broadcast, then the right-clicked one selects.
+function MenuRow({ worktree }: { worktree: Worktree }): React.JSX.Element {
+  useEffect(() => {
+    const close = (): void => selection.clearContextMenuSelection(worktree)
+    window.addEventListener(CLOSE_ALL, close)
+    return () => window.removeEventListener(CLOSE_ALL, close)
+  }, [worktree])
+  return (
+    <div
+      data-testid={worktree.id}
+      onClick={(event) => selection.updateSelectionForGesture(event, worktree)}
+      onContextMenu={(event) => {
+        window.dispatchEvent(new Event(CLOSE_ALL))
+        selection.selectForContextMenu(event, worktree)
+      }}
+    />
+  )
+}
+
+function MenuProbe(): React.JSX.Element {
+  selection = useSidebarWorktreeSelection({
+    sectionRows: rows,
+    pinnedDisplayPolicy: 'single-location'
+  })
+  return (
+    <>
+      {worktrees.map((worktree) => (
+        <MenuRow key={worktree.id} worktree={worktree} />
+      ))}
+    </>
+  )
+}
+
+function closeAllMenus(): void {
+  act(() => {
+    window.dispatchEvent(new Event(CLOSE_ALL))
+  })
 }
 
 function selectedIds(): string[] {
@@ -126,5 +168,49 @@ describe('sidebar selection when a row context menu closes', () => {
     addToSelection(alpha)
 
     expect(selection.clearContextMenuSelection).toBe(initial)
+  })
+
+  it('keeps a row the user selected before opening its menu', () => {
+    render(<Probe />)
+    addToSelection(beta)
+
+    fireEvent.contextMenu(screen.getByTestId('beta'))
+    act(() => selection.clearContextMenuSelection(beta))
+
+    expect(selectedIds()).toEqual(['beta'])
+  })
+})
+
+describe('sidebar selection when every card menu closes on a new right-click', () => {
+  it('keeps the newly right-clicked row while the previous menu closes', () => {
+    render(<MenuProbe />)
+
+    fireEvent.contextMenu(screen.getByTestId('beta'))
+    fireEvent.contextMenu(screen.getByTestId('alpha'))
+    expect(selectedIds()).toEqual(['alpha'])
+
+    closeAllMenus()
+    expect(selectedIds()).toEqual([])
+  })
+
+  it('still clears when the same row is right-clicked again while its menu is open', () => {
+    render(<MenuProbe />)
+
+    fireEvent.contextMenu(screen.getByTestId('beta'))
+    fireEvent.contextMenu(screen.getByTestId('beta'))
+    expect(selectedIds()).toEqual(['beta'])
+
+    closeAllMenus()
+    expect(selectedIds()).toEqual([])
+  })
+
+  it('keeps a user-selected row through the close broadcast', () => {
+    render(<MenuProbe />)
+    addToSelection(beta)
+
+    fireEvent.contextMenu(screen.getByTestId('beta'))
+    closeAllMenus()
+
+    expect(selectedIds()).toEqual(['beta'])
   })
 })
