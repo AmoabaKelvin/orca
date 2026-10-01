@@ -186,6 +186,16 @@ describe('registerShellHandlers', () => {
     })
   })
 
+  it('returns no attachment paths when multi-file picking is canceled', async () => {
+    showOpenDialogMock.mockResolvedValue({
+      canceled: true,
+      filePaths: ['/Users/kaylee/notes.md']
+    })
+
+    const handler = getHandler('shell:pickAttachments')
+    await expect(handler({})).resolves.toEqual([])
+  })
+
   describe('shell:openPath', () => {
     it('ignores relative paths', async () => {
       const handler = getHandler('shell:openPath')
