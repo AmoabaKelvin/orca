@@ -1,3 +1,6 @@
+import { toast } from 'sonner'
+import { translate } from '@/i18n/i18n'
+import { useAppStore } from '@/store'
 import type { AppState } from '@/store/types'
 import {
   DEFAULT_WORKSPACE_STATUS_ID,
@@ -10,14 +13,15 @@ import { getDeleteStateForWorktreeHost } from '../../worktree-delete-state-host-
 
 export type MarkDoneTarget = Pick<Worktree, 'id' | 'hostId'>
 
-function isInProgress(
+function hasStatus(
   worktree: Pick<Worktree, 'workspaceStatus'> | undefined,
+  status: string,
   statuses: readonly WorkspaceStatusDefinition[]
 ): boolean {
   return (
     worktree !== undefined &&
-    isWorkspaceStatusId(DEFAULT_WORKSPACE_STATUS_ID, statuses) &&
-    getWorkspaceStatus(worktree, statuses) === DEFAULT_WORKSPACE_STATUS_ID
+    isWorkspaceStatusId(status, statuses) &&
+    getWorkspaceStatus(worktree, statuses) === status
   )
 }
 
@@ -36,7 +40,7 @@ export function markWorkspacesDone(
   }
   const worktrees = targets.flatMap((target) => {
     const worktree = state.getKnownWorktreeById(target.id, target.hostId)
-    if (!worktree || !isInProgress(worktree, statuses)) {
+    if (!worktree || !hasStatus(worktree, DEFAULT_WORKSPACE_STATUS_ID, statuses)) {
       return []
     }
     // Why: the right-click status submenu is disabled mid-delete; the keyboard path matches it.
@@ -44,6 +48,9 @@ export function markWorkspacesDone(
       ? []
       : [worktree]
   })
+  if (worktrees.length === 0) {
+    return false
+  }
   for (const worktree of worktrees) {
     // Why: same write as the right-click status menu, so a failed save reverts silently there too.
     void state.updateWorktreeMeta(
@@ -51,9 +58,52 @@ export function markWorkspacesDone(
       { workspaceStatus: DONE_WORKSPACE_STATUS_ID },
       {
         executionHostId: worktree.hostId ?? 'local',
-        shouldApply: (current) => isInProgress(current, statuses)
+        shouldApply: (current) => hasStatus(current, DEFAULT_WORKSPACE_STATUS_ID, statuses)
       }
     )
   }
-  return worktrees.length > 0
+  showMarkedDoneToast(worktrees)
+  return true
+}
+
+// Why: a key press has no visible confirmation, and the row can move into a collapsed Done section.
+function showMarkedDoneToast(worktrees: readonly Worktree[]): void {
+  const [first] = worktrees
+  toast(
+    worktrees.length === 1 && first
+      ? translate('auto.components.sidebar.markDone.markedOne', 'Marked {{name}} Done', {
+          name: first.displayName
+        })
+      : translate(
+          'auto.components.sidebar.markDone.markedMany',
+          'Marked {{count}} workspaces Done',
+          {
+            count: worktrees.length
+          }
+        ),
+    {
+      action: {
+        label: translate('auto.components.sidebar.markDone.undo', 'Undo'),
+        onClick: () => undoMarkedDone(worktrees)
+      }
+    }
+  )
+}
+
+function undoMarkedDone(worktrees: readonly Worktree[]): void {
+  const { updateWorktreeMeta, workspaceStatuses } = useAppStore.getState()
+  if (!isWorkspaceStatusId(DEFAULT_WORKSPACE_STATUS_ID, workspaceStatuses)) {
+    return
+  }
+  for (const worktree of worktrees) {
+    void updateWorktreeMeta(
+      worktree.id,
+      { workspaceStatus: DEFAULT_WORKSPACE_STATUS_ID },
+      {
+        executionHostId: worktree.hostId ?? 'local',
+        // Why: a status set after the key press wins over the undo.
+        shouldApply: (current) => hasStatus(current, DONE_WORKSPACE_STATUS_ID, workspaceStatuses)
+      }
+    )
+  }
 }

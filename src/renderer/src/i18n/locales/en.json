@@ -6564,6 +6564,11 @@
           "title": "Sort changed to Manual",
           "description": "Manual keeps workspaces where you drop them.",
           "restore": "Back to {{label}}"
+        },
+        "markDone": {
+          "markedOne": "Marked {{name}} Done",
+          "markedMany": "Marked {{count}} workspaces Done",
+          "undo": "Undo"
         }
       },
       "shared": {
