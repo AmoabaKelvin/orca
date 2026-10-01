@@ -13,7 +13,8 @@ import { withTimeoutResult } from './runtime-async-boundaries'
 import { readRepoWorktreeAdminFingerprint } from './repo-worktree-admin-fingerprint'
 import type { RuntimeWorktreeScanResult } from './repo-worktree-resolution-scan'
 import { scanLocalRepoWorktreesForResolution } from './repo-worktree-resolution-scan'
-import { dropRepeatedWorktreeRows } from './repeated-worktree-rows'
+import { resolveRepeatedWorktreeRows } from './repeated-worktree-rows'
+import { readCheckedOutWorktreeHead } from './checked-out-worktree-head'
 import { getSshGitProvider } from '../providers/ssh-git-dispatch'
 import type { GitWorktreeInfo } from '../../shared/worktree/types'
 import { listStoredWorktreeRowsForRepo } from './repo-worktree-row-resolution'
@@ -70,8 +71,14 @@ export class OrcaRuntimeWithRefreshRepoWorktreeScan extends OrcaRuntimeWithListK
         }
       }
     }
-    const result = dropRepeatedWorktreeRows(
-      await this.listRepoWorktreesForResolutionUncached(repo, projectRuntime)
+    const result = await resolveRepeatedWorktreeRows(
+      await this.listRepoWorktreesForResolutionUncached(repo, projectRuntime),
+      (worktreePath) =>
+        readCheckedOutWorktreeHead(
+          repo,
+          getLocalProjectWorktreeGitOptionsForRuntime(repo, projectRuntime),
+          worktreePath
+        )
     )
     return { result, adminFingerprint: null, adminFingerprintProbe: probe, scannedAt }
   }
