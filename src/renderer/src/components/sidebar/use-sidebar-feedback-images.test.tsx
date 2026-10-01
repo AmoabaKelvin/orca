@@ -95,9 +95,9 @@ describe('useSidebarFeedbackImages', () => {
   })
 
   it('tells the user when an attachment was compressed to fit', async () => {
-    const notice = 'shot.png was compressed from 6.4 MB to 3.1 MB to fit the attachment limit.'
+    const notice = 'shot.png was compressed from 6.1 MB to 1.7 MB to fit the attachment limit.'
     readFeedbackImageFiles.mockResolvedValue({
-      images: [draft('shot', 3_100_000)],
+      images: [draft('shot', 1_750_000)],
       errors: [],
       notices: [notice]
     })
@@ -107,7 +107,7 @@ describe('useSidebarFeedbackImages', () => {
     })
 
     expect(toast.info).toHaveBeenCalledWith(notice)
-    expect(latest!.images.map((image) => image.bytes)).toEqual([3_100_000])
+    expect(latest!.images.map((image) => image.bytes)).toEqual([1_750_000])
   })
 
   // Why: a batch still shrinking has no known size yet; reserving its raw file
@@ -131,10 +131,10 @@ describe('useSidebarFeedbackImages', () => {
     expect(readFeedbackImageFiles).toHaveBeenCalledTimes(1)
 
     await act(async () => {
-      finishShrink?.({ images: [draft('retina', 2_100_000)], errors: [], notices: [] })
+      finishShrink?.({ images: [draft('retina', 1_750_000)], errors: [], notices: [] })
     })
 
-    expect(readFeedbackImageFiles).toHaveBeenNthCalledWith(2, [second], 1, 2_100_000)
+    expect(readFeedbackImageFiles).toHaveBeenNthCalledWith(2, [second], 1, 1_750_000)
   })
 
   // Why: a queued batch can hold several screenshots, each costing a decode and

@@ -4,17 +4,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   MAX_FEEDBACK_IMAGE_BYTES,
   MAX_FEEDBACK_IMAGE_COUNT,
+  MAX_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES,
   MAX_FEEDBACK_IMAGE_SOURCE_BYTES,
   MAX_FEEDBACK_IMAGE_TOTAL_BYTES,
   MIN_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES,
   hasAttachableFeedbackImage,
   readFeedbackImageFiles
 } from './feedback-image-attachments'
+import {
+  feedbackImageShrinkSteps,
+  shrinkFeedbackImageWithin,
+  type FeedbackImageShrinkStep
+} from './feedback-image-shrink'
+import type * as FeedbackImageShrinkModule from './feedback-image-shrink'
 
 const { shrinkFeedbackImage } = vi.hoisted(() => ({ shrinkFeedbackImage: vi.fn() }))
 
 // Why: happy-dom has no image decoder; the shrink steps are covered in their own test.
-vi.mock('./feedback-image-shrink', () => ({ shrinkFeedbackImage }))
+vi.mock('./feedback-image-shrink', async (importOriginal) => ({
+  ...(await importOriginal<typeof FeedbackImageShrinkModule>()),
+  shrinkFeedbackImage
+}))
 
 beforeEach(() => {
   shrinkFeedbackImage.mockReset()
@@ -89,6 +99,49 @@ function encoded(size: number, type: string): Blob {
   return new Blob([new Uint8Array(size)], { type })
 }
 
+type StepSizes = Record<`${FeedbackImageShrinkStep['contentType']}@${number}`, number>
+
+// Encode sizes measured from three 3024x1964 Retina screenshots in Electron;
+// the PNG@0.75 and other unmeasured steps of the 2nd and 3rd are estimates.
+const RETINA_STEP_SIZES: readonly StepSizes[] = [
+  {
+    'image/png@0.75': 3_810_000,
+    'image/png@0.5': 1_750_000,
+    'image/jpeg@1': 1_380_000,
+    'image/jpeg@0.75': 760_000,
+    'image/jpeg@0.5': 380_000,
+    'image/jpeg@0.25': 110_000
+  },
+  {
+    'image/png@0.75': 3_300_000,
+    'image/png@0.5': 1_510_000,
+    'image/jpeg@1': 1_300_000,
+    'image/jpeg@0.75': 710_000,
+    'image/jpeg@0.5': 360_000,
+    'image/jpeg@0.25': 105_000
+  },
+  {
+    'image/png@0.75': 3_500_000,
+    'image/png@0.5': 1_630_000,
+    'image/jpeg@1': 1_340_000,
+    'image/jpeg@0.75': 730_000,
+    'image/jpeg@0.5': 370_000,
+    'image/jpeg@0.25': 108_000
+  }
+]
+
+/** Runs the real step walk, with each step's encode size taken from the file's table. */
+function shrinkByStepSizes(sizesByName: Record<string, StepSizes>): void {
+  shrinkFeedbackImage.mockImplementation((file: File, maxBytes: number) =>
+    shrinkFeedbackImageWithin(
+      feedbackImageShrinkSteps(file.type),
+      async (step) =>
+        encoded(sizesByName[file.name][`${step.contentType}@${step.scale}`], step.contentType),
+      maxBytes
+    )
+  )
+}
+
 describe('hasAttachableFeedbackImage', () => {
   it('is true when any file is an allow-listed type', () => {
     const svg = new File(['x'], 'a.svg', { type: 'image/svg+xml' })
@@ -136,6 +189,25 @@ describe('hasAttachableFeedbackImage', () => {
     expect(hasAttachableFeedbackImage([pngFile('retina.png', 6_400_000)])).toBe(true)
     expect(hasAttachableFeedbackImage([pngFile('second.png', 2_000_000)], 1, 3_000_000)).toBe(true)
   })
+
+  // Why: a paste the gate consumes but the reader refuses loses its co-pasted text.
+  it('agrees with the reader on every budget left, which shrinks to at most half the budget', async () => {
+    shrinkFeedbackImage.mockImplementation(async (_file: File, maxBytes: number) =>
+      encoded(maxBytes, 'image/png')
+    )
+    const floor = MAX_FEEDBACK_IMAGE_TOTAL_BYTES - MIN_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES
+    for (const existingBytes of [0, 1_000_000, 2_500_000, floor, floor + 1]) {
+      for (const file of [pngFile('retina.png', 6_400_000), pngFile('mid.png', 2_500_000)]) {
+        shrinkFeedbackImage.mockClear()
+        const { images } = await readFeedbackImageFiles([file], 1, existingBytes)
+
+        expect(hasAttachableFeedbackImage([file], 1, existingBytes)).toBe(images.length === 1)
+        for (const [, maxBytes] of shrinkFeedbackImage.mock.calls) {
+          expect(maxBytes).toBeLessThanOrEqual(MAX_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES)
+        }
+      }
+    }
+  })
 })
 
 describe('readFeedbackImageFiles', () => {
@@ -171,23 +243,73 @@ describe('readFeedbackImageFiles', () => {
     expect(errors.at(-1)).toBe('96 additional images could not be attached.')
   })
 
-  it('shrinks an oversized screenshot to fit instead of refusing it', async () => {
+  // Why: the whole budget free must not let one shrink take the PNG@0.75 step and
+  // leave the next screenshot a blurry JPEG.
+  it('shrinks an oversized screenshot to at most half the budget even when all of it is free', async () => {
     const file = pngFile('retina.png', 6_400_000)
-    shrinkFeedbackImage.mockResolvedValue(encoded(3_000_000, 'image/png'))
+    shrinkByStepSizes({ 'retina.png': RETINA_STEP_SIZES[0] })
 
     const { images, errors, notices } = await readFeedbackImageFiles([file], 0)
 
     expect(errors).toEqual([])
-    expect(shrinkFeedbackImage).toHaveBeenCalledWith(file, MAX_FEEDBACK_IMAGE_BYTES)
+    expect(shrinkFeedbackImage).toHaveBeenCalledWith(file, MAX_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES)
     expect(images).toHaveLength(1)
-    expect(images[0]).toMatchObject({ name: 'retina.png', contentType: 'image/png', bytes: 3e6 })
-    expect(images[0].data.byteLength).toBe(3_000_000)
+    expect(images[0]).toMatchObject({
+      name: 'retina.png',
+      contentType: 'image/png',
+      bytes: 1_750_000
+    })
+    expect(images[0].data.byteLength).toBe(1_750_000)
     expect(notices).toEqual([
-      'retina.png was compressed from 6.1 MB to 2.9 MB to fit the attachment limit.'
+      'retina.png was compressed from 6.1 MB to 1.7 MB to fit the attachment limit.'
     ])
   })
 
-  it('shrinks a second screenshot into the budget the first one left', async () => {
+  it('keeps three Retina screenshots added one after another readable within the budget', async () => {
+    const names = ['first.png', 'second.png', 'third.png']
+    shrinkByStepSizes(
+      Object.fromEntries(names.map((name, index) => [name, RETINA_STEP_SIZES[index]]))
+    )
+    const sources = [6_400_000, 5_350_000, 5_700_000]
+    const attached: { contentType: string; bytes: number }[] = []
+
+    for (const [index, name] of names.entries()) {
+      const committed = attached.reduce((total, image) => total + image.bytes, 0)
+      const { images, errors } = await readFeedbackImageFiles(
+        [pngFile(name, sources[index], { width: 3024, height: 1964 })],
+        attached.length,
+        committed
+      )
+      expect(errors).toEqual([])
+      attached.push(...images)
+    }
+
+    expect(attached.map((image) => [image.contentType, image.bytes])).toEqual([
+      ['image/png', 1_750_000],
+      ['image/png', 1_510_000],
+      ['image/jpeg', 730_000]
+    ])
+    expect(attached.every((image) => image.bytes <= MAX_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES)).toBe(
+      true
+    )
+    expect(attached.reduce((total, image) => total + image.bytes, 0)).toBeLessThanOrEqual(
+      MAX_FEEDBACK_IMAGE_TOTAL_BYTES
+    )
+  })
+
+  // Why: the cap applies only to a re-encode; an image that fits is sent as taken.
+  it('does not re-encode an image over half the budget that fits the space left', async () => {
+    const { images, notices } = await readFeedbackImageFiles(
+      [pngFile('first.png', 3_500_000), pngFile('second.png', 600_000)],
+      0
+    )
+
+    expect(shrinkFeedbackImage).not.toHaveBeenCalled()
+    expect(images.map((image) => image.bytes)).toEqual([3_500_000, 600_000])
+    expect(notices).toEqual([])
+  })
+
+  it('shrinks into the space left when less than half the budget remains', async () => {
     const first = pngFile('first.png', 3_000_000)
     const second = pngFile('second.png', 3_000_000)
     shrinkFeedbackImage.mockResolvedValue(encoded(900_000, 'image/jpeg'))
@@ -237,6 +359,18 @@ describe('readFeedbackImageFiles', () => {
     expect(tooLittleRoom.errors).toEqual([
       'second.png would bring the attachments over 4.0 MB in total.'
     ])
+  })
+
+  // Why: with half the budget or more left, the shrink got the same capped target
+  // an empty budget would give, so the other attachments did not cause the refusal.
+  it('calls an image too large when even the capped target an empty budget gives refused it', async () => {
+    const { errors } = await readFeedbackImageFiles([pngFile('noise.png', 9_000_000)], 1, 1_000_000)
+
+    expect(shrinkFeedbackImage).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'noise.png' }),
+      MAX_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES
+    )
+    expect(errors).toEqual(['noise.png is larger than 4.0 MB.'])
   })
 
   it('still calls an oversized image too large when no budget could take it', async () => {
@@ -305,12 +439,12 @@ describe('readFeedbackImageFiles', () => {
       ['tEXt', acTL],
       ['IDAT', acTL]
     ])
-    shrinkFeedbackImage.mockResolvedValue(encoded(3_000_000, 'image/png'))
+    shrinkFeedbackImage.mockResolvedValue(encoded(1_800_000, 'image/png'))
 
     const { images, errors } = await readFeedbackImageFiles([still], 0)
 
     expect(errors).toEqual([])
-    expect(shrinkFeedbackImage).toHaveBeenCalledWith(still, MAX_FEEDBACK_IMAGE_BYTES)
+    expect(shrinkFeedbackImage).toHaveBeenCalledWith(still, MAX_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES)
     expect(images.map((image) => image.name)).toEqual(['still.png'])
   })
 
@@ -321,7 +455,7 @@ describe('readFeedbackImageFiles', () => {
       ['tEXt', new Uint8Array(4), 0x8000_0000],
       ['acTL', new Uint8Array(8)]
     ])
-    shrinkFeedbackImage.mockResolvedValue(encoded(3_000_000, 'image/png'))
+    shrinkFeedbackImage.mockResolvedValue(encoded(1_800_000, 'image/png'))
 
     const { images, errors } = await readFeedbackImageFiles([corrupt], 0)
 
@@ -355,7 +489,7 @@ describe('readFeedbackImageFiles', () => {
     // The refused image spent none of the budget the next one shrinks into.
     expect(shrinkFeedbackImage).toHaveBeenLastCalledWith(
       expect.objectContaining({ name: 'retina.png' }),
-      MAX_FEEDBACK_IMAGE_BYTES
+      MAX_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES
     )
   })
 
