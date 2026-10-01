@@ -193,6 +193,8 @@ describe('Delete on the focused workspace list', () => {
     press(list, 'Delete')
 
     expect(mocks.toast).toHaveBeenCalledTimes(1)
+    // Long enough to reach Undo after looking away; the toast default is ~4 s.
+    expect(mocks.toast.mock.calls[0]?.[1]?.duration).toBeGreaterThanOrEqual(8000)
     const undo = mocks.toast.mock.calls[0]?.[1]?.action
     expect(undo?.label).toBe('Undo')
     undo.onClick()
