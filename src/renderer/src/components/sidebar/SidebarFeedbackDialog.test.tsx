@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('sonner', () => ({
   toast: {
     error: vi.fn(),
+    info: vi.fn(),
     success: vi.fn(),
     warning: mocks.toastWarning
   }

@@ -110,8 +110,8 @@ describe('useSidebarFeedbackImages', () => {
     expect(latest!.images.map((image) => image.bytes)).toEqual([1_750_000])
   })
 
-  // Why: a batch still shrinking has no known size yet; reserving its raw file
-  // size would refuse the next screenshot even though room is left.
+  // Why: a batch still shrinking has no known size yet; reading the next one
+  // against its raw file size would refuse a screenshot even though room is left.
   it('sizes a later add against the shrunk size, not the raw file size', async () => {
     let finishShrink: ((value: unknown) => void) | undefined
     readFeedbackImageFiles.mockReturnValueOnce(
