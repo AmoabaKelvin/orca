@@ -214,13 +214,32 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
         if (commitmentOwned) {
           this.revokeHydratedAuthorityForPaneKeys(new Set([paneKey]))
         }
-        const deleted = rowOwned
-          ? this.deleteStatusEntry(paneKey, { preserveAuthority: true })
-          : null
-        if (deleted) {
-          this.commitStatusRowMutation(deleted, undefined)
-          this.notifyStatusChangeListeners()
+        const ownerPaneKey = this.resolvePaneKeyAlias(paneKey)
+        // Why both are captured before the clear below: `retirePaneAuthority` revokes the pane's
+        // whole authority record and `deleteStatusEntry` drops its observation whatever
+        // `preserveAuthority` says — but on a shared pane either can belong to the owner that is
+        // STAYING. Losing the commitment forgets that owner's resume identity; losing the
+        // observation stops `attestCompatibilityAuthority` attesting its `current_runtime`
+        // terminal until another hook arrives.
+        const observation = this.currentAuthorityObservations.get(ownerPaneKey)
+        const survivingObservation =
+          observation && !ownedByRemoved(observation) ? observation : undefined
+        const survivingCommitment = commitmentOwned ? undefined : commitment
+        if (rowOwned) {
+          // Why the pane fence here too, not just a row delete: the removed worktree's agent can
+          // still post a late turn, and an unfenced pane is `accept` for every source — an OSC
+          // terminal report carries no launch token, so no token-scoped rule can stop it, and the
+          // row we just deleted comes straight back to memory AND to last-status.json. The fence
+          // lifts the moment a live PTY reattaches or a new agent starts, and the surviving owner
+          // keeps the records restored below, so its resume identity and attestation survive.
+          this.retirePaneAuthority(paneKey)
           this.emitPaneStatusCleared({ paneKey })
+        }
+        if (survivingCommitment) {
+          this.persistedAuthorityCommitmentsByPaneKey.set(ownerPaneKey, survivingCommitment)
+        }
+        if (survivingObservation) {
+          this.currentAuthorityObservations.set(ownerPaneKey, survivingObservation)
         }
         this.scheduleStatusPersist()
         continue
