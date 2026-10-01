@@ -132,6 +132,12 @@ describe('per-job path classification', () => {
     expectClassification(['.github/actions/prepare-git-compatibility/action.yml'], {
       git_compatibility: true
     })
+    // The contract pins the local-main fast-forward's exact arguments.
+    expectClassification(['src/shared/worktree/local-base-branch-fast-forward.ts'], {
+      git_compatibility: true,
+      package: true,
+      package_windows: true
+    })
   })
 
   it('runs the Codex index-heal contract only when the heal or its transport changes', () => {
@@ -153,6 +159,13 @@ describe('per-job path classification', () => {
     expectClassification(['src/main/codex/codex-index-heal-binary-contract.test.ts'], {
       codex_index_heal_contract: true
     })
+    for (const file of ['src/main/agent-trust-presets.ts', 'src/main/codex/config-toml-trust.ts']) {
+      expectClassification([file], {
+        codex_index_heal_contract: true,
+        package: true,
+        package_windows: true
+      })
+    }
     // Keep the real-binary gate live when a transport or launch dependency changes.
     for (const file of [
       'src/main/codex/codex-app-server-capability-signal.ts',
@@ -187,7 +200,7 @@ describe('per-job path classification', () => {
   })
 
   it('runs native package jobs only for the platform that ships the changed native', () => {
-    expectClassification(['native/windows-cli-launcher/OrcaCliLauncher.cs'], {
+    expectClassification(['native/windows-cli-launcher/src/main.rs'], {
       package_windows: true
     })
     expectClassification(['native/computer-use-linux/runtime.py'], {
@@ -597,10 +610,17 @@ describe('PR Checks skip wiring', () => {
     }
     expect(prWorkflow.jobs.test.needs).toEqual([
       'code_paths',
+      'unit_plan',
       'test_native_cache',
       'static_analysis',
       'typecheck'
     ])
+    // Planning is deliberately NOT behind the static-analysis gate: it consumes nothing those
+    // jobs produce, so gating it only made the shards queue behind it. It still has to succeed
+    // before the shards run, or the matrix would expand from an empty assignment.
+    expect(prWorkflow.jobs.unit_plan.needs).toEqual(['code_paths'])
+    expect(prWorkflow.jobs.unit_plan.if).toBe("needs.code_paths.outputs.test == 'true'")
+    expect(prWorkflow.jobs.test.if).toContain("needs.unit_plan.result == 'success'")
     expect(prWorkflow.jobs.test.if).toContain("needs.code_paths.outputs.test == 'true'")
     expect(prWorkflow.jobs.test.if).toContain("needs.test_native_cache.result == 'success'")
     expect(prWorkflow.jobs.test.if).toContain("needs.test_native_cache.result == 'skipped'")

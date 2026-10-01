@@ -227,6 +227,11 @@ module.exports = {
     // Why: out/electron-dev caches `pnpm dev`'s per-branch Electron.app copies (~270MB each).
     // CI never creates it, but packaging on a machine that has run dev would pack them all.
     '!out/electron-dev{,/**/*}',
+    // Why: relayExtraResource already ships out/relay to resources/relay, which is
+    // the only path a packaged build resolves. Packing it again added 14MB and put
+    // relay.js inside app.asar, so a script-heuristic verdict on relay.js took the
+    // whole asar with it as a compound object and gutted the install (#20966, #20972).
+    '!out/relay{,/**/*}',
     '!electron.vite.config.{js,ts,mjs,cjs}',
     '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,CHANGELOG.md,README.md}',
     '!{.env,.env.*,.npmrc,pnpm-lock.yaml}',
@@ -402,7 +407,6 @@ module.exports = {
     verifyPackagedPluginResources(resourcesDir)
     finalizePackagedRipgrep(resourcesDir)
     chmodUnixCliLaunchers(resourcesDir, context.electronPlatformName)
-    chmodMacServeSimHelpers(resourcesDir, context.electronPlatformName)
     for (const filename of readdirSync(resourcesDir)) {
       if (!filename.startsWith('agent-browser-')) {
         continue
@@ -710,23 +714,6 @@ function chmodUnixCliLaunchers(resourcesDir, electronPlatformName) {
     // Why: packaged Unix installs expose these extraResources as public shell
     // commands, and source/packager mode drift must not ship a non-executable CLI.
     chmodSync(launcherPath, 0o755)
-  }
-}
-
-function chmodMacServeSimHelpers(resourcesDir, electronPlatformName) {
-  if (electronPlatformName !== 'darwin') {
-    return
-  }
-  const helperPaths = [
-    join(resourcesDir, 'serve-sim', 'bin', 'serve-sim-bin'),
-    join(resourcesDir, 'serve-sim', 'dist', 'simcam', 'serve-sim-camera-helper'),
-    join(resourcesDir, 'node_modules', 'serve-sim', 'bin', 'serve-sim-bin'),
-    join(resourcesDir, 'node_modules', 'serve-sim', 'dist', 'simcam', 'serve-sim-camera-helper')
-  ]
-  for (const helperPath of helperPaths) {
-    if (existsSync(helperPath)) {
-      chmodSync(helperPath, 0o755)
-    }
   }
 }
 

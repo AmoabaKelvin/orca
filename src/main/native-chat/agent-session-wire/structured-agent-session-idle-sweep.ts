@@ -3,7 +3,7 @@
 // Nothing a viewer does keeps an agent alive or starts one: a chat on screen and a chat in a
 // background tab are the same to this sweep. Every few minutes it looks at each open conversation
 // and stops the provider child of one that has been quiet for the idle window and owes no work,
-// then drops the open journal handle of one that is only a cache. The conversation itself — its
+// then drops the in-memory fold of one that is only a cache. The conversation itself — its
 // record, tab, status row and readers — is untouched, and the next send starts a new child.
 //
 // Owed work is derived on every tick, never stored, so there is nothing to disagree with it.
@@ -12,7 +12,7 @@ import { agentChildWorkLiveness } from '../../../shared/agent-status-child-work-
 import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-projection'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionBackgroundTaskState } from '../../../shared/agent-session-wire'
+import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 
 export const STRUCTURED_AGENT_SESSION_IDLE_SWEEP_INTERVAL_MS = 5 * 60_000
@@ -27,9 +27,12 @@ export type StructuredAgentSessionIdleSweepDeps = {
   now: () => number
   isDisposed: () => boolean
   deliveryActive: (sessionId: string) => boolean
-  backgroundTaskState: (sessionId: string) => AgentSessionBackgroundTaskState | null | undefined
+  /** The session's child records, the host's one read of them. */
+  childWork: (sessionId: string) => readonly AgentChildWorkView[] | undefined
   /** An orchestration dispatch that still owns this session's worker; derived from its database. */
   hasOpenDispatch: (sessionId: string) => boolean
+  /** The provider holds a send it took and has not answered; see `holdsDispatch`. */
+  providerHoldsDispatch: (sessionId: string) => boolean
   /** Each of these runs inside the session's serialize and never takes it again. */
   stopAgent: (sessionId: string) => Promise<void>
   stopStartingAgent: (sessionId: string) => Promise<void>
@@ -143,8 +146,9 @@ export class StructuredAgentSessionIdleSweep {
     return (
       activeStructuredAgentSessionTurnId(items) !== null ||
       this.queuedOrDelivering(sessionId, session) ||
-      agentChildWorkLiveness(this.deps.backgroundTaskState(sessionId)?.tasks) !== null ||
+      agentChildWorkLiveness(this.deps.childWork(sessionId)) !== null ||
       this.deps.hasOpenDispatch(sessionId) ||
+      this.deps.providerHoldsDispatch(sessionId) ||
       hasPendingStructuredAgentSessionPrompt(items)
     )
   }
