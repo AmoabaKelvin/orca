@@ -177,11 +177,6 @@ test.describe('Tab strip scroll render isolation', () => {
         .toBeGreaterThan(tabIds.length)
     }
 
-    // Start and end mid-strip so neither scroll edge flips the arrows, fades or dock.
-    await strip.evaluate((el, left) => {
-      el.scrollLeft = left
-    }, START_SCROLL_LEFT_PX)
-
     await startRecordingTabRenders(orcaPage)
     // New terminals retitle their tabs after opening, longer on a loaded machine; wait for quiet.
     await expect
@@ -197,6 +192,25 @@ test.describe('Tab strip scroll render isolation', () => {
     expect(await strip.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThanOrEqual(
       MIN_SCROLL_RANGE_PX
     )
+
+    // Start and end mid-strip so neither scroll edge flips the arrows, fades or dock. Why set it
+    // here and hold until it sticks: opening the tabs left the strip pinned to its end, and the
+    // scroll event that releases that pin only lands with the next frame — about a second in CI's
+    // hidden window. A tab retitling inside that window re-pins the strip to the end.
+    await expect
+      .poll(
+        async () => {
+          await strip.evaluate((el, left) => {
+            el.scrollLeft = left
+          }, START_SCROLL_LEFT_PX)
+          await orcaPage.waitForTimeout(1_500)
+          return strip.evaluate((el) => el.scrollLeft)
+        },
+        { timeout: 30_000 }
+      )
+      .toBe(START_SCROLL_LEFT_PX)
+    // That scroll flipped the end-edge flags; the commit it caused is not the scroll under test.
+    await takeTabRenders(orcaPage)
     // Why wheel events dispatched in the page: real input waits for a frame per step, and CI's hidden
     // window draws about one a second. The strip's own wheel handler still does the scrolling.
     await strip.evaluate(
