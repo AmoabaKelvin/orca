@@ -95,10 +95,10 @@ export function useWorktreeListKeyboardNavigation(args: {
       }
 
       // Why: keyboard cycling is real navigation; route through the activation helper that records history.
-      activateAndRevealWorktree(
-        nextWorktree.id,
-        nextWorktree.hostId ? { executionHostId: nextWorktree.hostId } : {}
-      )
+      activateAndRevealWorktree(nextWorktree.id, {
+        navigationIntent: 'user-open',
+        ...(nextWorktree.hostId ? { executionHostId: nextWorktree.hostId } : {})
+      })
       onNavigate(nextWorktree)
 
       const rowIndex = findPreferredRenderRowIndexForWorktreeIdentity(

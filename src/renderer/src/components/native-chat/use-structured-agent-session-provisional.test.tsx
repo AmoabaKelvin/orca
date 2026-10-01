@@ -43,7 +43,6 @@ vi.mock('./use-structured-agent-session-outbox', () => ({
     mocks.outbox(args)
     return {
       outbox: [],
-      blockedClientMessageId: null,
       error: null,
       send: mocks.send,
       retry: mocks.retry
@@ -87,7 +86,8 @@ function sessionState(): StructuredAgentSessionState {
     fence: 3,
     items: [],
     submissions: [],
-    retainedItemLimit: 1_024,
+    retainedOwnItemLimit: 1_024,
+    retainedItemCap: 8_192,
     hasOlder: true,
     status: 'error',
     error: 'cached transport error',

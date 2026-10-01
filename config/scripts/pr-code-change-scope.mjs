@@ -47,14 +47,21 @@ const GIT_COMPAT_PREFIXES = [
   '.github/actions/prepare-git-compatibility/',
   'src/shared/git-',
   'src/shared/review-head-tracking-ref',
+  'src/shared/worktree/local-base-branch-fast-forward',
   'src/main/git/',
   'src/relay/git-',
   'config/scripts/git-binary-compatibility'
 ]
 
 // Why narrow: the contract pins Codex's read-repair, so it runs when the heal that
-// depends on it, its app-server transport, or the contract itself changes.
+// depends on it, its app-server transport, or the contract itself changes. The same
+// job pins --no-daemon for Orca's codex shell wrapper and the project-trust key.
 const CODEX_INDEX_HEAL_CONTRACT_PREFIXES = [
+  'src/main/agent-trust-presets',
+  'src/main/codex/config-toml-trust',
+  'src/main/pty/codex-no-daemon-binary-contract',
+  'src/main/pty/codex-shell-launch-preflight',
+  'src/shared/codex-shell-function',
   'src/main/codex/codex-index-heal-binary-contract',
   'src/main/codex/codex-session-index-heal',
   'src/main/codex/codex-app-server-session',
@@ -137,6 +144,13 @@ function changesMobileWebApp(changedFiles) {
 
 const CROSS_VERSION_WIRE_PREFIXES = [
   'tests/e2e/cross-version-wire/',
+  'config/scripts/stable-release-tags',
+  // The R1 daemon protocol crossing gate runs in this job.
+  'config/scripts/daemon-protocol-facts',
+  'config/scripts/check-daemon-protocol-crossing',
+  // R3 runtime launcher protocol ratchet; a bump always routes here via the protocol file.
+  'config/scripts/check-runtime-launcher-protocol-ratchet',
+  'src/main/daemon/daemon-protocol-version.ts',
   'src/shared/protocol-version',
   'src/shared/terminal-stream-protocol',
   'src/shared/browser-client-host-protocol',
@@ -152,6 +166,8 @@ const CROSS_VERSION_WIRE_PREFIXES = [
   'src/main/native-chat/agent-session-journal/',
   'src/main/native-chat/agent-session-wire/',
   'src/main/runtime/agent-session-record-store',
+  'src/main/runtime/agent-session-recovery-capsule',
+  'src/shared/agent-session-resume-marker',
   'src/main/runtime/rpc/dispatcher',
   'src/main/runtime/rpc/methods/agent-launch',
   'src/main/runtime/rpc/methods/ai-vault.ts',
@@ -159,6 +175,9 @@ const CROSS_VERSION_WIRE_PREFIXES = [
   'src/main/runtime/rpc/methods/session-tabs.ts',
   'src/main/runtime/rpc/methods/structured-agent-session',
   'src/main/runtime/rpc/methods/terminal',
+  'src/main/runtime/runtime-worktree-agent-',
+  'src/main/runtime/runtime-worktree-pty-agent-sources',
+  'src/shared/runtime-worktree-contracts',
   'src/renderer/src/runtime/remote-runtime-terminal-multiplexer'
 ]
 
@@ -275,6 +294,7 @@ const WINDOWS_PACKAGE_TESTS = [
   'src/main/agent-hooks/windows-direct-cmd-hook-command.test.ts',
   'src/main/codex/windows-hook-command.test.ts',
   'src/main/codex/windows-hook-upgrade.test.ts',
+  'src/main/codex/hook-service-managed-install.test.ts',
   'src/main/windows/windows-pty-job.win32.test.ts',
   'src/main/windows/windows-msys-job.win32.test.ts',
   'src/main/providers/agent-foreground-process-git-bash.win32.test.ts',

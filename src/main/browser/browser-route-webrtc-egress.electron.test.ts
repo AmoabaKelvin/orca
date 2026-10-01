@@ -110,17 +110,21 @@ async function probe() {
     (async () => {
       const peer = new RTCPeerConnection({
         iceServers: [{ urls: 'stun:\${target}:\${udpAddress.port}' }],
-        iceCandidatePoolSize: 1
+        iceCandidatePoolSize: 0
       })
+      globalThis.__webrtcEgressPeer = peer
       peer.createDataChannel('probe')
       const offer = await peer.createOffer()
       await peer.setLocalDescription(offer)
-      await new Promise(resolve => setTimeout(resolve, 3000))
-      peer.close()
     })()
   \`
   enterPhase('renderer-webrtc')
   await window.webContents.executeJavaScript(script)
+  // Hidden renderer timers may be throttled; the packet observation clock belongs to the host.
+  enterPhase('observe-packets')
+  await new Promise((resolve) => setTimeout(resolve, 3000))
+  enterPhase('close-peer')
+  await window.webContents.executeJavaScript('globalThis.__webrtcEgressPeer.close()')
   enterPhase('drain-packets')
   await new Promise((resolve) => setTimeout(resolve, 500))
   enterPhase('cleanup')

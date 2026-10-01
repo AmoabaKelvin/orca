@@ -34,6 +34,7 @@ type UsageProviderSnapshots = {
   minimax: ProviderRateLimits | null | undefined
   grok: ProviderRateLimits | null | undefined
   cursor: ProviderRateLimits | null | undefined
+  zcode?: ProviderRateLimits | null
 }
 
 type UsageProviderId = ProviderRateLimits['provider']
@@ -136,7 +137,11 @@ function createPendingProviderSnapshot(providerId: UsageProviderId): ProviderRat
     session: null,
     weekly: null,
     ...(providerId === 'opencode-go' ? { monthly: null } : {}),
-    ...(providerId === 'gemini' || providerId === 'cursor' ? { buckets: [] } : {}),
+    // Why antigravity joins these: it reports one pool per model group, so its pending skeleton
+    // has to be bucket-shaped too or the segment changes shape once the first reading lands.
+    ...(providerId === 'gemini' || providerId === 'cursor' || providerId === 'antigravity'
+      ? { buckets: [] }
+      : {}),
     updatedAt: 0,
     error: null,
     status: 'fetching'
@@ -181,7 +186,8 @@ export function isUsageEmptyState(
     antigravitySnapshotPending ||
     isProviderSnapshotPending(providers.minimax) ||
     isProviderSnapshotPending(providers.grok) ||
-    isProviderSnapshotPending(providers.cursor)
+    isProviderSnapshotPending(providers.cursor) ||
+    (providers.zcode !== undefined && isProviderSnapshotPending(providers.zcode))
   ) {
     return false
   }
@@ -195,6 +201,7 @@ export function isUsageEmptyState(
     !isProviderConfigured(providers.antigravity) &&
     !isProviderConfigured(providers.minimax) &&
     !isProviderConfigured(providers.grok) &&
-    !isProviderConfigured(providers.cursor)
+    !isProviderConfigured(providers.cursor) &&
+    !isProviderConfigured(providers.zcode)
   )
 }
