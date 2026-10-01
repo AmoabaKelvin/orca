@@ -6226,6 +6226,7 @@
           "parkTerminal": "Park terminal"
         },
         "SidebarFeedbackImageAttachments": {
+          "preparing": "正在准备附件…",
           "attachImages": "Attach",
           "removeImage": "Remove {{fileName}}",
           "screenshotsHint": "最多附加 {{count}} 张截图，总计 {{maxSize}}"

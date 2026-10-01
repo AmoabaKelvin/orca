@@ -13,6 +13,8 @@ import {
 
 type SidebarFeedbackImageAttachmentsProps = {
   images: FeedbackImageDraft[]
+  /** Files picked but not yet read; a shrink keeps them pending long enough to show. */
+  pendingCount: number
   disabled: boolean
   isDragActive: boolean
   onAddFiles: (files: readonly File[]) => void
@@ -21,6 +23,7 @@ type SidebarFeedbackImageAttachmentsProps = {
 
 export function SidebarFeedbackImageAttachments({
   images,
+  pendingCount,
   disabled,
   isDragActive,
   onAddFiles,
@@ -43,14 +46,21 @@ export function SidebarFeedbackImageAttachments({
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-muted-foreground">
-          {translate(
-            'auto.components.sidebar.SidebarFeedbackImageAttachments.screenshotsHint',
-            'Attach up to {{count}} screenshots, {{maxSize}} total',
-            {
-              count: MAX_FEEDBACK_IMAGE_COUNT,
-              maxSize: formatFeedbackImageSize(MAX_FEEDBACK_IMAGE_TOTAL_BYTES)
-            }
-          )}
+          {/* Why: shrinking an oversized screenshot is slow enough that a silent gap
+              between the pick and the thumbnail reads as a dropped attachment. */}
+          {pendingCount > 0
+            ? translate(
+                'auto.components.sidebar.SidebarFeedbackImageAttachments.preparing',
+                'Preparing attachments…'
+              )
+            : translate(
+                'auto.components.sidebar.SidebarFeedbackImageAttachments.screenshotsHint',
+                'Attach up to {{count}} screenshots, {{maxSize}} total',
+                {
+                  count: MAX_FEEDBACK_IMAGE_COUNT,
+                  maxSize: formatFeedbackImageSize(MAX_FEEDBACK_IMAGE_TOTAL_BYTES)
+                }
+              )}
         </span>
         <Button
           type="button"

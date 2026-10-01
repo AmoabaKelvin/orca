@@ -6226,6 +6226,7 @@
           "parkTerminal": "Park terminal"
         },
         "SidebarFeedbackImageAttachments": {
+          "preparing": "Preparando archivos adjuntos…",
           "attachImages": "Attach",
           "removeImage": "Remove {{fileName}}",
           "screenshotsHint": "Adjunta hasta {{count}} capturas de pantalla, {{maxSize}} en total"

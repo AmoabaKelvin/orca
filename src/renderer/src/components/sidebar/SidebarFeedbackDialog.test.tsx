@@ -222,6 +222,8 @@ describe('SidebarFeedbackDialog image submission', () => {
     expect((send as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(send)
     expect(mocks.submit).not.toHaveBeenCalled()
+    // Why: a shrink can run for a while, and no thumbnail yet reads as a dropped file.
+    expect(screen.getByText('Preparing attachments…')).not.toBeNull()
 
     await act(async () => {
       finishRead?.({
@@ -241,6 +243,7 @@ describe('SidebarFeedbackDialog image submission', () => {
     })
 
     await waitFor(() => expect((send as HTMLButtonElement).disabled).toBe(false))
+    expect(screen.queryByText('Preparing attachments…')).toBeNull()
     const remove = screen.getByRole('button', { name: 'Remove shot.png' })
     expect(remove.dataset.slot).toBe('button')
     expect(remove.dataset.size).toBe('icon-xs')
