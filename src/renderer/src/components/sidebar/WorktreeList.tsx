@@ -330,6 +330,7 @@ const WorktreeList = React.memo(function WorktreeList({
         onKeyboardNavigate={selection.selectOnly}
         onImmediateWorktreeActivate={handleImmediateWorktreeActivate}
         onContextMenuSelect={selection.selectForContextMenu}
+        onContextMenuClose={selection.clearContextMenuSelection}
         repoMap={repoMap}
         defaultHostId={defaultHostId}
         worktreeMap={worktreeMap}
