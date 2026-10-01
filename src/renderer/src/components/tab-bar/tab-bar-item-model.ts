@@ -48,6 +48,14 @@ export type TabBarItem =
       data: Tab & { contentType: 'agent-session' }
     }
 
+/** The terminal tab as the strip shows it: its title resolved against the generated-titles setting. */
+export function resolveTerminalItemTab(
+  tab: TerminalTab & { unifiedTabId?: string },
+  generatedTitlesEnabled: boolean
+): TerminalTab & { unifiedTabId?: string } {
+  return { ...tab, title: resolveTerminalTabTitle(tab, generatedTitlesEnabled, tab.title) }
+}
+
 export function getTabDragLabel(item: TabBarItem, generatedTitlesEnabled: boolean): string {
   if (item.type === 'terminal') {
     return resolveTerminalTabTitle(item.data, generatedTitlesEnabled, item.data.title)
