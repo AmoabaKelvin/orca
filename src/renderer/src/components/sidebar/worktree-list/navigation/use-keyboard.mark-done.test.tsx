@@ -212,16 +212,19 @@ describe('Delete on the focused workspace list', () => {
     expect(options.shouldApply(worktree('a', 'in-progress'))).toBe(true)
   })
 
-  it('uses the Mac delete key (Backspace) on macOS only', () => {
+  it('uses Cmd+Backspace on macOS, and never a bare Backspace', () => {
     const state = setState([worktree('a', 'in-progress')])
     const { list } = renderList({ activeWorktreeId: 'a' })
 
     press(list, 'Backspace')
+    press(list, 'Backspace', { metaKey: true })
     expect(state.updateWorktreeMeta).not.toHaveBeenCalled()
 
     mocks.holder.platform = 'darwin'
     const { list: macList } = renderList({ activeWorktreeId: 'a' })
     press(macList, 'Backspace')
+    expect(state.updateWorktreeMeta).not.toHaveBeenCalled()
+    press(macList, 'Backspace', { metaKey: true })
     expect(state.updateWorktreeMeta).toHaveBeenCalledTimes(1)
   })
 
