@@ -9,9 +9,38 @@ import {
   isWorkspaceStatusId
 } from '../../../../../../shared/workspace-statuses'
 import type { WorkspaceStatusDefinition, Worktree } from '../../../../../../shared/worktree/types'
+import { getWorktreeHostIdentity } from '../../../../../../shared/worktree/host-qualified-identity'
 import { getDeleteStateForWorktreeHost } from '../../worktree-delete-state-host-match'
 
 export type MarkDoneTarget = Pick<Worktree, 'id' | 'hostId'>
+
+type ActiveWorkspaceState = Pick<AppState, 'activeWorktreeId' | 'activeWorkspaceExecutionHostId'>
+
+// Why: a multi-row selection is what the right-click status menu acts on. Otherwise the
+// target is the active row, which arrows move; hover (the delete shortcut's target) is a mouse signal.
+export function getMarkDoneTargets(
+  state: ActiveWorkspaceState,
+  selectedWorktrees: readonly MarkDoneTarget[]
+): readonly MarkDoneTarget[] {
+  if (selectedWorktrees.length > 1) {
+    return selectedWorktrees
+  }
+  return state.activeWorktreeId
+    ? [{ id: state.activeWorktreeId, hostId: state.activeWorkspaceExecutionHostId ?? undefined }]
+    : []
+}
+
+/** Whether the key, pressed without a multi-row selection, acts on this row. */
+export function isActiveMarkDoneTarget(
+  state: ActiveWorkspaceState & Pick<AppState, 'getKnownWorktreeById'>,
+  worktree: MarkDoneTarget
+): boolean {
+  const [target] = getMarkDoneTargets(state, [])
+  const active = target ? state.getKnownWorktreeById(target.id, target.hostId) : undefined
+  return (
+    active !== undefined && getWorktreeHostIdentity(active) === getWorktreeHostIdentity(worktree)
+  )
+}
 
 function hasStatus(
   worktree: Pick<Worktree, 'workspaceStatus'> | undefined,

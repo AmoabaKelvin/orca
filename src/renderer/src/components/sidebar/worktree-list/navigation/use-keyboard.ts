@@ -19,7 +19,7 @@ import {
   resolveCycledWorktreeId
 } from '../../worktree-keyboard-cycle'
 import { findPreferredRenderRowIndexForWorktreeIdentity } from './render-row-lookup'
-import { markWorkspacesDone, type MarkDoneTarget } from './mark-done'
+import { getMarkDoneTargets, markWorkspacesDone } from './mark-done'
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -174,20 +174,7 @@ export function useWorktreeListKeyboardNavigation(args: {
         keybindingMatchesAction('workspace.markDone', e, getShortcutPlatform(), keybindings)
       ) {
         const state = useAppStore.getState()
-        // Why: a multi-row selection is what the right-click status menu acts on. Otherwise the
-        // target is the active row, which arrows move; hover (the delete shortcut's target) is a mouse signal.
-        const targets: readonly MarkDoneTarget[] =
-          selectedWorktrees.length > 1
-            ? selectedWorktrees
-            : state.activeWorktreeId
-              ? [
-                  {
-                    id: state.activeWorktreeId,
-                    hostId: state.activeWorkspaceExecutionHostId ?? undefined
-                  }
-                ]
-              : []
-        if (markWorkspacesDone(state, targets)) {
+        if (markWorkspacesDone(state, getMarkDoneTargets(state, selectedWorktrees))) {
           e.preventDefault()
           return
         }

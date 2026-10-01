@@ -84,6 +84,16 @@ vi.mock('@/i18n/i18n', () => ({
   translate: (_key: string, fallback: string) => fallback
 }))
 
+const activeWorkspaceStub: {
+  activeWorktreeId: string | null
+  activeWorkspaceExecutionHostId: string | null
+  getKnownWorktreeById: (id: string, hostId?: string) => Worktree | undefined
+} = {
+  activeWorktreeId: null,
+  activeWorkspaceExecutionHostId: null,
+  getKnownWorktreeById: () => undefined
+}
+
 const defaultStoreState = {
   updateWorktreeMeta: vi.fn(),
   setWorktreesPinnedAndReveal: vi.fn(),
@@ -100,7 +110,8 @@ const defaultStoreState = {
   ptyIdsByTabId: {},
   browserTabsByWorktree: {},
   worktreesByRepo: {},
-  repos: []
+  repos: [],
+  ...activeWorkspaceStub
 }
 
 vi.mock('@/store', () => ({
@@ -144,14 +155,19 @@ const mounted: { container: HTMLDivElement; root: Root }[] = []
 
 function renderContextMenu(
   worktree: Worktree,
-  onAssignWorkspaceStatus?: (worktreeIds: readonly string[], status: string) => void
+  onAssignWorkspaceStatus?: (worktreeIds: readonly string[], status: string) => void,
+  onContextMenuSelect?: () => readonly Worktree[]
 ) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
   act(() => {
     root.render(
-      <WorktreeContextMenu worktree={worktree} onAssignWorkspaceStatus={onAssignWorkspaceStatus}>
+      <WorktreeContextMenu
+        worktree={worktree}
+        onAssignWorkspaceStatus={onAssignWorkspaceStatus}
+        onContextMenuSelect={onContextMenuSelect}
+      >
         <div data-testid="card-child">Card Content</div>
       </WorktreeContextMenu>
     )
@@ -271,10 +287,22 @@ describe('WorktreeContextMenu mark-Done shortcut display', () => {
     )
   }
 
+  const otherWorktree = { ...inProgressWorktree, id: 'repo::wt-2', name: 'wt-2' }
+
+  function setActive(id: string | null, hostId: string | null = null): void {
+    defaultStoreState.activeWorktreeId = id
+    defaultStoreState.activeWorkspaceExecutionHostId = hostId
+  }
+
   beforeEach(() => {
     shortcutLabelMock.mockImplementation((action: string) =>
       action === 'workspace.markDone' ? 'Del' : null
     )
+    defaultStoreState.getKnownWorktreeById = (id, hostId) =>
+      [inProgressWorktree, otherWorktree].find(
+        (w) => w.id === id && (!hostId || (w.hostId ?? 'local') === hostId)
+      )
+    setActive(inProgressWorktree.id)
   })
 
   afterEach(() => {
@@ -285,10 +313,31 @@ describe('WorktreeContextMenu mark-Done shortcut display', () => {
       container.remove()
     }
     mounted.length = 0
+    setActive(null)
   })
 
-  it('advertises the key in the sidebar list, which handles it', () => {
+  it('advertises the key on the active row in the sidebar list, which handles it', () => {
     expect(openMenuShortcuts(renderContextMenu(inProgressWorktree))).toEqual(['Del'])
+  })
+
+  it('does not advertise the key on a row that is not active, which the key would not move', () => {
+    expect(openMenuShortcuts(renderContextMenu(otherWorktree))).toEqual([])
+  })
+
+  it('does not advertise the key when the same path is active on another host', () => {
+    setActive(inProgressWorktree.id, 'ssh:box')
+    expect(openMenuShortcuts(renderContextMenu(inProgressWorktree))).toEqual([])
+  })
+
+  it('advertises the key on a multi-row selection, which the key acts on', () => {
+    expect(
+      openMenuShortcuts(
+        renderContextMenu(otherWorktree, undefined, () => [
+          otherWorktree,
+          { ...otherWorktree, id: 'repo::wt-3' }
+        ])
+      )
+    ).toEqual(['Del'])
   })
 
   it('does not advertise the key on a board card, where it does nothing', () => {
