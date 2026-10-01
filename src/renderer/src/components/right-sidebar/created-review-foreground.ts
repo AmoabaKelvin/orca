@@ -1,10 +1,10 @@
 import { useAppStore } from '@/store'
 
 // Why: a create that outlives its panel (e.g. after generation) must not reveal the review over a worktree the user has since switched to.
-// A mounted panel already shows the review's worktree, which can differ from the selected one (Checks follows the terminal cwd).
+// A panel still showing the review counts too, since it can differ from the selected worktree (Checks follows the terminal cwd).
 export function createdReviewIsForeground(
   worktreeId: string | null,
-  panelMounted = false
+  panelShowsReview = false
 ): boolean {
-  return panelMounted || useAppStore.getState().activeWorktreeId === worktreeId
+  return panelShowsReview || useAppStore.getState().activeWorktreeId === worktreeId
 }
