@@ -415,6 +415,22 @@ describe('Delete on the focused workspace list', () => {
     expect(mocks.toast).toHaveBeenCalledWith('Moved 2 workspaces to Done', expect.anything())
   })
 
+  it('marks a selected local row, not its same-path twin on another host', () => {
+    // Local rows often carry no hostId; a host-less lookup returns whichever twin comes first.
+    const selected = [worktree('a', 'in-progress'), worktree('b', 'in-progress')]
+    const state = setState([worktree('a', 'in-progress', 'ssh:box'), ...selected])
+    const { list } = renderList({ activeWorktreeId: 'b', selectedWorktrees: selected })
+
+    press(list, 'Delete')
+
+    expect(
+      state.updateWorktreeMeta.mock.calls.map(([id, , options]) => [id, options.executionHostId])
+    ).toEqual([
+      ['a', 'local'],
+      ['b', 'local']
+    ])
+  })
+
   it('ignores the one-row selection a plain click leaves behind', () => {
     const state = setState([worktree('a', 'in-progress'), worktree('b', 'in-progress')])
     // Clicking a selects it; switching to b another way (e.g. Cmd+J) leaves that selection behind.

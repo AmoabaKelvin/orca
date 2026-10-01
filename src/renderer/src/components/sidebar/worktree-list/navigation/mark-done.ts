@@ -10,6 +10,7 @@ import {
 } from '../../../../../../shared/workspace-statuses'
 import type { WorkspaceStatusDefinition, Worktree } from '../../../../../../shared/worktree/types'
 import { getWorktreeHostIdentity } from '../../../../../../shared/worktree/host-qualified-identity'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../../../../shared/execution-host'
 import { getDeleteStateForWorktreeHost } from '../../worktree-delete-state-host-match'
 
 export type MarkDoneTarget = Pick<Worktree, 'id' | 'hostId'>
@@ -23,7 +24,11 @@ export function getMarkDoneTargets(
   selectedWorktrees: readonly MarkDoneTarget[]
 ): readonly MarkDoneTarget[] {
   if (selectedWorktrees.length > 1) {
-    return selectedWorktrees
+    // Why: a host-less lookup can return a same-path row on another host; an unhosted row is local.
+    return selectedWorktrees.map(({ id, hostId }) => ({
+      id,
+      hostId: hostId ?? LOCAL_EXECUTION_HOST_ID
+    }))
   }
   return state.activeWorktreeId
     ? [{ id: state.activeWorktreeId, hostId: state.activeWorkspaceExecutionHostId ?? undefined }]
