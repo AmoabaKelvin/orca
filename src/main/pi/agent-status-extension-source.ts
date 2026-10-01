@@ -54,14 +54,14 @@ export function getPiAgentStatusExtensionSource(kind: PiAgentKind = 'pi'): strin
           '  return ompRuntime ? { ...runtimeOmpSessionMetadata, ...modelMetadata } : sessionMetadata',
           '}',
           '',
-          'function getPersistedSessionMetadata(): Record<string, unknown> {',
-          '  const sessionFile = sessionMetadata.session_file',
+          'function getPersistedSessionMetadata(metadata: Record<string, unknown>): Record<string, unknown> {',
+          '  const sessionFile = metadata.session_file',
           "  if (typeof sessionFile !== 'string' || !sessionFile) return {}",
           '  try {',
           "    const fs = require('fs')",
           '    // Why: Pi publishes its planned path before creating the transcript;',
           '    // recheck on every post so the first completed turn becomes resumable.',
-          '    return fs.existsSync(sessionFile) ? sessionMetadata : {}',
+          '    return fs.existsSync(sessionFile) ? metadata : {}',
           '  } catch {',
           '    return {}',
           '  }',
@@ -124,8 +124,8 @@ export function getPiAgentStatusExtensionSource(kind: PiAgentKind = 'pi'): strin
   // Why: Pi resumes from an existing transcript; OMP resumes directly by session id (#8962).
   const payloadLine =
     kind !== 'omp'
-      ? '    payload: { hook_event_name: hookEventName, ...(ompRuntime ? metadata : getPersistedSessionMetadata()), ...subagentPayload(), ...extra },'
-      : '    payload: { hook_event_name: hookEventName, ...metadata, ...subagentPayload(), ...extra },'
+      ? '    payload: { hook_event_name: hookEventName, ...(ompRuntime ? metadata : getPersistedSessionMetadata(metadata)), ...(final ? {} : subagentPayload()), ...extra },'
+      : '    payload: { hook_event_name: hookEventName, ...metadata, ...(final ? {} : subagentPayload()), ...extra },'
 
   // Why: keep this string self-contained — it runs inside the pi process,
   // so it cannot import from Orca's main bundle. fs/http coords come from
@@ -204,19 +204,24 @@ export function getPiAgentStatusExtensionSource(kind: PiAgentKind = 'pi'): strin
     '',
     ...getPiAgentStatusRuntimeDetectionSourceLines(kind),
     '',
-    'function post(hookEventName: string, extra: Record<string, unknown> = {}): void {',
+    // `final` marks the last post of a session that is being closed.
+    'function post(hookEventName: string, extra: Record<string, unknown> = {}, final = false): void {',
     '  const ompRuntime = isOmpRuntime()',
-    '  cancelPostRetry()',
+    // Why: the body is built at delivery, so the session is pinned here, where the event happened.
     '  const metadata = getPostSessionMetadata(ompRuntime)',
-    '// Model changes and new sessions must not erase an unacknowledged completion in the latest-only slot.',
+    '  if (final) {',
+    '    finalPosts.push({ revision: postRevision, attempts: 0, delivered: false, hookEventName, extra, metadata, ompRuntime, final })',
+    '    drainPosts()',
+    '    return',
+    '  }',
+    '  cancelPostRetry()',
+    '// Model changes must not erase an unacknowledged completion in the latest-only slot.',
     "  const previousCompletion = latestPost?.hookEventName === 'agent_end' && !latestPost.delivered && latestPost.metadata.session_id === metadata.session_id",
-    '  // Why: session_start posts never retry, so only a completion still queued behind an in-flight post can be lost.',
-    "  const keepsCompletion = hookEventName === 'session_start' ? pendingPost?.hookEventName === 'agent_end' : ompRuntime && hookEventName === 'model_select' && previousCompletion",
     '  pendingPost = {',
     '    revision: ++postRevision,',
     '    attempts: 0,',
     '    delivered: false,',
-    "    hookEventName: keepsCompletion ? 'agent_end' : hookEventName,",
+    "    hookEventName: ompRuntime && hookEventName === 'model_select' && previousCompletion ? 'agent_end' : hookEventName,",
     // Why: every coalesced snapshot must retain an open modal, not just its start event.
     kind === 'pi'
       ? '    extra: { ...extra, ...(!ompRuntime && piUiPromptDepth > 0 ? { ui_prompt_active: true } : {}) },'
@@ -232,7 +237,8 @@ export function getPiAgentStatusExtensionSource(kind: PiAgentKind = 'pi'): strin
     '  hookEventName: string,',
     '  extra: Record<string, unknown>,',
     '  metadata: Record<string, unknown>,',
-    '  ompRuntime: boolean',
+    '  ompRuntime: boolean,',
+    '  final: boolean',
     '): Promise<void> {',
     '  const coords = resolveHookCoords()',
     '  const paneKey = process.env.ORCA_PANE_KEY',

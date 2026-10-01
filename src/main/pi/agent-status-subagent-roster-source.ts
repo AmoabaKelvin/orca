@@ -1,14 +1,15 @@
 // Why: Pi settles its own turn while pi-subagents children keep running, so the
 // generated extension holds the pane's completion until every child it saw start is gone.
 
+import type { PiAgentKind } from '../../shared/pi-agent-kind'
 import { AGENT_STATUS_MAX_SUBAGENTS } from '../../shared/agent-status-types'
 
 // Module scope: post() reads the roster when a body is built, so a coalesced or
 // retried post always carries the children live at delivery.
 export function getPiSubagentSnapshotSourceLines(): string[] {
   return [
-    'type SubagentDetail = { agentType?: string; description?: string; startedAt: number; workflow?: boolean }',
-    'type SubagentRoster = { active: Set<string>; exited?: Set<string>; details?: Map<string, SubagentDetail>; waiting: boolean; onEvent?: (event: unknown, forcedStatus?: string) => void; listener?: (event: unknown) => void; onRunnerExit?: (event: unknown) => void; runnerExitListener?: (event: unknown) => void }',
+    'type SubagentDetail = { agentType?: string; description?: string; startedAt: number; workflow?: boolean; parent?: string; registration?: object }',
+    'type SubagentRoster = { active: Set<string>; exited?: Set<string>; details?: Map<string, SubagentDetail>; waiting: boolean; runGeneration?: number; endedRunGeneration?: number; completionPostedGeneration?: number; parked?: Map<string, Map<string, SubagentDetail>>; onEvent?: (event: unknown, forcedStatus?: string) => void; listener?: (event: unknown) => void; onRunnerExit?: (event: unknown) => void; runnerExitListener?: (event: unknown) => void }',
     // Why: interpolated, not re-typed, so the extension cap cannot drift from the host's.
     `const MAX_SUBAGENT_SNAPSHOT = ${AGENT_STATUS_MAX_SUBAGENTS}`,
     'let subagentRoster: SubagentRoster | null = null',
@@ -34,33 +35,50 @@ export function getPiSubagentSnapshotSourceLines(): string[] {
   ]
 }
 
-// The roster lives on pi.events so an in-process /reload keeps children and listeners.
-export function getPiSubagentRosterSetupSourceLines(): string[] {
+// The run state (children, the hold, the turn counters) has to outlive a registration: Pi hands
+// each one a fresh `pi.events` and evaluates this module again on /reload, so only globalThis
+// survives there. OMP and Prime keep one bus for the session.
+export function getPiSubagentRosterSetupSourceLines(kind: PiAgentKind): string[] {
   return [
-    '  const piEventBus = (pi as { events?: { on?: (name: string, handler: (event: unknown) => void) => void } }).events',
-    '  const lifecycleState: SubagentRoster = (piEventBus as { __orcaPiSubagents?: SubagentRoster } | undefined)?.__orcaPiSubagents ?? { active: new Set<string>(), waiting: false }',
-    '  if (piEventBus) (piEventBus as { __orcaPiSubagents?: unknown }).__orcaPiSubagents = lifecycleState',
-    // Why: optional on the shared roster so one created by an older in-process build gains it on /reload.
+    '  const piEventBus = (pi as { events?: { __orcaPiSubagents?: SubagentRoster; __orcaPiSubagentsHeard?: boolean; __orcaPiRunnerExitsHeard?: boolean; on?: (name: string, handler: (event: unknown) => void) => void } }).events',
+    kind === 'pi'
+      ? '  const runStateHome: { __orcaPiSubagents?: SubagentRoster } | undefined = isOmpRuntime() ? piEventBus : (globalThis as { __orcaPiSubagents?: SubagentRoster })'
+      : '  const runStateHome: { __orcaPiSubagents?: SubagentRoster } | undefined = piEventBus',
+    // Why: a roster an older in-process build left on this bus is adopted, with the subscriptions it made.
+    '  const busRoster = piEventBus?.__orcaPiSubagents',
+    '  const lifecycleState: SubagentRoster = busRoster ?? runStateHome?.__orcaPiSubagents ?? { active: new Set<string>(), waiting: false }',
+    '  if (runStateHome) runStateHome.__orcaPiSubagents = lifecycleState',
+    // Why: optional on the shared roster so one created by an older in-process build gains them on /reload.
     '  const subagentDetails = (lifecycleState.details ??= new Map<string, SubagentDetail>())',
-    '  subagentRoster = lifecycleState',
+    // Why: completion is a per-RUN fact. A sibling extension (the memory reminder is one) can
+    // start the next run from inside its own agent_settled handler, so this extension sees that
+    // run's agent_start BEFORE its own agent_settled for the run that just ended; a boolean
+    // "already posted" latch would eat the newer run's completion.
+    '  lifecycleState.runGeneration ??= 0',
+    '  lifecycleState.endedRunGeneration ??= 0',
+    '  lifecycleState.completionPostedGeneration ??= -1',
+    // Why: an OMP task child runs this factory again on its own bus. Posts keep describing the
+    // lead's children, and the child's own subagents must not settle the lead's pane.
+    '  subagentRoster ??= lifecycleState',
+    '  const ownsPaneRoster = subagentRoster === lifecycleState',
+    // Tells the children this registration saw start from the ones a /reload handed it.
+    '  const registration = {}',
     '  function resetSubagentRoster(): void {',
     '    lifecycleState.active.clear()',
     '    lifecycleState.exited?.clear()',
     '    subagentDetails.clear()',
     '    lifecycleState.waiting = false',
     '  }',
-    '  if (piEventBus?.on && !lifecycleState.listener) {',
-    '    const listener = (event: unknown) => lifecycleState.onEvent?.(event)',
-    '    lifecycleState.listener = listener',
-    "    piEventBus.on('task:subagent:lifecycle', listener)",
+    // Why: one subscription per bus object; Pi drops a replaced registration's own.
+    '  if (ownsPaneRoster && piEventBus?.on && !piEventBus.__orcaPiSubagentsHeard && !busRoster?.listener) {',
+    '    piEventBus.__orcaPiSubagentsHeard = true',
+    "    piEventBus.on('task:subagent:lifecycle', (event: unknown) => lifecycleState.onEvent?.(event))",
     "    piEventBus.on('subagent:async-started', (event: unknown) => lifecycleState.onEvent?.(event, 'started'))",
     "    piEventBus.on('subagent:async-complete', (event: unknown) => lifecycleState.onEvent?.(event, 'completed'))",
     '  }',
-    // Why: separate guard so a roster created by an older in-process build still subscribes.
-    '  if (piEventBus?.on && !lifecycleState.runnerExitListener) {',
-    '    const runnerExitListener = (event: unknown) => lifecycleState.onRunnerExit?.(event)',
-    '    lifecycleState.runnerExitListener = runnerExitListener',
-    "    piEventBus.on('subagent:process-terminal', runnerExitListener)",
+    '  if (ownsPaneRoster && piEventBus?.on && !piEventBus.__orcaPiRunnerExitsHeard && !busRoster?.runnerExitListener) {',
+    '    piEventBus.__orcaPiRunnerExitsHeard = true',
+    "    piEventBus.on('subagent:process-terminal', (event: unknown) => lifecycleState.onRunnerExit?.(event))",
     '  }'
   ]
 }
@@ -73,6 +91,15 @@ export function getPiSubagentRosterEventSourceLines(): string[] {
     // the grace lets that path (and the wake turn it triggers) settle the pane first.
     '  const RUNNER_EXIT_GRACE_MS = 2000',
     '  let runnerExitCheck: ReturnType<typeof setTimeout> | null = null',
+    '  function clearRunnerExitCheck(): void {',
+    '    if (runnerExitCheck !== null) clearTimeout(runnerExitCheck)',
+    '    runnerExitCheck = null',
+    '  }',
+    '  function forgetSubagent(id: string): void {',
+    '    lifecycleState.active.delete(id)',
+    '    lifecycleState.exited?.delete(id)',
+    '    subagentDetails.delete(id)',
+    '  }',
     // Why: a child can end with no lead event to carry it; a queued post already reads the new roster.
     '  function postSubagentsUpdate(): void {',
     "    if (!hasQueuedPost()) post('subagents_update')",
@@ -80,22 +107,32 @@ export function getPiSubagentRosterEventSourceLines(): string[] {
     "  const readLabel = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value : undefined",
     '  lifecycleState.onEvent = (event: unknown, forcedStatus?: string): void => {',
     "    if (!event || typeof event !== 'object') return",
-    '    const record = event as { id?: unknown; runId?: unknown; agent?: unknown; description?: unknown; mode?: unknown }',
+    '    const record = event as { id?: unknown; runId?: unknown; agent?: unknown; description?: unknown; mode?: unknown; parentWorkflowRunId?: unknown }',
     "    const id = typeof record.id === 'string' && record.id ? record.id : typeof record.runId === 'string' ? record.runId : ''",
     '    const status = forcedStatus ?? (event as { status?: unknown }).status',
     '    if (!id) return',
     "    if (status === 'started') {",
     '      lifecycleState.active.add(id)',
     // Why: pi-subagents redacts task prompts, so only the agent name and OMP's short label are shown.
-    "      if (!subagentDetails.has(id)) subagentDetails.set(id, { agentType: readLabel(record.agent), description: readLabel(record.description), startedAt: Date.now(), workflow: record.mode === 'workflow' })",
+    "      if (!subagentDetails.has(id)) subagentDetails.set(id, { agentType: readLabel(record.agent), description: readLabel(record.description), startedAt: Date.now(), workflow: record.mode === 'workflow', parent: readLabel(record.parentWorkflowRunId), registration })",
+    // Why: a child that starts after the run settled has no turn end left to hold, so it re-opens the run.
+    '      if (!isTurnInFlight()) {',
+    '        lifecycleState.waiting = true',
+    '        lifecycleState.completionPostedGeneration = -1',
+    '      }',
     "      post('agent_start')",
     '      return',
     '    }',
     "    if (status !== 'completed' && status !== 'failed' && status !== 'aborted') return",
-    '    const wasVisible = isVisibleSubagent(lifecycleState, id)',
-    '    lifecycleState.active.delete(id)',
-    '    lifecycleState.exited?.delete(id)',
-    '    subagentDetails.delete(id)',
+    '    let wasVisible = isVisibleSubagent(lifecycleState, id)',
+    '    forgetSubagent(id)',
+    // Why: Pi drops the runner-exit events of runs started before a /reload, so a finished run
+    // takes the children it launched back then with it.
+    '    for (const [childId, detail] of subagentDetails) {',
+    '      if (detail.parent !== id || detail.registration === registration) continue',
+    '      wasVisible ||= isVisibleSubagent(lifecycleState, childId)',
+    '      forgetSubagent(childId)',
+    '    }',
     '    if (lifecycleState.waiting && postAgentEndOnce()) return',
     '    if (wasVisible) postSubagentsUpdate()',
     '  }',
@@ -109,7 +146,7 @@ export function getPiSubagentRosterEventSourceLines(): string[] {
     '    lifecycleState.exited.add(runId)',
     '    if (wasVisible) postSubagentsUpdate()',
     '    if (!lifecycleState.waiting) return',
-    '    if (runnerExitCheck !== null) clearTimeout(runnerExitCheck)',
+    '    clearRunnerExitCheck()',
     '    runnerExitCheck = setTimeout(() => {',
     '      runnerExitCheck = null',
     '      if (lifecycleState.waiting) postAgentEndOnce()',
