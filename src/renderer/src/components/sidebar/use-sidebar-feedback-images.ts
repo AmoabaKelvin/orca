@@ -85,6 +85,10 @@ export function useSidebarFeedbackImages(params: {
       pendingReads.bytes += batchBytes
       setPendingImageReadCount((current) => current + files.length)
       const read = readQueueRef.current.then(() => {
+        // Why: an unmounted dialog discards whatever this reads, so skip the decode and re-encodes.
+        if (!params.mountedRef.current) {
+          return { images: [], errors: [], notices: [] }
+        }
         const committed = liveImageDraftsRef.current
         return readFeedbackImageFiles(files, committed.length, sumImageBytes(committed))
       })

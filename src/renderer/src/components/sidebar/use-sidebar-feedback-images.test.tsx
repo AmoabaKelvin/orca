@@ -21,12 +21,13 @@ type HookResult = ReturnType<typeof useSidebarFeedbackImages>
 let container: HTMLDivElement
 let root: Root
 let latest: HookResult | undefined
+let mountedRef: { current: boolean }
 
 function Harness(): null {
   latest = useSidebarFeedbackImages({
     open: false,
     isSubmitting: false,
-    mountedRef: { current: true }
+    mountedRef
   })
   return null
 }
@@ -45,6 +46,7 @@ function draft(id: string, bytes: number): FeedbackImageDraft {
 beforeEach(() => {
   readFeedbackImageFiles.mockReset()
   URL.revokeObjectURL = vi.fn()
+  mountedRef = { current: true }
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
@@ -133,5 +135,30 @@ describe('useSidebarFeedbackImages', () => {
     })
 
     expect(readFeedbackImageFiles).toHaveBeenNthCalledWith(2, [second], 1, 2_100_000)
+  })
+
+  // Why: a queued batch can hold several screenshots, each costing a decode and
+  // up to six re-encodes, all for drafts an unmounted dialog would only revoke.
+  it('skips batches still queued when the dialog unmounts', async () => {
+    let finishFirstRead: ((value: unknown) => void) | undefined
+    readFeedbackImageFiles.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishFirstRead = resolve
+      })
+    )
+    await act(async () => {
+      latest!.handleAddFiles([new File(['x'], 'first.png', { type: 'image/png' })])
+      latest!.handleAddFiles([new File(['x'], 'second.png', { type: 'image/png' })])
+    })
+    expect(readFeedbackImageFiles).toHaveBeenCalledTimes(1)
+
+    mountedRef.current = false
+    await act(async () => {
+      finishFirstRead?.({ images: [draft('first', 1000)], errors: [], notices: [] })
+    })
+
+    expect(readFeedbackImageFiles).toHaveBeenCalledTimes(1)
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:first')
+    expect(latest!.hasPendingImageReads()).toBe(false)
   })
 })
