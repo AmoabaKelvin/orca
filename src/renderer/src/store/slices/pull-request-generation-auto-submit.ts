@@ -6,7 +6,7 @@ import type {
 // Why: an auto-submitted run (Create PR) is sent without the user reviewing it in the form.
 export type PullRequestGenerationOptions = { autoSubmit?: boolean }
 
-/** Like the prepare-branch route: keep the base, and never uncheck Draft or override the user's choice. */
+/** Keep the base the user sees, as the prepare-branch route does, and never uncheck Draft. */
 export function resolveAutoSubmittedFields(
   { seed, seedFieldRevisions }: Pick<PullRequestGenerationRecord, 'seed' | 'seedFieldRevisions'>,
   result: PullRequestGenerationFields
