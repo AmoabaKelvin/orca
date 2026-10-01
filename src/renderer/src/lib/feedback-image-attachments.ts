@@ -32,6 +32,9 @@ export const MAX_FEEDBACK_IMAGE_SOURCE_BYTES = 32 * 1024 * 1024
 // Why: the smallest shrink step of a full-screen capture is ~200 KB, so below
 // this shrinking only burns encodes before refusing.
 export const MIN_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES = 64 * 1024
+// Why: a shrink keeps the largest step that fits, so given the whole budget the
+// first screenshot leaves the next only a blurry JPEG and the third no room.
+export const MAX_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES = MAX_FEEDBACK_IMAGE_TOTAL_BYTES / 2
 
 export type FeedbackImageDraft = {
   id: string
@@ -51,6 +54,10 @@ function feedbackImageFitBytes(remainingBytes: number): number {
   return Math.min(MAX_FEEDBACK_IMAGE_BYTES, remainingBytes)
 }
 
+function feedbackImageShrinkTargetBytes(fitBytes: number): number {
+  return Math.min(MAX_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES, fitBytes)
+}
+
 // Why: APNG's acTL chunk precedes its first IDAT; shrinking would keep only frame one.
 // Walks chunk headers so metadata ahead of acTL or bytes that spell it are not misread.
 function isAnimatedPng(data: Uint8Array): boolean {
@@ -68,14 +75,14 @@ function isAnimatedPng(data: Uint8Array): boolean {
   return false
 }
 
-/** Fits as-is, or can be shrunk into the space left instead of refused. */
+/** Fits as-is, or can be shrunk into its capped share of the space left instead of refused. */
 function canAttachWithin(file: File, fitBytes: number): boolean {
   if (file.size <= fitBytes) {
     return true
   }
   // Why: re-encoding flattens an animated GIF or WebP, losing what it was attached to show.
   return (
-    fitBytes >= MIN_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES &&
+    feedbackImageShrinkTargetBytes(fitBytes) >= MIN_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES &&
     file.type !== 'image/gif' &&
     file.type !== 'image/webp' &&
     file.size <= MAX_FEEDBACK_IMAGE_SOURCE_BYTES
@@ -228,10 +235,11 @@ export async function readFeedbackImageFiles(
       if (file.size > fitBytes) {
         let shrunk: Blob | null = null
         const animated = file.type === 'image/png' && isAnimatedPng(data)
+        const targetBytes = feedbackImageShrinkTargetBytes(fitBytes)
         if (!animated) {
           try {
             // Why: runs after the dimension check above, which bounds the decode.
-            shrunk = await shrinkFeedbackImage(file, fitBytes)
+            shrunk = await shrinkFeedbackImage(file, targetBytes)
           } catch {
             // Why: its header passed the check above, but the browser could not decode it.
             addInvalidImageError()
@@ -239,9 +247,10 @@ export async function readFeedbackImageFiles(
           }
         }
         if (!shrunk) {
+          // Why: with the target at its cap, an empty budget would have refused it too.
           addSizeError(
             file.size <= MAX_FEEDBACK_IMAGE_BYTES ||
-              (!animated && fitBytes < MAX_FEEDBACK_IMAGE_BYTES)
+              (!animated && targetBytes < MAX_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES)
           )
           continue
         }
