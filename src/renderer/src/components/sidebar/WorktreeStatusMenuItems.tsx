@@ -1,6 +1,7 @@
 import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuShortcut,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger
@@ -9,6 +10,11 @@ import { Kanban } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import { getWorkspaceStatusVisualMeta } from './workspace-status'
+import { useOptionalShortcutLabel } from '@/hooks/useShortcutLabel'
+import {
+  DEFAULT_WORKSPACE_STATUS_ID,
+  DONE_WORKSPACE_STATUS_ID
+} from '../../../../shared/workspace-statuses'
 import type { WorkspaceStatusDefinition } from '../../../../shared/worktree/types'
 
 export function WorktreeStatusMenuItems(props: {
@@ -18,6 +24,10 @@ export function WorktreeStatusMenuItems(props: {
   onAssignWorkspaceStatus: (status: string) => void
   workspaceStatuses: readonly WorkspaceStatusDefinition[]
 }) {
+  // Why: the bare Delete shortcut only acts on In progress rows, so only advertise it there.
+  const markDoneShortcut = useOptionalShortcutLabel('workspace.markDone')
+  const showMarkDoneShortcut =
+    markDoneShortcut !== null && props.contextWorkspaceStatus === DEFAULT_WORKSPACE_STATUS_ID
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger disabled={props.deletingContext}>
@@ -38,6 +48,9 @@ export function WorktreeStatusMenuItems(props: {
               >
                 <meta.icon className={cn('size-3.5', meta.tone)} />
                 {status.label}
+                {showMarkDoneShortcut && status.id === DONE_WORKSPACE_STATUS_ID ? (
+                  <DropdownMenuShortcut>{markDoneShortcut}</DropdownMenuShortcut>
+                ) : null}
               </DropdownMenuRadioItem>
             )
           })}
