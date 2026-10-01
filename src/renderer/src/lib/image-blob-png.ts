@@ -16,13 +16,21 @@ export function blobToBase64(blob: Blob): Promise<string> {
   })
 }
 
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+
+// Why: a file's type comes from its extension, so a WebP named .png must still be converted.
+async function hasPngSignature(blob: Blob): Promise<boolean> {
+  const head = new Uint8Array(await blob.slice(0, PNG_SIGNATURE.length).arrayBuffer())
+  return PNG_SIGNATURE.every((byte, index) => head[index] === byte)
+}
+
 export async function convertImageBlobToPng(blob: Blob): Promise<Blob> {
   assertClipboardImageByteLengthWithinLimit(blob.size)
   const bitmap = await createImageBitmap(blob)
   try {
     assertClipboardImageDimensionsWithinLimit(bitmap)
     // Why: re-encoding a PNG costs time and can grow it past the clipboard size limit.
-    if (blob.type === 'image/png') {
+    if (await hasPngSignature(blob)) {
       return blob
     }
     const canvas = document.createElement('canvas')
