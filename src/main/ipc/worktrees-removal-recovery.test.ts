@@ -720,4 +720,47 @@ describe('registerWorktreeHandlers', () => {
     })
     expect(getSshPtyProviderMock).not.toHaveBeenCalled()
   })
+  // A scan the host answered is the only evidence that ever retires an off-host WorktreeMeta row,
+  // so it must retire that worktree's hook-status rows too, or they stay stranded in last-status.json.
+  it("retires the scan-proven host rows from the agent status store, and only that host's", async () => {
+    const worktreeId = 'repo-1::/remote/deleted'
+    store.getRepos.mockReturnValue([
+      {
+        id: 'repo-1',
+        path: '/remote/repo',
+        displayName: 'repo',
+        badgeColor: '#000',
+        addedAt: 0,
+        connectionId: 'target-a'
+      }
+    ])
+    store.getProjectHostSetups.mockReturnValue([])
+    store.getAllWorktreeMeta.mockReturnValue({
+      [worktreeId]: makeWorktreeMeta({ hostId: 'ssh:target-a' })
+    })
+    const scannedPane = makePaneKey('tab-scan', '33333333-3333-4333-8333-333333333333')
+    const otherHostPane = makePaneKey('tab-scan', '44444444-4444-4444-8444-444444444444')
+    const payload = { state: 'working', prompt: 'stranded', agentType: 'codex' } as const
+    agentHookServer.ingestRemote(
+      { paneKey: scannedPane, tabId: 'tab-scan', worktreeId, payload },
+      'target-a'
+    )
+    agentHookServer.ingestRemote(
+      { paneKey: otherHostPane, tabId: 'tab-scan', worktreeId, payload },
+      'target-b'
+    )
+
+    try {
+      await handlers['worktrees:forgetRemovedForExecutionHost'](null, {
+        repoId: 'repo-1',
+        executionHostId: 'ssh:target-a',
+        worktreeIds: [worktreeId]
+      })
+
+      expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'ssh:target-a')
+      expect(agentHookServer.getStatusSnapshot().map((row) => row.paneKey)).toEqual([otherHostPane])
+    } finally {
+      agentHookServer.dropStatusEntriesByTabPrefix('tab-scan')
+    }
+  })
 })
