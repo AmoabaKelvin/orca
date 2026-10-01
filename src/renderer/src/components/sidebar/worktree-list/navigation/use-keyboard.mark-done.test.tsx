@@ -8,6 +8,7 @@ import type { ExecutionHostId } from '../../../../../../shared/execution-host'
 import type { KeybindingOverrides } from '../../../../../../shared/keybindings'
 import { DEFAULT_WORKSPACE_STATUSES } from '../../../../../../shared/workspace-statuses'
 import type { WorkspaceStatusDefinition, Worktree } from '../../../../../../shared/worktree/types'
+import type { WorktreeDeleteState } from '../../../../store/slices/worktree-helpers'
 import type { HostSectionRow } from '../../host-section-rows'
 import { repo, worktree as worktreeFixture } from '../../worktree-list-groups-test-fixtures'
 
@@ -18,6 +19,7 @@ type FakeState = {
   activeWorktreeId: string | null
   activeWorkspaceExecutionHostId: ExecutionHostId | null
   workspaceStatuses: WorkspaceStatusDefinition[]
+  deleteStateByWorktreeId: Record<string, WorktreeDeleteState>
   getKnownWorktreeById: (id: string, hostId?: ExecutionHostId) => FakeWorktree | undefined
   updateWorktreeMeta: ReturnType<typeof vi.fn>
 }
@@ -59,6 +61,7 @@ function setState(worktrees: FakeWorktree[]): FakeState {
     activeWorktreeId: null,
     activeWorkspaceExecutionHostId: null,
     workspaceStatuses: DEFAULT_WORKSPACE_STATUSES.map((status) => ({ ...status })),
+    deleteStateByWorktreeId: {},
     getKnownWorktreeById: (id, hostId) =>
       worktrees.find((w) => w.id === id && (!hostId || (w.hostId ?? 'local') === hostId)),
     updateWorktreeMeta: vi.fn(async () => ({ ok: true }))
@@ -100,7 +103,7 @@ function renderList(args: {
   activeModal?: string
   rows?: HostSectionRow[]
   selectedWorktrees?: FakeWorktree[]
-}): { list: HTMLDivElement; child: HTMLButtonElement } {
+}): { list: HTMLDivElement; child: HTMLButtonElement; input: HTMLInputElement } {
   const state = mocks.currentState()
   state.activeWorktreeId = args.activeWorktreeId
   state.activeWorkspaceExecutionHostId = args.activeHostId ?? null
@@ -121,13 +124,15 @@ function renderList(args: {
     return (
       <div data-testid="list" tabIndex={0} onKeyDown={handleContainerKeyDown}>
         <button type="button">card action</button>
+        <input aria-label="rename workspace" defaultValue="name" />
       </div>
     )
   }
   act(() => root.render(<Probe />))
   return {
     list: container.querySelector<HTMLDivElement>('[data-testid="list"]')!,
-    child: container.querySelector<HTMLButtonElement>('button')!
+    child: container.querySelector<HTMLButtonElement>('button')!,
+    input: container.querySelector<HTMLInputElement>('input')!
   }
 }
 
@@ -233,6 +238,19 @@ describe('Delete on the focused workspace list', () => {
     expect(state.updateWorktreeMeta).not.toHaveBeenCalled()
   })
 
+  it('leaves a workspace whose delete is already running alone', () => {
+    const state = setState([worktree('a', 'in-progress')])
+    state.deleteStateByWorktreeId = {
+      a: { isDeleting: true, error: null, canForceDelete: false, forceDeleteReason: null }
+    }
+    const { list } = renderList({ activeWorktreeId: 'a' })
+
+    const event = press(list, 'Delete')
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(state.updateWorktreeMeta).not.toHaveBeenCalled()
+  })
+
   it('does nothing when the custom statuses have no Done column', () => {
     const state = setState([worktree('a', 'in-progress')])
     state.workspaceStatuses = state.workspaceStatuses.filter((status) => status.id !== 'completed')
@@ -243,10 +261,13 @@ describe('Delete on the focused workspace list', () => {
     expect(state.updateWorktreeMeta).not.toHaveBeenCalled()
   })
 
-  it('ignores Delete from a control inside the list, a modal, a held key, or a modifier', () => {
+  it('ignores Delete from a control or text field inside the list, a modal, a held key, or a modifier', () => {
     const state = setState([worktree('a', 'in-progress')])
-    const { list, child } = renderList({ activeWorktreeId: 'a' })
+    const { list, child, input } = renderList({ activeWorktreeId: 'a' })
     press(child, 'Delete')
+    // The inline rename field lives inside the list; Delete there must edit text, not a status.
+    const typed = press(input, 'Delete')
+    expect(typed.defaultPrevented).toBe(false)
     press(list, 'Delete', { repeat: true })
     press(list, 'Delete', { shiftKey: true })
 
