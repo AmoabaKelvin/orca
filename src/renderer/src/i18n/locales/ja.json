@@ -6292,8 +6292,8 @@
           "restored": "Git が再び動作しています。ワークツリーを更新しました。"
         },
         "markDone": {
-          "markedOne": "{{name}} を完了にしました",
-          "markedMany": "{{count}} 件のワークスペースを完了にしました",
+          "movedOne": "{{name}} を {{status}} に移動しました",
+          "movedMany": "{{count}} 件のワークスペースを {{status}} に移動しました",
           "undo": "元に戻す"
         }
       },

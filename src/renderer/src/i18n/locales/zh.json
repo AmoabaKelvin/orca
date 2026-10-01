@@ -6292,8 +6292,8 @@
           "restored": "Git 已恢复正常。工作树已刷新。"
         },
         "markDone": {
-          "markedOne": "已将 {{name}} 标记为完成",
-          "markedMany": "已将 {{count}} 个工作区标记为完成",
+          "movedOne": "已将 {{name}} 移至 {{status}}",
+          "movedMany": "已将 {{count}} 个工作区移至 {{status}}",
           "undo": "撤消"
         }
       },

@@ -6395,8 +6395,8 @@
           "restored": "Git fonctionne à nouveau. Worktrees actualisés."
         },
         "markDone": {
-          "markedOne": "{{name}} marqué Terminé",
-          "markedMany": "{{count}} espaces de travail marqués Terminé",
+          "movedOne": "{{name}} déplacé vers {{status}}",
+          "movedMany": "{{count}} espaces de travail déplacés vers {{status}}",
           "undo": "Annuler"
         }
       },

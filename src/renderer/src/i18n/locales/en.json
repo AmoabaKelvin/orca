@@ -6462,8 +6462,8 @@
           "restored": "Git is working again. Worktrees refreshed."
         },
         "markDone": {
-          "markedOne": "Marked {{name}} Done",
-          "markedMany": "Marked {{count}} workspaces Done",
+          "movedOne": "Moved {{name}} to {{status}}",
+          "movedMany": "Moved {{count}} workspaces to {{status}}",
           "undo": "Undo"
         }
       },
