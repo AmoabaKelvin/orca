@@ -13,7 +13,7 @@ import { composeWorktreeHostIdentity } from '../../../../../../shared/worktree/h
 import { LOCAL_EXECUTION_HOST_ID } from '../../../../../../shared/execution-host'
 import { getDeleteStateForWorktreeHost } from '../../worktree-delete-state-host-match'
 
-export type MarkDoneTarget = Pick<Worktree, 'id' | 'hostId'>
+type MarkDoneTarget = Pick<Worktree, 'id' | 'hostId'>
 
 type MarkDoneState = Pick<
   AppState,
@@ -55,7 +55,7 @@ function hasStatus(
 }
 
 /** The rows the key would move; the only place its target and eligibility rules live. */
-export function resolveMarkDoneTargets(
+function resolveMarkDoneTargets(
   state: MarkDoneState,
   selectedWorktrees: readonly MarkDoneTarget[]
 ): readonly Worktree[] {
