@@ -223,7 +223,7 @@ describe('SidebarFeedbackDialog image submission', () => {
     fireEvent.click(send)
     expect(mocks.submit).not.toHaveBeenCalled()
     // Why: a shrink can run for a while, and no thumbnail yet reads as a dropped file.
-    expect(screen.getByText('Preparing attachments…')).not.toBeNull()
+    expect(await screen.findByText('Preparing attachments…')).not.toBeNull()
 
     await act(async () => {
       finishRead?.({
@@ -243,7 +243,7 @@ describe('SidebarFeedbackDialog image submission', () => {
     })
 
     await waitFor(() => expect((send as HTMLButtonElement).disabled).toBe(false))
-    expect(screen.queryByText('Preparing attachments…')).toBeNull()
+    await waitFor(() => expect(screen.queryByText('Preparing attachments…')).toBeNull())
     const remove = screen.getByRole('button', { name: 'Remove shot.png' })
     expect(remove.dataset.slot).toBe('button')
     expect(remove.dataset.size).toBe('icon-xs')
@@ -252,6 +252,36 @@ describe('SidebarFeedbackDialog image submission', () => {
     expect(mocks.submit.mock.calls[0]?.[0].images).toEqual([
       { contentType: 'image/png', data: new Uint8Array([1]) }
     ])
+  })
+
+  it('does not flash the preparing hint for an image that reads at once', async () => {
+    mocks.readFeedbackImageFiles.mockResolvedValue({
+      images: [
+        {
+          id: 'small',
+          name: 'small.png',
+          contentType: 'image/png',
+          bytes: 5,
+          data: new Uint8Array([1]),
+          previewUrl: 'blob:small'
+        }
+      ],
+      errors: [],
+      notices: []
+    })
+    const { container } = render(<SidebarFeedbackDialog open onOpenChange={vi.fn()} />)
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')
+    fireEvent.change(input!, {
+      target: { files: [new File(['image'], 'small.png', { type: 'image/png' })] }
+    })
+
+    expect(screen.queryByText('Preparing attachments…')).toBeNull()
+    await screen.findByRole('button', { name: 'Remove small.png' })
+    // Past the show delay: a hint that had started would still be up for its minimum time.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    })
+    expect(screen.queryByText('Preparing attachments…')).toBeNull()
   })
 
   it('warns when the server cannot confirm image delivery', async () => {
