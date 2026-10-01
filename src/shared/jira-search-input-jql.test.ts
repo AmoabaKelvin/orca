@@ -22,6 +22,7 @@ describe('mayBeJql', () => {
     'sprint in openSprints ()',
     'issue in "linkedIssues"("ABC-1")',
     'status IN(Done)',
+    'status in\n(Open)',
     'labels is not empty',
     'NOT (status = Done OR assignee IS EMPTY)',
     // Prose that fits the grammar still reaches Jira; its answer decides.
@@ -48,6 +49,10 @@ describe('mayBeJql', () => {
     'login is slow',
     'this is broken',
     'status is not open',
+    // A word that only starts with `in` is not the operator.
+    'input (raw)',
+    'install (macos)',
+    'init()',
     '   '
   ])('skips JQL for input with no operator: %s', (input) => {
     expect(mayBeJql(input)).toBe(false)
