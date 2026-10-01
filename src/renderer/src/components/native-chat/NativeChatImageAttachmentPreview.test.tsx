@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { NativeChatImageAttachmentPreview } from './NativeChatImageAttachmentPreview'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 
@@ -26,6 +26,15 @@ afterEach(() => {
 function renderPreview(attachment: NativeChatComposerImageAttachment): void {
   vi.stubGlobal('IntersectionObserver', undefined)
   render(<NativeChatImageAttachmentPreview attachment={attachment} onRemove={vi.fn()} />)
+}
+
+async function clickOn(target: Element): Promise<void> {
+  await act(async () => {
+    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }))
+    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 }))
+    target.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
 }
 
 describe('NativeChatImageAttachmentPreview', () => {
@@ -89,7 +98,7 @@ describe('NativeChatImageAttachmentPreview', () => {
     ).toBe(false)
   })
 
-  it('stays open when a close comes from using the chat context menu', () => {
+  it('stays open through a click on the chat context menu, but not elsewhere outside', async () => {
     mocks.useLocalImageSrc.mockReturnValue('blob:on-disk-1')
     renderPreview({ id: 'a1', path: '/tmp/example.png', previewUrl: 'data:thumbnail' })
     fireEvent.click(screen.getByRole('button', { name: 'View image: example.png' }))
@@ -101,17 +110,16 @@ describe('NativeChatImageAttachmentPreview', () => {
     const menu = document.body.appendChild(document.createElement('div'))
     menu.setAttribute('data-native-chat-context-menu', '')
     const copyItem = menu.appendChild(document.createElement('div'))
+    const elsewhere = document.body.appendChild(document.createElement('div'))
+    // Radix arms its outside-pointer listener a tick after the dialog opens.
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
 
-    // Radix's dismissal after a menu click arrives while the item still has focus. An open menu
-    // pauses the dialog's focus trap, which this test has no menu to do, so pin focus directly.
-    const activeElement = vi.spyOn(document, 'activeElement', 'get').mockReturnValue(copyItem)
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await clickOn(copyItem)
     expect(screen.queryByRole('dialog')).toBeTruthy()
 
-    // Clicking X moves focus off the menu, so the close goes through even with it still fading.
-    activeElement.mockRestore()
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await clickOn(elsewhere)
     expect(screen.queryByRole('dialog')).toBeNull()
     menu.remove()
+    elsewhere.remove()
   })
 })

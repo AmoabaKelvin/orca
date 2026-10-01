@@ -17595,6 +17595,7 @@
         "copyImage": "Copier l’image",
         "copyImageFailed": "Impossible de copier l’image",
         "copyImageTooLarge": "L’image est trop volumineuse pour être copiée.",
+        "imageCopied": "Image copiée",
         "workspaceAttachmentMismatch": "Les fichiers ne peuvent être joints qu'à leur espace de travail source.",
         "attachmentOwnerChanged": "Cet espace de travail a changé d'hôte lors de la connexion : supprimez à nouveau les fichiers.",
         "attachmentUnreadable": "Impossible de lire les fichiers supprimés."

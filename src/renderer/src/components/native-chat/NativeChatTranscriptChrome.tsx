@@ -166,8 +166,11 @@ function TranscriptImagePreview({
           className="size-full object-cover"
         />
       </button>
-      <Dialog open={open} onOpenChange={(next) => setOpen(keepPreviewOpenForChatMenu(next))}>
-        <DialogContent className="flex max-h-[90vh] max-w-[90vw] flex-col gap-3 border-border bg-background p-3 sm:max-w-4xl">
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          onInteractOutside={keepPreviewOpenForChatMenu}
+          className="flex max-h-[90vh] max-w-[90vw] flex-col sm:max-w-4xl"
+        >
           <DialogTitle className="truncate text-sm">{label}</DialogTitle>
           <DialogDescription className="sr-only">
             {translate('components.native-chat.composer.imagePreview', 'Full-size image preview')}

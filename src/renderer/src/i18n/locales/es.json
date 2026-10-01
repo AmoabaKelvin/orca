@@ -15079,6 +15079,7 @@
         "copyImage": "Copiar imagen",
         "copyImageFailed": "No se pudo copiar la imagen",
         "copyImageTooLarge": "La imagen es demasiado grande para copiarla.",
+        "imageCopied": "Imagen copiada",
         "imagePasteFailed": "Error al pegar imagen.",
         "worktreeNotReady": "Worktree no está listo — intenta de nuevo en un momento.",
         "pasteUnavailable": "No se puede pegar — este chat no acepta entradas en este momento.",
