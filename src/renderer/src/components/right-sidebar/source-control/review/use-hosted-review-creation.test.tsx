@@ -201,7 +201,7 @@ describe('useSourceControlHostedReviewCreation', () => {
     expect(input.createHostedReview).toHaveBeenCalledTimes(1)
   })
 
-  it('generates for another branch while the first branch is still generating', async () => {
+  it('generates for another worktree while the first worktree is still generating', async () => {
     const { generate: generateA, finish: finishA } = deferredGeneration()
     const input = makeInput({ handleGeneratePullRequestFields: generateA })
     const { result, rerender } = renderHook(
@@ -216,7 +216,8 @@ describe('useSourceControlHostedReviewCreation', () => {
     const generateB = vi.fn(async () => ({ result: generatedFields }))
     rerender({
       ...input,
-      activePullRequestGenerationKey: 'wt-1::repo-1::add-usage',
+      activePullRequestGenerationKey: 'wt-2::repo-1::add-usage',
+      activeWorktreeId: 'wt-2',
       branchName: 'add-usage',
       handleGeneratePullRequestFields: generateB
     })
@@ -234,7 +235,7 @@ describe('useSourceControlHostedReviewCreation', () => {
     )
   })
 
-  it('submits as shown when clicked again after Stop, before the stopped run winds down', async () => {
+  it('submits as shown when clicked again after Stop', async () => {
     const { generate, finish } = deferredGeneration()
     const input = makeInput({ handleGeneratePullRequestFields: generate })
     const { result } = renderHook(() => useSourceControlHostedReviewCreation(input))
@@ -246,11 +247,11 @@ describe('useSourceControlHostedReviewCreation', () => {
     useAppStore
       .getState()
       .setPullRequestGenerationRecord(GENERATION_KEY, { ...runningRecord, status: 'canceled' })
-    await act(async () => result.current.handleCreatePullRequest())
     await act(async () => {
       finish(generatedFields)
       await firstClick
     })
+    await act(async () => result.current.handleCreatePullRequest())
 
     expect(generate).toHaveBeenCalledTimes(1)
     expect(input.createHostedReview).toHaveBeenCalledTimes(1)
@@ -391,7 +392,7 @@ describe('useSourceControlHostedReviewCreation', () => {
     act(() => {
       click = result.current.handleCreatePullRequest()
     })
-    // A repeated click returns at once and must not release the first click's hold.
+    // A repeated click is refused while the first one is in flight.
     await act(async () => result.current.handleCreatePullRequest())
     // The run's record settles and the panel re-renders before the click's continuation resumes.
     await act(async () => {
@@ -413,14 +414,14 @@ describe('useSourceControlHostedReviewCreation', () => {
   })
 
   it.each([
-    { name: 'fails', result: null, stopAndClickAgain: false },
+    { name: 'fails', result: null, stop: false },
     {
-      name: 'is stopped and Create PR is clicked again',
+      name: 'is stopped, refusing clicks until it winds down',
       result: generatedFields,
-      stopAndClickAgain: true
+      stop: true
     },
-    { name: 'creates', result: generatedFields, stopAndClickAgain: false }
-  ])('releases the in-flight hold when the run $name', async ({ result, stopAndClickAgain }) => {
+    { name: 'creates', result: generatedFields, stop: false }
+  ])('releases the in-flight hold when the run $name', async ({ result, stop }) => {
     const { generate, finish } = deferredGeneration()
     const input = makeInput({ handleGeneratePullRequestFields: generate })
     const { result: hook } = renderHook(() => useSourceControlHostedReviewCreation(input))
@@ -437,12 +438,14 @@ describe('useSourceControlHostedReviewCreation', () => {
       click = hook.current.handleCreatePullRequest()
     })
     expect(inFlight()).toBe(true)
-    if (stopAndClickAgain) {
+    if (stop) {
       useAppStore
         .getState()
         .setPullRequestGenerationRecord(GENERATION_KEY, { ...runningRecord, status: 'canceled' })
+      // Like the disabled Create button: the click stays in flight until the stopped request returns.
       await act(async () => hook.current.handleCreatePullRequest())
-      expect(input.createHostedReview).toHaveBeenCalledTimes(1)
+      expect(input.createHostedReview).not.toHaveBeenCalled()
+      expect(inFlight()).toBe(true)
     }
     await act(async () => {
       finish(result)

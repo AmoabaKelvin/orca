@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback } from 'react'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import { normalizeHostedReviewHeadRef } from '../../../../../../shared/hosted-review-refs'
@@ -79,8 +79,7 @@ export function useSourceControlHostedReviewCreation({
         !activeWorktreeId ||
         !worktreePath ||
         !hostedReviewCreation ||
-        prGenerating ||
-        createPrInFlightRef.current[activeWorktreeId]
+        prGenerating
       ) {
         return
       }
@@ -125,8 +124,6 @@ export function useSourceControlHostedReviewCreation({
         return
       }
 
-      createPrInFlightRef.current[activeWorktreeId] = true
-      setCreatePrInFlightByWorktree((prev) => ({ ...prev, [activeWorktreeId]: true }))
       setCreatePrIntentNoticeForWorktree(activeWorktreeId, null)
       const createdContext = (): HostedReviewCreatedContext => ({
         repoPath: activeRepo.path,
@@ -240,9 +237,6 @@ export function useSourceControlHostedReviewCreation({
                   { value0: hostedReviewCreateCopy.reviewLabel }
                 )
         })
-      } finally {
-        createPrInFlightRef.current[activeWorktreeId] = false
-        setCreatePrInFlightByWorktree((prev) => ({ ...prev, [activeWorktreeId]: false }))
       }
     },
     [
@@ -250,7 +244,6 @@ export function useSourceControlHostedReviewCreation({
       activeWorktreeId,
       branchName,
       createHostedReview,
-      createPrInFlightRef,
       createStackedHostedReview,
       handlePullRequestCreated,
       hostedReviewCreation,
@@ -265,7 +258,6 @@ export function useSourceControlHostedReviewCreation({
       prTitle,
       resolvedPrCreationDefaults.openAfterCreate,
       resolvedPrCreationDefaults.useTemplate,
-      setCreatePrInFlightByWorktree,
       setCreatePrIntentNoticeForWorktree,
       worktreePath
     ]
@@ -283,24 +275,20 @@ export function useSourceControlHostedReviewCreation({
       settings
     })
 
-  const heldClicksRef = useRef<Record<string, number>>({})
   const handleCreatePullRequest = useCallback(
     async (stacked = false): Promise<void> => {
       const worktreeId = activeWorktreeId
-      if (!worktreeId) {
+      if (!worktreeId || createPrInFlightRef.current[worktreeId]) {
         return
       }
-      // Why: like the prepare-branch route, the click stays in flight through generation; otherwise the eligibility refresh that starts when generation ends clears the eligibility the create checks.
-      heldClicksRef.current[worktreeId] = (heldClicksRef.current[worktreeId] ?? 0) + 1
+      // Why: like the prepare-branch route, the click is in flight until its create settles, so the composer stays up through generation instead of closing while eligibility refreshes.
+      createPrInFlightRef.current[worktreeId] = true
       setCreatePrInFlightByWorktree((prev) => ({ ...prev, [worktreeId]: true }))
       try {
         await generateThenCreatePullRequest(stacked)
       } finally {
-        const held = (heldClicksRef.current[worktreeId] ?? 1) - 1
-        heldClicksRef.current[worktreeId] = held
-        if (held === 0 && !createPrInFlightRef.current[worktreeId]) {
-          setCreatePrInFlightByWorktree((prev) => ({ ...prev, [worktreeId]: false }))
-        }
+        createPrInFlightRef.current[worktreeId] = false
+        setCreatePrInFlightByWorktree((prev) => ({ ...prev, [worktreeId]: false }))
       }
     },
     [
