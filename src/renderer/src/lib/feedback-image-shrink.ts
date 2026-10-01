@@ -64,7 +64,7 @@ async function encodeBitmap(
       context.fillRect(0, 0, canvas.width, canvas.height)
     }
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-    // Why: toBlob encodes off the renderer thread; toDataURL would freeze the dialog.
+    // Why: toBlob hands the encode back asynchronously; toDataURL would block the dialog on it.
     return await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, step.contentType, FEEDBACK_IMAGE_JPEG_QUALITY)
     )
