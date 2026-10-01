@@ -240,6 +240,82 @@ describe('useChecksPanelCreateReview provider flow', () => {
     }
   )
 
+  it.each(['github', 'gitlab'] as const)(
+    'links the %s review to the clicked worktree, without touching the panel, when the panel moved on mid-run',
+    async (provider) => {
+      useAppStore.setState({ activeWorktreeId: 'worktree-1' })
+      let finish: () => void = () => {}
+      const input = makeInput({
+        activePullRequestGenerationKey: 'worktree-1::repo-1::feature/create',
+        activeWorktreeId: 'worktree-1',
+        handleGeneratePullRequestFields: vi.fn(
+          () =>
+            new Promise<{ result: { base: string; title: string; body: string; draft: boolean } }>(
+              (resolve) => {
+                finish = () =>
+                  resolve({
+                    result: { base: 'main', title: 'Add create flow', body: '', draft: false }
+                  })
+              }
+            )
+        ),
+        hostedReviewCreateProvider: provider,
+        ownerSettings: {
+          ...getDefaultSettings('/home/test'),
+          sourceControlAi: { ...getDefaultSourceControlAiSettings(), agentId: 'cursor' }
+        },
+        prAiGenerationEnabled: true,
+        prCreationDefaults: {
+          draft: false,
+          generateDetailsOnOpen: false,
+          openAfterCreate: true,
+          useTemplate: true
+        },
+        prFieldsAreSeedPlaceholders: true
+      })
+      const { result, rerender } = renderHook(
+        (props: CreateInput) => useChecksPanelCreateReview(props),
+        { initialProps: input }
+      )
+
+      let click: Promise<void> = Promise.resolve()
+      act(() => {
+        click = result.current.handleCreatePullRequest(false)
+      })
+      // The still-mounted panel switches to another worktree, as a worktree switch does.
+      useAppStore.setState({ activeWorktreeId: 'worktree-2' })
+      input.panelContextKeyRef.current = 'repo-1::worktree-2::feature/other'
+      rerender({
+        ...input,
+        activePullRequestGenerationKey: 'worktree-2::repo-1::feature/other',
+        activeWorktreeId: 'worktree-2',
+        branch: 'refs/heads/feature/other',
+        createComposerOpen: false,
+        panelContextKey: 'repo-1::worktree-2::feature/other'
+      })
+      await act(async () => {
+        finish()
+        await click
+      })
+
+      expect(input.createHostedReview).toHaveBeenCalledWith(
+        '/workspace/repo',
+        expect.objectContaining({ head: 'feature/create', title: 'Add create flow' })
+      )
+      expect(input.updateWorktreeMeta).toHaveBeenCalledWith('worktree-1', expect.anything())
+      expect(input.updatePullRequestGenerationRecord).toHaveBeenCalledWith(
+        'worktree-1::repo-1::feature/create',
+        expect.any(Function)
+      )
+      expect(input.setIsCreatingPr).not.toHaveBeenCalled()
+      expect(input.setCreatePrError).not.toHaveBeenCalled()
+      expect(input.createPrInFlightRef.current).toBeNull()
+      expect(input.fetchGitLabDetails).not.toHaveBeenCalled()
+      expect(input.setRightSidebarTab).not.toHaveBeenCalled()
+      expect(openHttpLink).not.toHaveBeenCalled()
+    }
+  )
+
   it('opens the created PR while the panel is still showing it, even when another worktree is selected', async () => {
     useAppStore.setState({ activeWorktreeId: 'worktree-2' })
     const input = makeInput({

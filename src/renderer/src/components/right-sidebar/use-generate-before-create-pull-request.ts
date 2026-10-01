@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef } from 'react'
+import { useCallback } from 'react'
 import { useAppStore, type AppState } from '@/store'
 import type { PullRequestGenerationFields } from '@/store/slices/pull-request-generation'
 import type { PullRequestGenerationOptions } from '@/store/slices/pull-request-generation-auto-submit'
@@ -35,11 +35,6 @@ export function useGenerateBeforeCreatePullRequest({
   repo: Pick<Repo, 'sourceControlAi'> | null
   settings: AppState['settings']
 }) {
-  const latestRef = useRef({ createPullRequest, generationKey })
-  useLayoutEffect(() => {
-    latestRef.current = { createPullRequest, generationKey }
-  })
-
   const handleCreatePullRequest = useCallback(
     async (stacked = false): Promise<void> => {
       const status = generationKey
@@ -74,13 +69,9 @@ export function useGenerateBeforeCreatePullRequest({
       if (!outcome.result) {
         return
       }
-      const latest = latestRef.current
-      // Why: like the prepare-branch route the run still creates after the panel closes; a panel now on another branch leaves the details in that branch's form.
-      if (latest.generationKey !== generationKey) {
-        return
-      }
-      // Why: the result is what the composer fills in, so the PR matches the form.
-      await latest.createPullRequest(stacked, outcome.result)
+      // Why: the click owns the run, so create through its closure wherever the user went; a later render can show another branch or cleared eligibility.
+      // The result is what the composer fills in, so the PR matches the form.
+      await createPullRequest(stacked, outcome.result)
     },
     [
       aiGenerationEnabled,

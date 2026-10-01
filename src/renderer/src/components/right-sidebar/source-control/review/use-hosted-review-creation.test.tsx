@@ -452,9 +452,18 @@ describe('useSourceControlHostedReviewCreation', () => {
     expect(inFlight()).toBe(false)
   })
 
-  it('leaves the details in the form instead of creating when the panel shows another branch', async () => {
+  it('creates the clicked branch PR without revealing Checks when the panel moved to another worktree mid-run', async () => {
+    const openUrl = vi.fn()
+    vi.stubGlobal('api', { shell: { openUrl } })
+    useAppStore.setState({ activeWorktreeId: 'wt-1' })
     const { generate, finish } = deferredGeneration()
-    const input = makeInput({ handleGeneratePullRequestFields: generate })
+    const input = makeInput({
+      handleGeneratePullRequestFields: generate,
+      resolvedPrCreationDefaults: {
+        ...DEFAULT_SOURCE_CONTROL_AI_PR_CREATION_DEFAULTS,
+        openAfterCreate: true
+      }
+    })
     const { result, rerender } = renderHook(
       (props: Input) => useSourceControlHostedReviewCreation(props),
       { initialProps: input }
@@ -464,45 +473,33 @@ describe('useSourceControlHostedReviewCreation', () => {
     act(() => {
       click = result.current.handleCreatePullRequest()
     })
+    useAppStore.setState({ activeWorktreeId: 'wt-2' })
     rerender({
       ...input,
       activePullRequestGenerationKey: 'wt-2::repo-1::other-branch',
-      branchName: 'other-branch'
+      activeWorktreeId: 'wt-2',
+      branchName: 'other-branch',
+      hostedReviewCreation: null
     })
     await act(async () => {
       finish(generatedFields)
       await click
     })
 
-    expect(input.createHostedReview).not.toHaveBeenCalled()
-  })
-
-  it('shows the blocked notice instead of creating when the branch is blocked mid-run', async () => {
-    const { generate, finish } = deferredGeneration()
-    const input = makeInput({ handleGeneratePullRequestFields: generate })
-    const { result, rerender } = renderHook(
-      (props: Input) => useSourceControlHostedReviewCreation(props),
-      { initialProps: input }
+    expect(input.createHostedReview).toHaveBeenCalledTimes(1)
+    expect(input.createHostedReview).toHaveBeenCalledWith(
+      '/repo',
+      expect.objectContaining({ head: 'fix-readme-typo', title: 'Correct README install steps' })
     )
-
-    let click: Promise<void> = Promise.resolve()
-    act(() => {
-      click = result.current.handleCreatePullRequest()
-    })
-    rerender({
-      ...input,
-      hostedReviewCreation: { ...readyEligibility, canCreate: false, blockedReason: 'dirty' }
-    })
-    await act(async () => {
-      finish(generatedFields)
-      await click
-    })
-
-    expect(input.createHostedReview).not.toHaveBeenCalled()
-    expect(input.setCreatePrIntentNoticeForWorktree).toHaveBeenCalledWith(
-      'wt-1',
-      expect.objectContaining({ tone: 'destructive' })
+    expect(input.handlePullRequestCreated).toHaveBeenCalledWith(
+      expect.objectContaining({ number: 42 }),
+      expect.objectContaining({ worktreeId: 'wt-1', branch: 'fix-readme-typo', openChecks: false })
     )
+    expect(openUrl).not.toHaveBeenCalled()
+    const noticeTargets = vi
+      .mocked(input.setCreatePrIntentNoticeForWorktree)
+      .mock.calls.map(([worktreeId]) => worktreeId)
+    expect(new Set(noticeTargets)).toEqual(new Set(['wt-1']))
   })
 
   it.each([

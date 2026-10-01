@@ -13,7 +13,6 @@ export type ChecksPanelCreatedReviewInput = Pick<
   | 'activeWorktreeId'
   | 'branch'
   | 'fetchHostedReviewForBranch'
-  | 'mountedRef'
   | 'repo'
   | 'setRightSidebarOpen'
   | 'setRightSidebarTab'
@@ -44,7 +43,6 @@ export function useChecksPanelCreatedReview(model: ChecksPanelCreatedReviewInput
     linkedGiteaPR,
     linkedGitLabMR,
     linkedPR,
-    mountedRef,
     refreshLinkedGitHubPullRequest,
     repo,
     setRightSidebarOpen,
@@ -52,15 +50,19 @@ export function useChecksPanelCreatedReview(model: ChecksPanelCreatedReviewInput
     updateWorktreeMeta
   } = model
   return useCallback(
-    async (result: {
-      provider: HostedReviewProvider
-      number: number
-      url: string
-    }): Promise<void> => {
+    async (
+      result: {
+        provider: HostedReviewProvider
+        number: number
+        url: string
+      },
+      // Why: a create that outlives its panel context still links its worktree, but must not paint into the panel's new context.
+      panelShowsReview: boolean
+    ): Promise<void> => {
       if (!repo || !branch) {
         return
       }
-      if (createdReviewIsForeground(activeWorktreeId, mountedRef.current)) {
+      if (createdReviewIsForeground(activeWorktreeId, panelShowsReview)) {
         setRightSidebarOpen(true)
         setRightSidebarTab('checks')
       }
@@ -85,6 +87,9 @@ export function useChecksPanelCreatedReview(model: ChecksPanelCreatedReviewInput
             branch,
             ...linkedReviewNumbers
           })
+          if (!panelShowsReview) {
+            return
+          }
           const refreshedGitLabReview =
             refreshedReview?.provider === 'gitlab' ? refreshedReview : null
           await fetchGitLabDetails({
@@ -119,7 +124,6 @@ export function useChecksPanelCreatedReview(model: ChecksPanelCreatedReviewInput
       linkedGiteaPR,
       linkedGitLabMR,
       linkedPR,
-      mountedRef,
       refreshLinkedGitHubPullRequest,
       repo,
       setRightSidebarOpen,

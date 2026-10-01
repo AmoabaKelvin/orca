@@ -79,8 +79,7 @@ export function useSourceControlHostedReviewCreation({
         !activeWorktreeId ||
         !worktreePath ||
         !hostedReviewCreation ||
-        // Why: generated fields come from the run that just ended, which this render may still show as running.
-        (prGenerating && !generated) ||
+        prGenerating ||
         createPrInFlightRef.current[activeWorktreeId]
       ) {
         return
