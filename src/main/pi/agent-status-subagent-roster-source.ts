@@ -5,7 +5,7 @@
 export function getPiSubagentRosterSetupSourceLines(): string[] {
   return [
     '  const piEventBus = (pi as { events?: { on?: (name: string, handler: (event: unknown) => void) => void } }).events',
-    '  const lifecycleState = (piEventBus as { __orcaPiSubagents?: { active: Set<string>; exited?: Set<string>; waiting: boolean; ownsPane?: boolean; onEvent?: (event: unknown, forcedStatus?: string) => void; listener?: (event: unknown) => void; onRunnerExit?: (event: unknown) => void; runnerExitListener?: (event: unknown) => void } } | undefined)?.__orcaPiSubagents ?? { active: new Set<string>(), waiting: false }',
+    '  const lifecycleState = (piEventBus as { __orcaPiSubagents?: { active: Set<string>; exited?: Set<string>; waiting: boolean; ownsPane?: boolean; rootRunInFlight?: boolean; onEvent?: (event: unknown, forcedStatus?: string) => void; listener?: (event: unknown) => void; onRunnerExit?: (event: unknown) => void; runnerExitListener?: (event: unknown) => void } } | undefined)?.__orcaPiSubagents ?? { active: new Set<string>(), waiting: false }',
     '  if (piEventBus) (piEventBus as { __orcaPiSubagents?: unknown }).__orcaPiSubagents = lifecycleState',
     '  if (piEventBus?.on && !(lifecycleState as { listener?: unknown }).listener) {',
     '    const listener = (event: unknown) => lifecycleState.onEvent?.(event)',
@@ -41,8 +41,10 @@ export function getPiSubagentRosterEventSourceLines(): string[] {
     '    if (isOmpRuntime() && !lifecycleState.ownsPane) return',
     "    if (status === 'started') {",
     '      lifecycleState.active.add(id)',
-    // Why: a child starting after the run's done, or before OMP's first run (OMP never re-runs this factory), owes a fresh done.
-    '      if (completionPostedGeneration === runGeneration || (isOmpRuntime() && runGeneration === 0)) {',
+    // Why: a child starting after the run's done owes a fresh done. Under OMP the same holds
+    // before the first turn of this factory run (a resumed root, or a reload), but only when no
+    // root run is in flight -- a reload mid-turn resets these counters while the root still works.
+    '      if (completionPostedGeneration === runGeneration || (isOmpRuntime() && runGeneration === 0 && !lifecycleState.rootRunInFlight)) {',
     '        lifecycleState.waiting = true',
     '        completionPostedGeneration = -1',
     '      }',
