@@ -51,9 +51,21 @@ function feedbackImageFitBytes(remainingBytes: number): number {
   return Math.min(MAX_FEEDBACK_IMAGE_BYTES, remainingBytes)
 }
 
-// Why: APNG's acTL chunk precedes its image data; shrinking would keep only frame one.
+// Why: APNG's acTL chunk precedes its first IDAT; shrinking would keep only frame one.
+// Walks chunk headers so metadata ahead of acTL or bytes that spell it are not misread.
 function isAnimatedPng(data: Uint8Array): boolean {
-  return new TextDecoder('latin1').decode(data.subarray(0, 64 * 1024)).includes('acTL')
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
+  // Each chunk after the 8-byte signature is length, type, payload, CRC.
+  for (let offset = 8; offset + 8 <= data.byteLength; offset += 12 + view.getUint32(offset)) {
+    const type = String.fromCharCode(...data.subarray(offset + 4, offset + 8))
+    if (type === 'acTL') {
+      return true
+    }
+    if (type === 'IDAT') {
+      return false
+    }
+  }
+  return false
 }
 
 /** Fits as-is, or can be shrunk into the space left instead of refused. */

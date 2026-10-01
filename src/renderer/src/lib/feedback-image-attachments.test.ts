@@ -43,6 +43,32 @@ function pngFile(name: string, size = 24, dimensions = { width: 1, height: 1 }):
   return file
 }
 
+function pngChunk(type: string, payload: Uint8Array): Uint8Array<ArrayBuffer> {
+  // CRC left zero: the reader does not verify it.
+  const chunk = new Uint8Array(new ArrayBuffer(12 + payload.byteLength))
+  new DataView(chunk.buffer).setUint32(0, payload.byteLength)
+  chunk.set(new TextEncoder().encode(type), 4)
+  chunk.set(payload, 8)
+  return chunk
+}
+
+function oversizedPng(name: string, chunks: [type: string, payload: Uint8Array][]): File {
+  const ihdr = pngChunk('IHDR', new Uint8Array(13))
+  new DataView(ihdr.buffer).setUint32(8, 1)
+  new DataView(ihdr.buffer).setUint32(12, 1)
+  const file = new File(
+    [
+      new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+      ihdr,
+      ...chunks.map(([type, payload]) => pngChunk(type, payload))
+    ],
+    name,
+    { type: 'image/png' }
+  )
+  Object.defineProperty(file, 'size', { value: MAX_FEEDBACK_IMAGE_BYTES + 1 })
+  return file
+}
+
 function gifFile(name: string, size: number): File {
   // GIF89a, 1x1
   const file = new File([new Uint8Array([71, 73, 70, 56, 57, 97, 1, 0, 1, 0])], name, {
@@ -210,16 +236,33 @@ describe('readFeedbackImageFiles', () => {
   })
 
   it('refuses an oversized animated PNG rather than flattening it', async () => {
-    const apng = new File([pngHeader(), new TextEncoder().encode('....acTL....IDAT')], 'anim.png', {
-      type: 'image/png'
-    })
-    Object.defineProperty(apng, 'size', { value: MAX_FEEDBACK_IMAGE_BYTES + 1 })
+    // Why: a large metadata chunk can push acTL well past the first 64 KB.
+    const apng = oversizedPng('anim.png', [
+      ['iTXt', new Uint8Array(100 * 1024)],
+      ['acTL', new Uint8Array(8)],
+      ['IDAT', new Uint8Array(16)]
+    ])
 
     const { images, errors } = await readFeedbackImageFiles([apng], 0)
 
     expect(shrinkFeedbackImage).not.toHaveBeenCalled()
     expect(images).toEqual([])
     expect(errors).toEqual(['anim.png is larger than 4.0 MB.'])
+  })
+
+  it('still shrinks a still PNG whose metadata or pixels happen to spell acTL', async () => {
+    const acTL = new TextEncoder().encode('acTL')
+    const still = oversizedPng('still.png', [
+      ['tEXt', acTL],
+      ['IDAT', acTL]
+    ])
+    shrinkFeedbackImage.mockResolvedValue(encoded(3_000_000, 'image/png'))
+
+    const { images, errors } = await readFeedbackImageFiles([still], 0)
+
+    expect(errors).toEqual([])
+    expect(shrinkFeedbackImage).toHaveBeenCalledWith(still, MAX_FEEDBACK_IMAGE_BYTES)
+    expect(images.map((image) => image.name)).toEqual(['still.png'])
   })
 
   it('refuses a file too large to read before shrinking', async () => {
