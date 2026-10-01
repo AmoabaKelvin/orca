@@ -67,6 +67,7 @@ export type VirtualizedWorktreeViewportProps = {
     event: React.MouseEvent<HTMLElement>,
     worktree: Worktree
   ) => readonly Worktree[]
+  onContextMenuClose: (worktree: Worktree) => void
   repoMap: Map<string, Repo>
   defaultHostId: ExecutionHostId
   worktreeMap: Map<string, Worktree>
