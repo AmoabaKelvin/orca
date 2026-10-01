@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentHookServer, agentHookServer, _internals } from './server'
-import { buildBody, postHookEvent } from './server.test-fixtures'
+import { buildBody, PANE, postHookEvent } from './server.test-fixtures'
 
 const { getCohortAtEmitMock, trackMock } = vi.hoisted(() => ({
   getCohortAtEmitMock: vi.fn(),
@@ -362,6 +362,11 @@ describe('Pi-family child rows through the hook lane', () => {
     const [placeholder] = server.getStatusSnapshot()
     expect(placeholder).toMatchObject({ providerSessionOnly: true, state: 'done' })
     expect(placeholder?.subagents).toBeUndefined()
+
+    // Why: the same guard covers Pi's model_select, which shares this path.
+    await post('pi', { hook_event_name: 'model_select', model: 'anthropic/claude-opus-5' })
+    expect(server.getStatusSnapshot()[0]).toMatchObject({ providerSessionOnly: true })
+    expect(server.getStatusSnapshot()[0]?.model).toBeUndefined()
   })
 
   it('never lets one agent restate another agent row', async () => {
@@ -371,5 +376,76 @@ describe('Pi-family child rows through the hook lane', () => {
     const [row] = server.getStatusSnapshot()
     expect(row).toMatchObject({ agentType: 'pi', prompt: 'pi turn' })
     expect(row?.subagents).toBeUndefined()
+  })
+})
+
+// Why: publishing a roster for Pi puts its panes on the same child-work guard Claude and Codex
+// already sit behind, which changes what Ctrl+C records. Pinned here so the next change to the
+// guard — or to the extension, once it reports a main-agent state of its own — has to face it.
+describe('a Pi cancel beside a live child row', () => {
+  let server: AgentHookServer
+
+  beforeEach(async () => {
+    server = new AgentHookServer()
+    await server.start({ env: 'production' })
+  })
+
+  afterEach(() => {
+    server.stop()
+  })
+
+  async function startTurn(subagents?: Record<string, unknown>[]): Promise<void> {
+    const response = await postHookEvent(
+      server,
+      buildBody({
+        hook_event_name: 'before_agent_start',
+        prompt: 'fan out',
+        ...(subagents ? { subagents } : {})
+      }),
+      '/hook/pi'
+    )
+    expect(response.status).toBe(204)
+  }
+
+  function pressCtrlC(): boolean {
+    const baseline = server.getStatusSnapshotForPane(PANE)[0]
+    if (!baseline) {
+      throw new Error('the pane has no row')
+    }
+    return server.inferInterrupt({
+      paneKey: PANE,
+      baselineUpdatedAt: baseline.receivedAt,
+      baselineStateStartedAt: baseline.stateStartedAt,
+      baselinePrompt: baseline.prompt,
+      baselineAgentType: 'pi',
+      intent: 'ctrl-c'
+    })
+  }
+
+  it('still settles a stopped row when the pane has no children', async () => {
+    await startTurn()
+
+    expect(pressCtrlC()).toBe(true)
+    expect(server.getStatusSnapshotForPane(PANE)[0]).toMatchObject({
+      state: 'done',
+      interrupted: true,
+      mainAgent: { state: 'done', outcome: 'cancellation' }
+    })
+  })
+
+  // Why: without a main-agent state from the extension, Orca cannot tell a cancelled turn from
+  // Ctrl+C at the idle prompt of a lead that children alone hold open — where it cancels nothing.
+  // It keeps the live row rather than claiming a cancellation the children contradict.
+  it('leaves the working row alone while a child still runs', async () => {
+    await startTurn([{ id: 'run-scout', state: 'working', startedAt: 1_000, agentType: 'scout' }])
+
+    expect(pressCtrlC()).toBe(false)
+    const row = server.getStatusSnapshotForPane(PANE)[0]
+    expect(row).toMatchObject({
+      state: 'working',
+      subagents: [expect.objectContaining({ id: 'run-scout' })]
+    })
+    expect(row?.interrupted).toBeUndefined()
+    expect(row?.mainAgent).toBeUndefined()
   })
 })
