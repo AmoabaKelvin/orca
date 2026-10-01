@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { act, cleanup, render } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useTabStripOverflowNavigation } from './tab-strip-overflow-navigation'
 
 const TAB_WIDTH = 100
@@ -81,6 +81,7 @@ function restoreStripLayout(): void {
 
 const NO_HOSTED_ROWS: string[] = []
 let stripRenderCount = 0
+let subscribeToStripResize: ((listener: () => void) => () => void) | null = null
 
 /** `hostedRows` render like client-hosted browser rows: a strip slot with no `data-tab-id`. */
 function Strip({
@@ -101,6 +102,7 @@ function Strip({
     layoutKey: [...tabs, ...hostedRows].join(','),
     worktreeId: 'wt-1'
   })
+  subscribeToStripResize = navigation.subscribeToStripResize
   return (
     <div
       data-strip=""
@@ -319,5 +321,14 @@ describe('tab strip while scrolling', () => {
       strip.dispatchEvent(new Event('scroll'))
     })
     expect(stripRenderCount).toBe(rendersBefore)
+  })
+
+  it('tells resize subscribers when tabs change the strip without a scroll', async () => {
+    const { rerender } = mountScrolled('J', 700)
+    const listener = vi.fn()
+    subscribeToStripResize!(listener)
+    rerender(<Strip tabs={[...TABS, 'N']} active="J" />)
+    await Promise.resolve()
+    expect(listener).toHaveBeenCalled()
   })
 })
