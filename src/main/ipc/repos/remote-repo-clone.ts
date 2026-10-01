@@ -123,17 +123,27 @@ export async function cloneRemoteRepo(
     remoteCloneInFlightByPath.delete(remoteCloneKey)
   }
   const existing = findSaved()
-  if (existing && isFolderRepo(existing)) {
-    const updated = store.updateRepo(existing.id, {
-      kind: 'git',
-      projectHostSetupMethod: 'cloned'
-    })
-    if (updated) {
-      emitRepoAdded('clone_url', false)
+  if (existing) {
+    if (isFolderRepo(existing)) {
+      const updated = store.updateRepo(existing.id, {
+        kind: 'git',
+        projectHostSetupMethod: 'cloned'
+      })
+      if (updated) {
+        emitRepoAdded('clone_url', false)
+        getActiveMultiplexer(args.connectionId)?.notify('session.registerRoot', {
+          rootPath: clonePath
+        })
+        return updated
+      }
+    } else {
+      // Why: git re-created this project's folder, and `addRemoteRepoFromPath` returns an existing
+      // project without registering the root, so the relay would never learn the path came back.
       getActiveMultiplexer(args.connectionId)?.notify('session.registerRoot', {
         rootPath: clonePath
       })
-      return updated
+      emitRepoAdded('clone_url', true)
+      return existing
     }
   }
   const result = await addRemoteRepoFromPath(store, {
