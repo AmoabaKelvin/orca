@@ -1,7 +1,7 @@
 import type { StateCreator } from 'zustand'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { AppState } from '../types'
-import { resolveAutoSubmittedFields } from './pull-request-generation-auto-submit'
+import { resolveGeneratedFields } from './pull-request-generation-auto-submit'
 
 export type PullRequestFieldName = 'base' | 'title' | 'body' | 'draft'
 export type PullRequestFieldRevisions = Record<PullRequestFieldName, number>
@@ -168,8 +168,7 @@ export function resolvePullRequestGenerationSuccess({
   return {
     ...record,
     status: 'succeeded',
-    // Why: Generate-button results are reviewed in the form; only a run sent unreviewed is held to the user's choices.
-    result: record.autoSubmit ? resolveAutoSubmittedFields(record, result) : result,
+    result: resolveGeneratedFields(record, result),
     error: null,
     hydrated: false
   }
