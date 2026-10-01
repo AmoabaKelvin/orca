@@ -266,7 +266,8 @@ describe('TerminalHost', () => {
 
       const written = (lastSubprocess.write as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
       expect(written).not.toContain('\x1b[200~')
-      expect(written).toContain('line one\nline two')
+      // Why CR between the lines: without bracketed paste each break submits its own line.
+      expect(written).toContain('line one\rline two')
     })
 
     it('keeps the shell-ready barrier when the spawned shell supports the marker', async () => {

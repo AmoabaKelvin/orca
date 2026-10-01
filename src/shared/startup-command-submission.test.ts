@@ -31,9 +31,25 @@ describe('buildStartupCommandSubmission', () => {
   })
 
   it('keeps the raw path for multiline commands when bracketed paste is unsafe', () => {
-    const command = 'echo one\necho two'
-    expect(buildStartupCommandSubmission(command, { bracketedPasteSafe: false })).toBe(
-      `${command}\r`
+    expect(buildStartupCommandSubmission('echo one\necho two', { bracketedPasteSafe: false })).toBe(
+      'echo one\recho two\r'
+    )
+  })
+
+  // Why: on the raw path every line break submits a line, so an interior LF is the same
+  // remappable Ctrl+J the trailing terminator was (#23250).
+  it('submits every line of a raw multiline command with CR', () => {
+    for (const command of ['echo one\necho two', 'echo one\r\necho two', 'echo one\recho two']) {
+      expect(buildStartupCommandSubmission(command, { bracketedPasteSafe: false })).toBe(
+        'echo one\recho two\r'
+      )
+    }
+  })
+
+  it('leaves interior line breaks intact inside a bracketed-paste payload', () => {
+    const command = "claude 'first\nsecond'"
+    expect(buildStartupCommandSubmission(command, { bracketedPasteSafe: true })).toBe(
+      `\x1b[200~${command}\x1b[201~\r`
     )
   })
 })
