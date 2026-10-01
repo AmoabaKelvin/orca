@@ -6290,6 +6290,11 @@
           "copied": "명령이 복사됨",
           "retry": "지금 다시 시도",
           "restored": "Git이 다시 작동합니다. 워크트리를 새로고침했습니다."
+        },
+        "markDone": {
+          "markedOne": "{{name}}을(를) 완료로 표시했습니다",
+          "markedMany": "워크스페이스 {{count}}개를 완료로 표시했습니다",
+          "undo": "실행 취소"
         }
       },
       "shared": {

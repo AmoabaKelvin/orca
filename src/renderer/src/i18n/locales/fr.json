@@ -6393,6 +6393,11 @@
           "copied": "Commande copiée",
           "retry": "Réessayer maintenant",
           "restored": "Git fonctionne à nouveau. Worktrees actualisés."
+        },
+        "markDone": {
+          "markedOne": "{{name}} marqué Terminé",
+          "markedMany": "{{count}} espaces de travail marqués Terminé",
+          "undo": "Annuler"
         }
       },
       "shared": {

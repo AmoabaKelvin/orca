@@ -6290,6 +6290,11 @@
           "copied": "命令已复制",
           "retry": "立即重试",
           "restored": "Git 已恢复正常。工作树已刷新。"
+        },
+        "markDone": {
+          "markedOne": "已将 {{name}} 标记为完成",
+          "markedMany": "已将 {{count}} 个工作区标记为完成",
+          "undo": "撤消"
         }
       },
       "shared": {

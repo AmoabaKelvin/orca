@@ -6290,6 +6290,11 @@
           "copied": "コマンドをコピーしました",
           "retry": "今すぐ再試行",
           "restored": "Git が再び動作しています。ワークツリーを更新しました。"
+        },
+        "markDone": {
+          "markedOne": "{{name}} を完了にしました",
+          "markedMany": "{{count}} 件のワークスペースを完了にしました",
+          "undo": "元に戻す"
         }
       },
       "shared": {

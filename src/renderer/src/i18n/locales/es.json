@@ -5374,6 +5374,11 @@
           "copied": "Comando copiado",
           "retry": "Reintentar ahora",
           "restored": "Git funciona de nuevo. Worktrees actualizados."
+        },
+        "markDone": {
+          "markedOne": "{{name}} marcado como Hecho",
+          "markedMany": "{{count}} espacios de trabajo marcados como Hecho",
+          "undo": "Deshacer"
         }
       },
       "shared": {

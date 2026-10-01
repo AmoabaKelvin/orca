@@ -35,8 +35,10 @@ const mocks = vi.hoisted(() => {
     }
     return holder.state
   }
-  return { holder, currentState, activate: vi.fn() }
+  return { holder, currentState, activate: vi.fn(), toast: vi.fn() }
 })
+
+vi.mock('sonner', () => ({ toast: mocks.toast }))
 
 vi.mock('@/lib/shortcut-platform', () => ({ getShortcutPlatform: () => mocks.holder.platform }))
 vi.mock('@/lib/worktree-activation', () => ({ activateAndRevealWorktree: mocks.activate }))
@@ -153,6 +155,7 @@ function press(target: HTMLElement, key: string, init: KeyboardEventInit = {}): 
 beforeEach(() => {
   mocks.holder.platform = 'linux'
   mocks.activate.mockReset()
+  mocks.toast.mockReset()
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
@@ -177,6 +180,26 @@ describe('Delete on the focused workspace list', () => {
       { workspaceStatus: 'completed' },
       expect.objectContaining({ executionHostId: 'local' })
     )
+  })
+
+  it('offers an Undo that puts the workspace back In progress only while it is still Done', () => {
+    const state = setState([worktree('a', 'in-progress', 'ssh:box')])
+    const { list } = renderList({ activeWorktreeId: 'a', activeHostId: 'ssh:box' })
+
+    press(list, 'Delete')
+
+    expect(mocks.toast).toHaveBeenCalledTimes(1)
+    const undo = mocks.toast.mock.calls[0]?.[1]?.action
+    expect(undo?.label).toBe('Undo')
+    undo.onClick()
+    expect(state.updateWorktreeMeta).toHaveBeenLastCalledWith(
+      'a',
+      { workspaceStatus: 'in-progress' },
+      expect.objectContaining({ executionHostId: 'ssh:box' })
+    )
+    const options = state.updateWorktreeMeta.mock.calls[1]?.[2]
+    expect(options.shouldApply(worktree('a', 'completed'))).toBe(true)
+    expect(options.shouldApply(worktree('a', 'in-review'))).toBe(false)
   })
 
   it('treats a workspace with no stored status as In progress', () => {
@@ -239,6 +262,7 @@ describe('Delete on the focused workspace list', () => {
 
     expect(event.defaultPrevented).toBe(false)
     expect(state.updateWorktreeMeta).not.toHaveBeenCalled()
+    expect(mocks.toast).not.toHaveBeenCalled()
   })
 
   it('leaves a workspace whose delete is already running alone', () => {
@@ -375,6 +399,7 @@ describe('Delete on the focused workspace list', () => {
       ['b', 'local'],
       ['d', 'ssh:box']
     ])
+    expect(mocks.toast).toHaveBeenCalledWith('Marked 2 workspaces Done', expect.anything())
   })
 
   it('ignores the one-row selection a plain click leaves behind', () => {

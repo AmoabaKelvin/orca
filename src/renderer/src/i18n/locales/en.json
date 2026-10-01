@@ -6460,6 +6460,11 @@
           "copied": "Command copied",
           "retry": "Retry now",
           "restored": "Git is working again. Worktrees refreshed."
+        },
+        "markDone": {
+          "markedOne": "Marked {{name}} Done",
+          "markedMany": "Marked {{count}} workspaces Done",
+          "undo": "Undo"
         }
       },
       "shared": {
