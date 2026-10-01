@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_WORKSPACE_STATUSES } from '../../../../shared/workspace-statuses'
 import type { Worktree } from '../../../../shared/worktree/types'
 import WorktreeContextMenu from './WorktreeContextMenu'
+import { worktree as worktreeFixture } from './worktree-list-groups-test-fixtures'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -265,14 +266,14 @@ describe('WorktreeContextMenu delete shortcut display', () => {
 })
 
 describe('WorktreeContextMenu mark-Done shortcut display', () => {
-  const inProgressWorktree = {
+  const inProgressWorktree: Worktree = {
+    ...worktreeFixture,
     id: 'repo::wt-1',
     repoId: 'repo',
-    name: 'wt-1',
     path: '/path/to/wt-1',
     isMainWorktree: false,
     workspaceStatus: 'in-progress'
-  } as unknown as Worktree
+  }
 
   function openMenuShortcuts(container: HTMLDivElement): string[] {
     const target = container.querySelector('[data-worktree-context-menu-scope]') as HTMLElement
