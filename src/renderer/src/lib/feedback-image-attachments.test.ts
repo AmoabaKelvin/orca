@@ -233,13 +233,18 @@ describe('readFeedbackImageFiles', () => {
     expect(errors).toEqual(['enormous.png is larger than 4.0 MB.'])
   })
 
-  it('reports an image the browser could not decode for shrinking', async () => {
-    shrinkFeedbackImage.mockRejectedValue(new Error('decode failed'))
+  // Why: the size message would tell the user to make a file smaller that is actually corrupt.
+  it('reports an image the browser could not decode for shrinking as invalid', async () => {
+    shrinkFeedbackImage.mockRejectedValueOnce(new Error('decode failed'))
+    shrinkFeedbackImage.mockResolvedValueOnce(encoded(900_000, 'image/png'))
 
-    const { images, errors } = await readFeedbackImageFiles([pngFile('retina.png', 6_400_000)], 0)
+    const { images, errors } = await readFeedbackImageFiles(
+      [pngFile('corrupt.png', 6_400_000), pngFile('retina.png', 6_400_000)],
+      0
+    )
 
-    expect(images).toEqual([])
-    expect(errors).toEqual(['retina.png is larger than 4.0 MB.'])
+    expect(errors).toEqual(['corrupt.png is not a valid supported image.'])
+    expect(images.map((image) => image.name)).toEqual(['retina.png'])
   })
 
   it('reports an oversized image that could not be shrunk enough', async () => {
