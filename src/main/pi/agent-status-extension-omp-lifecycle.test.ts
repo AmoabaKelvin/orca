@@ -267,6 +267,20 @@ describe('OMP subagent settlement', () => {
     expect(harness.fetchMock).not.toHaveBeenCalled()
   })
 
+  it('does not settle a reload that lands while the root run is still in flight', async () => {
+    const harness = createAgentStatusExtensionHarness({ kind: 'omp' })
+    await harness.callHook('session_start', {}, ompSession('root'))
+    await hook(harness, 'agent_start')
+    harness.reload()
+
+    await lifecycle(harness, 'child-1', 'started')
+    await lifecycle(harness, 'child-1', 'completed')
+    expect(postedHookNames(harness.fetchMock)).not.toContain('agent_end')
+
+    await hook(harness, 'agent_end')
+    expect(postedHookNames(harness.fetchMock).at(-1)).toBe('agent_end')
+  })
+
   it('keeps OMP pane ownership across an extension reload', async () => {
     const harness = createAgentStatusExtensionHarness({ kind: 'omp' })
     await harness.callHook('session_start', {}, ompSession('root'))
