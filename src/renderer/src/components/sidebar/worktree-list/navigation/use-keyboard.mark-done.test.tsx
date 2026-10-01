@@ -36,7 +36,8 @@ const mocks = vi.hoisted(() => {
     }
     return holder.state
   }
-  return { holder, currentState, activate: vi.fn(), toast: vi.fn() }
+  const toast = Object.assign(vi.fn(), { error: vi.fn(), dismiss: vi.fn() })
+  return { holder, currentState, activate: vi.fn(), toast }
 })
 
 vi.mock('sonner', () => ({ toast: mocks.toast }))
@@ -157,6 +158,8 @@ beforeEach(() => {
   mocks.holder.platform = 'linux'
   mocks.activate.mockReset()
   mocks.toast.mockReset()
+  mocks.toast.error.mockReset()
+  mocks.toast.dismiss.mockReset()
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
@@ -213,6 +216,77 @@ describe('Delete on the focused workspace list', () => {
     press(list, 'Delete')
 
     expect(mocks.toast).toHaveBeenCalledWith('Moved feature-x to Shipped', expect.anything())
+  })
+
+  it('replaces the Moved toast with an error when the save fails', async () => {
+    const state = setState([
+      { ...worktree('a', 'in-progress', 'ssh:box'), displayName: 'feature-x' }
+    ])
+    state.updateWorktreeMeta.mockResolvedValue({ ok: false, error: 'Host unreachable' })
+    mocks.toast.mockReturnValue('moved-toast')
+    const { list } = renderList({ activeWorktreeId: 'a', activeHostId: 'ssh:box' })
+
+    press(list, 'Delete')
+
+    expect(mocks.toast).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => expect(mocks.toast.error).toHaveBeenCalledTimes(1))
+    expect(mocks.toast.dismiss).toHaveBeenCalledWith('moved-toast')
+    expect(mocks.toast.error).toHaveBeenCalledWith('Could not move feature-x to Done', {
+      description: 'Host unreachable'
+    })
+  })
+
+  it('names every selected workspace whose save failed, even when the write rejects', async () => {
+    const selected = [
+      { ...worktree('b', 'in-progress'), displayName: 'feature-b' },
+      { ...worktree('c', 'in-progress'), displayName: 'feature-c' },
+      { ...worktree('d', 'in-progress'), displayName: 'feature-d' }
+    ]
+    const state = setState(selected)
+    state.updateWorktreeMeta.mockImplementation(async (id: string) => {
+      if (id === 'c') {
+        throw new Error('IPC closed')
+      }
+      return id === 'd' ? { ok: false, error: 'Host unreachable' } : { ok: true }
+    })
+    mocks.toast.mockReturnValue('moved-toast')
+    const { list } = renderList({ activeWorktreeId: 'b', selectedWorktrees: selected })
+
+    press(list, 'Delete')
+
+    await vi.waitFor(() => expect(mocks.toast.error).toHaveBeenCalledTimes(1))
+    expect(mocks.toast.dismiss).toHaveBeenCalledWith('moved-toast')
+    expect(mocks.toast.error).toHaveBeenCalledWith('Could not move 2 workspaces to Done', {
+      description: 'feature-c, feature-d'
+    })
+  })
+
+  it('keeps the Moved toast when every save succeeds', async () => {
+    const state = setState([worktree('a', 'in-progress')])
+    mocks.toast.mockReturnValue('moved-toast')
+    const { list } = renderList({ activeWorktreeId: 'a' })
+
+    press(list, 'Delete')
+    await Promise.all(state.updateWorktreeMeta.mock.results.map((result) => result.value))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(mocks.toast.dismiss).not.toHaveBeenCalled()
+    expect(mocks.toast.error).not.toHaveBeenCalled()
+  })
+
+  it('reports an Undo whose save fails', async () => {
+    const state = setState([{ ...worktree('a', 'in-progress'), displayName: 'feature-x' }])
+    const { list } = renderList({ activeWorktreeId: 'a' })
+    press(list, 'Delete')
+    state.updateWorktreeMeta.mockResolvedValue({ ok: false, error: 'Host unreachable' })
+
+    mocks.toast.mock.calls[0]?.[1]?.action.onClick()
+
+    await vi.waitFor(() =>
+      expect(mocks.toast.error).toHaveBeenCalledWith('Could not move feature-x to In progress', {
+        description: 'Host unreachable'
+      })
+    )
   })
 
   it('treats a workspace with no stored status as In progress', () => {
