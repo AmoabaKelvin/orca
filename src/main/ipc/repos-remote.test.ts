@@ -268,6 +268,39 @@ describe('repos:addRemote', () => {
     expect(mockGitProvider.clone).not.toHaveBeenCalled()
   })
 
+  it('re-registers the root after re-cloning into a saved SSH project whose folder was gone', async () => {
+    const existing = {
+      id: 'existing-id',
+      path: '/home/user/orca',
+      connectionId: 'conn-1',
+      displayName: 'orca',
+      badgeColor: '#fff',
+      addedAt: 1000,
+      kind: 'git',
+      gitRemoteIdentity: {
+        canonicalKey: 'github.com/stablyai/orca',
+        remoteName: 'origin',
+        remoteUrl: 'https://github.com/stablyai/orca.git'
+      }
+    }
+    mockStore.getRepos.mockReturnValue([existing])
+    mockGitProvider.exec.mockRejectedValue(new Error('fatal: not a git repository'))
+
+    const result = await handlers.get('repos:cloneRemote')!(null, {
+      connectionId: 'conn-1',
+      url: 'https://github.com/stablyai/orca.git',
+      destination: '/home/user'
+    })
+
+    expect(mockGitProvider.clone).toHaveBeenCalledTimes(1)
+    expect(result).toBe(existing)
+    expect(mockStore.addRepo).not.toHaveBeenCalled()
+    // Without this the relay never learns the path came back, so sessions there stay unauthorized.
+    expect(mockMultiplexer.notify).toHaveBeenCalledWith('session.registerRoot', {
+      rootPath: '/home/user/orca'
+    })
+  })
+
   it('upgrades an existing SSH folder repo after cloning into that path', async () => {
     const existing = {
       id: 'existing-folder',
