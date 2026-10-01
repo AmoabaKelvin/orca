@@ -99,6 +99,28 @@ describe('prepareAiVaultSessionForResume', () => {
 })
 
 describe('dropDeletedSshResumeCwd', () => {
+  it('leaves a live SSH session alone, scanner command and all', async () => {
+    const pathExists = vi.fn().mockResolvedValue(true)
+    vi.stubGlobal('window', { api: { fs: { pathExists } } })
+    const remote = session({ executionHostId: 'ssh:server-1', cwd: '/home/ada/wt/feat-x' })
+
+    // Why: dropping the cwd here would strand every ordinary remote resume at the workspace root.
+    await expect(dropDeletedSshResumeCwd(remote)).resolves.toBe(remote)
+    expect(pathExists).toHaveBeenCalledWith({
+      filePath: '/home/ada/wt/feat-x',
+      connectionId: 'server-1'
+    })
+  })
+
+  it('never probes a host for a local session', async () => {
+    const pathExists = vi.fn()
+    vi.stubGlobal('window', { api: { fs: { pathExists } } })
+    const local = session({ cwd: '/repo' })
+
+    await expect(dropDeletedSshResumeCwd(local)).resolves.toBe(local)
+    expect(pathExists).not.toHaveBeenCalled()
+  })
+
   it('keeps the recorded folder when the SSH host cannot answer', async () => {
     const pathExists = vi.fn().mockRejectedValue(new Error('CONNECTION_LOST'))
     vi.stubGlobal('window', { api: { fs: { pathExists } } })

@@ -2,7 +2,8 @@ import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import {
   buildAiVaultResumeCopyCommandForWorktree,
-  buildAiVaultResumeStartupForWorktree
+  buildAiVaultResumeStartupForWorktree,
+  type AiVaultResumeCommandSession
 } from '@/lib/ai-vault-resume-command'
 import { launchAiVaultSessionInNewTab } from '@/lib/launch-ai-vault-session'
 import { useAppStore } from '@/store'
@@ -56,10 +57,7 @@ export function useAiVaultSessionLaunchActions({
   )
 
   const buildResumeStartup = useCallback(
-    (
-      session: Parameters<typeof buildAiVaultResumeStartupForWorktree>[0]['session'],
-      worktreeId?: string | null
-    ) =>
+    (session: AiVaultResumeCommandSession, worktreeId?: string | null) =>
       buildAiVaultResumeStartupForWorktree({
         state: useAppStore.getState(),
         worktreeId: worktreeId ?? activeWorktreeId ?? activeWorktree?.id ?? null,
