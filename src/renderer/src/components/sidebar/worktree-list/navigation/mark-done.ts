@@ -120,6 +120,8 @@ export function markWorkspacesDone(
   return true
 }
 
+const MARKED_DONE_TOAST_DURATION_MS = 10_000
+
 // Why: a key press has no visible confirmation, and the row can move into a collapsed Done section.
 function showMarkedDoneToast(worktrees: readonly Worktree[], statusLabel: string): string | number {
   const [first] = worktrees
@@ -138,6 +140,8 @@ function showMarkedDoneToast(worktrees: readonly Worktree[], statusLabel: string
           }
         ),
     {
+      // Why: the default ~4 s closes before a user who looked away can reach Undo.
+      duration: MARKED_DONE_TOAST_DURATION_MS,
       action: {
         label: translate('auto.components.sidebar.markDone.undo', 'Undo'),
         onClick: () => undoMarkedDone(worktrees)
