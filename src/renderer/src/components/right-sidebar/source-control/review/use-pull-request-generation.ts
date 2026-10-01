@@ -5,6 +5,7 @@ import {
   generateRuntimePullRequestFields,
   type RuntimeGeneratePullRequestFieldsOverrides
 } from '@/runtime/runtime-git-client'
+import type { PullRequestGenerationOutcome } from '../../create-pull-request-dialog-field-model'
 import { useAppStore } from '@/store'
 import {
   createRunningPullRequestGenerationRecord,
@@ -18,6 +19,7 @@ import {
   type PullRequestGenerationContext,
   type PullRequestGenerationFields
 } from '@/store/slices/pull-request-generation'
+import type { PullRequestGenerationOptions } from '@/store/slices/pull-request-generation-auto-submit'
 import type { HostedReviewProvider } from '../../../../../../shared/hosted-review'
 import type { SourceControlAi } from '../ai/use-ai'
 import { stripBaseRef } from '../../create-pull-request-base-ref-normalization'
@@ -26,7 +28,7 @@ import type { SourceControlWorktreeContext } from '../listing/use-worktree-conte
 import type { SourceControlStatusRefresh } from '../sync/use-status-refresh'
 
 /**
- * Runs AI generation of the PR title/body/base for the active branch through a store record, so a
+ * Runs AI generation of the PR details for the active branch through a store record, so a
  * run started before a tab switch is still resumable when the composer remounts.
  */
 export function useSourceControlPullRequestGeneration({
@@ -80,16 +82,17 @@ export function useSourceControlPullRequestGeneration({
     async (
       fields: PullRequestGenerationFields,
       fieldRevisions: PullRequestFieldRevisions,
-      overrides?: RuntimeGeneratePullRequestFieldsOverrides
-    ): Promise<void> => {
+      overrides?: RuntimeGeneratePullRequestFieldsOverrides,
+      options?: PullRequestGenerationOptions
+    ): Promise<PullRequestGenerationOutcome | undefined> => {
       if (!activeRepo || !activePullRequestGenerationKey || !worktreePath || !branchName) {
-        return
+        return undefined
       }
       const generationKey = activePullRequestGenerationKey
       if (
         useAppStore.getState().pullRequestGenerationRecords[generationKey]?.status === 'running'
       ) {
-        return
+        return undefined
       }
       const requestId = allocatePullRequestGenerationRequestId()
       const context: PullRequestGenerationContext = {
@@ -105,7 +108,7 @@ export function useSourceControlPullRequestGeneration({
       // Why: SourceControl can unmount on tab switches; the persisted record lets the PR composer resume on return.
       setPullRequestGenerationRecord(
         generationKey,
-        createRunningPullRequestGenerationRecord(context, seed, fieldRevisions)
+        createRunningPullRequestGenerationRecord(context, seed, fieldRevisions, options?.autoSubmit)
       )
 
       try {
@@ -166,6 +169,9 @@ export function useSourceControlPullRequestGeneration({
           })
         )
       }
+      const record = useAppStore.getState().pullRequestGenerationRecords[generationKey]
+      // Why: failed, stopped, or superseded runs carry no result for this request.
+      return { result: record?.context.requestId === requestId ? record.result : null }
     },
     [
       activePullRequestGenerationKey,

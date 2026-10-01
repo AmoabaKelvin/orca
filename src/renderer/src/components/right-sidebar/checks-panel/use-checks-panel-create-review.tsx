@@ -19,6 +19,8 @@ import type { ChecksPanelBranchActionsState } from './use-checks-panel-branch-ac
 import type { ChecksPanelCheckAndReviewActionsState } from './use-checks-panel-check-and-review-actions'
 import { clearPullRequestGenerationRequiresPushBeforeCreate } from '@/store/slices/pull-request-generation'
 import { translate } from '@/i18n/i18n'
+import type { PullRequestGenerationFields } from '@/store/slices/pull-request-generation'
+import { useGenerateBeforeCreatePullRequest } from '../use-generate-before-create-pull-request'
 
 type ChecksPanelCreateReviewInput = Pick<
   ChecksPanelReviewState,
@@ -39,6 +41,7 @@ type ChecksPanelCreateReviewInput = Pick<
     | 'createPrInFlightRef'
     | 'createStackedHostedReview'
     | 'fetchHostedReviewForBranch'
+    | 'ownerSettings'
     | 'panelContextKey'
     | 'panelContextKeyRef'
     | 'repo'
@@ -61,6 +64,8 @@ type ChecksPanelCreateReviewInput = Pick<
   > &
   Pick<ChecksPanelPollingState, 'fetchGitLabDetails'> &
   Pick<ChecksPanelComposerState, 'prBase' | 'prBody' | 'prDraft' | 'prGenerating' | 'prTitle'> &
+  Pick<ChecksPanelComposerState, 'handleGeneratePullRequestFields' | 'prAiGenerationEnabled'> &
+  Pick<ChecksPanelComposerState, 'prFieldsAreSeedPlaceholders'> &
   Pick<ChecksPanelBranchActionsState, 'pushBeforeCreatePullRequest'> &
   Pick<ChecksPanelCheckAndReviewActionsState, 'refreshLinkedGitHubPullRequest'>
 
@@ -78,6 +83,7 @@ export function useChecksPanelCreateReview(model: ChecksPanelCreateReviewInput) 
     fallbackGitHubPRNumber,
     fetchGitLabDetails,
     fetchHostedReviewForBranch,
+    handleGeneratePullRequestFields,
     hostedReviewCreateCopy,
     hostedReviewCreateProvider,
     hostedReviewCreation,
@@ -86,12 +92,15 @@ export function useChecksPanelCreateReview(model: ChecksPanelCreateReviewInput) 
     linkedGiteaPR,
     linkedGitLabMR,
     linkedPR,
+    ownerSettings,
     panelContextKey,
     panelContextKeyRef,
+    prAiGenerationEnabled,
     prBase,
     prBody,
     prCreationDefaults,
     prDraft,
+    prFieldsAreSeedPlaceholders,
     prGenerating,
     prTitle,
     pushBeforeCreatePullRequest,
@@ -179,9 +188,11 @@ export function useChecksPanelCreateReview(model: ChecksPanelCreateReviewInput) 
     ]
   )
 
-  const handleCreatePullRequest = useCallback(
-    async (stacked = false): Promise<void> => {
-      if (!repo || !branch || !createComposerOpen || prGenerating || createPrInFlightRef.current) {
+  const createPullRequest = useCallback(
+    async (stacked = false, generated?: PullRequestGenerationFields): Promise<void> => {
+      // Why: generated fields come from the run that just ended, which this render may still show as running.
+      const generating = prGenerating && !generated
+      if (!repo || !branch || !createComposerOpen || generating || createPrInFlightRef.current) {
         return
       }
 
@@ -189,8 +200,9 @@ export function useChecksPanelCreateReview(model: ChecksPanelCreateReviewInput) 
       const isCurrentCreateRequest = (): boolean =>
         panelContextKeyRef.current === requestContextKey &&
         createPrInFlightRef.current === requestContextKey
-      const base = stripBaseRef(prBase).trim()
-      const title = prTitle.trim()
+      const fields = generated ?? { base: prBase, title: prTitle, body: prBody, draft: prDraft }
+      const base = stripBaseRef(fields.base).trim()
+      const title = fields.title.trim()
       const worktreePath = activeWorktreePath ?? repo.path
       if (!title) {
         setCreatePrError(
@@ -239,8 +251,8 @@ export function useChecksPanelCreateReview(model: ChecksPanelCreateReviewInput) 
           base,
           head: normalizeHostedReviewHeadRef(branch),
           title,
-          body: prBody,
-          draft: prDraft && hostedReviewProviderSupportsDraft(hostedReviewCreateProvider),
+          body: fields.body,
+          draft: fields.draft && hostedReviewProviderSupportsDraft(hostedReviewCreateProvider),
           worktreePath,
           useTemplate: prCreationDefaults.useTemplate
         }
@@ -376,6 +388,16 @@ export function useChecksPanelCreateReview(model: ChecksPanelCreateReviewInput) 
       setCreatePrError
     ]
   )
+  const { handleCreatePullRequest } = useGenerateBeforeCreatePullRequest({
+    aiGenerationEnabled: prAiGenerationEnabled,
+    canCreate: createComposerOpen,
+    createPullRequest,
+    fieldsAreSeedPlaceholders: prFieldsAreSeedPlaceholders,
+    generatePullRequestFields: handleGeneratePullRequestFields,
+    generationKey: activePullRequestGenerationKey,
+    repo,
+    settings: ownerSettings
+  })
   return { handlePullRequestCreated, handleCreatePullRequest }
 }
 

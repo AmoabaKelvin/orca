@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import type { PullRequestGenerationOutcome } from '../create-pull-request-dialog-field-model'
 import { useAppStore } from '@/store'
 import { getConnectionId } from '@/lib/connection-context'
 import {
@@ -19,6 +20,7 @@ import {
   type PullRequestGenerationContext,
   type PullRequestGenerationFields
 } from '@/store/slices/pull-request-generation'
+import type { PullRequestGenerationOptions } from '@/store/slices/pull-request-generation-auto-submit'
 
 type ChecksPanelGenerationInput = Pick<
   ChecksPanelReviewState,
@@ -62,16 +64,17 @@ export function useChecksPanelGeneration(model: ChecksPanelGenerationInput) {
     async (
       fields: PullRequestGenerationFields,
       fieldRevisions: PullRequestFieldRevisions,
-      overrides?: RuntimeGeneratePullRequestFieldsOverrides
-    ): Promise<void> => {
+      overrides?: RuntimeGeneratePullRequestFieldsOverrides,
+      options?: PullRequestGenerationOptions
+    ): Promise<PullRequestGenerationOutcome | undefined> => {
       if (!repo || !activePullRequestGenerationKey || !activeWorktreePath || !branch) {
-        return
+        return undefined
       }
       const generationKey = activePullRequestGenerationKey
       if (
         useAppStore.getState().pullRequestGenerationRecords[generationKey]?.status === 'running'
       ) {
-        return
+        return undefined
       }
       const requestId = allocatePullRequestGenerationRequestId()
       const context: PullRequestGenerationContext = {
@@ -88,7 +91,12 @@ export function useChecksPanelGeneration(model: ChecksPanelGenerationInput) {
         useAppStore.getState().pullRequestGenerationRecords[generationKey]
           ?.requiresPushBeforeCreate === true
       // Why: ChecksPanel unsets the composer on navigate-away; persist the request so generation can finish in the background.
-      const runningRecord = createRunningPullRequestGenerationRecord(context, seed, fieldRevisions)
+      const runningRecord = createRunningPullRequestGenerationRecord(
+        context,
+        seed,
+        fieldRevisions,
+        options?.autoSubmit
+      )
       setPullRequestGenerationRecord(
         generationKey,
         previousRequiresPushBeforeCreate
@@ -151,6 +159,9 @@ export function useChecksPanelGeneration(model: ChecksPanelGenerationInput) {
           })
         )
       }
+      const record = useAppStore.getState().pullRequestGenerationRecords[generationKey]
+      // Why: failed, stopped, or superseded runs carry no result for this request.
+      return { result: record?.context.requestId === requestId ? record.result : null }
     },
     [
       activePullRequestGenerationKey,
