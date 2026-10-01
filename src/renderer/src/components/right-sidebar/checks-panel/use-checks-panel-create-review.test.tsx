@@ -2,14 +2,26 @@
 
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { useAppStore } from '@/store'
 import { getDefaultSettings } from '../../../../../shared/constants'
 import type { CreateHostedReviewResult } from '../../../../../shared/hosted-review'
 import { getDefaultSourceControlAiSettings } from '../../../../../shared/source-control-ai-settings'
+import type * as HttpLinkRouting from '@/lib/http-link-routing'
 import { useChecksPanelCreateReview } from './use-checks-panel-create-review'
+
+const { openHttpLink } = vi.hoisted(() => ({ openHttpLink: vi.fn() }))
+vi.mock('@/lib/http-link-routing', async (importOriginal) => ({
+  ...(await importOriginal<typeof HttpLinkRouting>()),
+  openHttpLink
+}))
 
 type CreateInput = Parameters<typeof useChecksPanelCreateReview>[0]
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  openHttpLink.mockClear()
+  useAppStore.setState({ activeWorktreeId: null })
+})
 
 function makeInput(overrides: Partial<CreateInput> = {}): CreateInput {
   const createdReview: CreateHostedReviewResult = {
@@ -44,6 +56,7 @@ function makeInput(overrides: Partial<CreateInput> = {}): CreateInput {
     linkedGiteaPR: null,
     linkedGitLabMR: null,
     linkedPR: null,
+    mountedRef: { current: true },
     ownerSettings: null,
     panelContextKey: 'repo-1::worktree-1::feature/create',
     panelContextKeyRef: { current: 'repo-1::worktree-1::feature/create' },
@@ -170,5 +183,81 @@ describe('useChecksPanelCreateReview provider flow', () => {
       '/workspace/repo',
       expect.objectContaining({ title: 'Add create flow', body: 'Details.' })
     )
+  })
+  it.each([
+    { name: 'still selected', selectedAtFinish: 'worktree-1', reveals: true },
+    { name: 'no longer selected', selectedAtFinish: 'worktree-2', reveals: false }
+  ])(
+    'reveals the created PR only when its worktree is $name after the panel closed mid-run',
+    async ({ selectedAtFinish, reveals }) => {
+      useAppStore.setState({ activeWorktreeId: 'worktree-1' })
+      let finish: () => void = () => {}
+      const input = makeInput({
+        activePullRequestGenerationKey: 'worktree-1::repo-1::feature/create',
+        activeWorktreeId: 'worktree-1',
+        handleGeneratePullRequestFields: vi.fn(
+          () =>
+            new Promise<{ result: { base: string; title: string; body: string; draft: boolean } }>(
+              (resolve) => {
+                finish = () =>
+                  resolve({
+                    result: { base: 'main', title: 'Add create flow', body: '', draft: false }
+                  })
+              }
+            )
+        ),
+        ownerSettings: {
+          ...getDefaultSettings('/home/test'),
+          sourceControlAi: { ...getDefaultSourceControlAiSettings(), agentId: 'cursor' }
+        },
+        prAiGenerationEnabled: true,
+        prCreationDefaults: {
+          draft: false,
+          generateDetailsOnOpen: false,
+          openAfterCreate: true,
+          useTemplate: true
+        },
+        prFieldsAreSeedPlaceholders: true
+      })
+      const { result, unmount } = renderHook(() => useChecksPanelCreateReview(input))
+
+      let click: Promise<void> = Promise.resolve()
+      act(() => {
+        click = result.current.handleCreatePullRequest(false)
+      })
+      unmount()
+      input.mountedRef.current = false
+      useAppStore.setState({ activeWorktreeId: selectedAtFinish })
+      await act(async () => {
+        finish()
+        await click
+      })
+
+      expect(input.createHostedReview).toHaveBeenCalledTimes(1)
+      expect(input.updateWorktreeMeta).toHaveBeenCalledWith('worktree-1', expect.anything())
+      expect(input.setRightSidebarTab).toHaveBeenCalledTimes(reveals ? 1 : 0)
+      expect(openHttpLink).toHaveBeenCalledTimes(reveals ? 1 : 0)
+    }
+  )
+
+  it('opens the created PR while the panel is still showing it, even when another worktree is selected', async () => {
+    useAppStore.setState({ activeWorktreeId: 'worktree-2' })
+    const input = makeInput({
+      activeWorktreeId: 'worktree-1',
+      prCreationDefaults: {
+        draft: false,
+        generateDetailsOnOpen: false,
+        openAfterCreate: true,
+        useTemplate: true
+      }
+    })
+    const { result } = renderHook(() => useChecksPanelCreateReview(input))
+
+    await act(async () => result.current.handleCreatePullRequest(false))
+
+    expect(input.setRightSidebarTab).toHaveBeenCalledWith('checks')
+    expect(openHttpLink).toHaveBeenCalledWith('https://github.com/orca/app/pull/42', {
+      worktreeId: 'worktree-1'
+    })
   })
 })

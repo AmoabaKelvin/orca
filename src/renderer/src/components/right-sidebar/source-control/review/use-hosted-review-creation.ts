@@ -10,10 +10,12 @@ import type { SourceControlWorktreeContext } from '../listing/use-worktree-conte
 import type { SourceControlWorktreeOperationState } from '../panel/use-worktree-operation-state'
 import type { SourceControlCreateReviewComposer } from './use-create-review-composer'
 import type { SourceControlHostedReviewCreated } from './use-hosted-review-created'
+import type { HostedReviewCreatedContext } from './hosted-review-creation-state'
 import type { SourceControlHostedReviewState } from './use-hosted-review-state'
 import type { SourceControlPullRequestGeneration } from './use-pull-request-generation'
 import type { PullRequestGenerationFields } from '@/store/slices/pull-request-generation'
 import { useGenerateBeforeCreatePullRequest } from '../../use-generate-before-create-pull-request'
+import { createdReviewIsForeground } from '../../created-review-foreground'
 
 /**
  * Submits the composer as a hosted review (optionally stacked) and reconciles the "already open" and
@@ -127,6 +129,13 @@ export function useSourceControlHostedReviewCreation({
       createPrInFlightRef.current[activeWorktreeId] = true
       setCreatePrInFlightByWorktree((prev) => ({ ...prev, [activeWorktreeId]: true }))
       setCreatePrIntentNoticeForWorktree(activeWorktreeId, null)
+      const createdContext = (): HostedReviewCreatedContext => ({
+        repoPath: activeRepo.path,
+        repoId: activeRepo.id,
+        branch: branchName,
+        worktreeId: activeWorktreeId,
+        openChecks: createdReviewIsForeground(activeWorktreeId)
+      })
       try {
         const createInput = {
           repoId: activeRepo.id,
@@ -145,12 +154,16 @@ export function useSourceControlHostedReviewCreation({
 
         if (result.ok) {
           setCreatePrIntentNoticeForWorktree(activeWorktreeId, null)
-          await handlePullRequestCreated({
-            provider: hostedReviewCreateProvider,
-            number: result.number,
-            url: result.url
-          })
-          if (resolvedPrCreationDefaults.openAfterCreate) {
+          const context = createdContext()
+          await handlePullRequestCreated(
+            {
+              provider: hostedReviewCreateProvider,
+              number: result.number,
+              url: result.url
+            },
+            context
+          )
+          if (context.openChecks && resolvedPrCreationDefaults.openAfterCreate) {
             window.api.shell.openUrl(result.url)
           }
           return
@@ -183,11 +196,14 @@ export function useSourceControlHostedReviewCreation({
           )
           if (number) {
             setCreatePrIntentNoticeForWorktree(activeWorktreeId, null)
-            await handlePullRequestCreated({
-              provider: hostedReviewCreateProvider,
-              number,
-              url: result.existingReview.url
-            })
+            await handlePullRequestCreated(
+              {
+                provider: hostedReviewCreateProvider,
+                number,
+                url: result.existingReview.url
+              },
+              createdContext()
+            )
             return
           }
         }
@@ -198,11 +214,14 @@ export function useSourceControlHostedReviewCreation({
         if ('createdReview' in result && result.createdReview?.url) {
           const { number, url } = result.createdReview
           if (number) {
-            await handlePullRequestCreated({
-              provider: hostedReviewCreateProvider,
-              number,
-              url
-            })
+            await handlePullRequestCreated(
+              {
+                provider: hostedReviewCreateProvider,
+                number,
+                url
+              },
+              createdContext()
+            )
           }
         }
 

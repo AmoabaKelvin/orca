@@ -59,7 +59,8 @@ const readyEligibility: HostedReviewCreationEligibility = {
 
 afterEach(() => {
   cleanup()
-  useAppStore.setState({ pullRequestGenerationRecords: {} })
+  vi.unstubAllGlobals()
+  useAppStore.setState({ pullRequestGenerationRecords: {}, activeWorktreeId: null })
 })
 
 function makeInput(overrides: Partial<Input> = {}): Input {
@@ -280,6 +281,45 @@ describe('useSourceControlHostedReviewCreation', () => {
       expect.objectContaining({ head: 'fix-readme-typo', title: 'Correct README install steps' })
     )
   })
+
+  it.each([
+    { name: 'still selected', selectedAtFinish: 'wt-1', reveals: true },
+    { name: 'no longer selected', selectedAtFinish: 'wt-2', reveals: false }
+  ])(
+    'reveals the created PR only when its worktree is $name after the panel closed mid-run',
+    async ({ selectedAtFinish, reveals }) => {
+      const openUrl = vi.fn()
+      vi.stubGlobal('api', { shell: { openUrl } })
+      useAppStore.setState({ activeWorktreeId: 'wt-1' })
+      const { generate, finish } = deferredGeneration()
+      const input = makeInput({
+        handleGeneratePullRequestFields: generate,
+        resolvedPrCreationDefaults: {
+          ...DEFAULT_SOURCE_CONTROL_AI_PR_CREATION_DEFAULTS,
+          openAfterCreate: true
+        }
+      })
+      const { result, unmount } = renderHook(() => useSourceControlHostedReviewCreation(input))
+
+      let click: Promise<void> = Promise.resolve()
+      act(() => {
+        click = result.current.handleCreatePullRequest()
+      })
+      unmount()
+      useAppStore.setState({ activeWorktreeId: selectedAtFinish })
+      await act(async () => {
+        finish(generatedFields)
+        await click
+      })
+
+      expect(input.createHostedReview).toHaveBeenCalledTimes(1)
+      expect(input.handlePullRequestCreated).toHaveBeenCalledWith(
+        expect.objectContaining({ number: 42 }),
+        expect.objectContaining({ worktreeId: 'wt-1', openChecks: reveals })
+      )
+      expect(openUrl).toHaveBeenCalledTimes(reveals ? 1 : 0)
+    }
+  )
 
   it('leaves the details in the form instead of creating when the panel shows another branch', async () => {
     const { generate, finish } = deferredGeneration()

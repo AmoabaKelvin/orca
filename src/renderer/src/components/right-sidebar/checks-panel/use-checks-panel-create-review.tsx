@@ -21,6 +21,7 @@ import { clearPullRequestGenerationRequiresPushBeforeCreate } from '@/store/slic
 import { translate } from '@/i18n/i18n'
 import type { PullRequestGenerationFields } from '@/store/slices/pull-request-generation'
 import { useGenerateBeforeCreatePullRequest } from '../use-generate-before-create-pull-request'
+import { createdReviewIsForeground } from '../created-review-foreground'
 
 type ChecksPanelCreateReviewInput = Pick<
   ChecksPanelReviewState,
@@ -41,6 +42,7 @@ type ChecksPanelCreateReviewInput = Pick<
     | 'createPrInFlightRef'
     | 'createStackedHostedReview'
     | 'fetchHostedReviewForBranch'
+    | 'mountedRef'
     | 'ownerSettings'
     | 'panelContextKey'
     | 'panelContextKeyRef'
@@ -123,8 +125,10 @@ export function useChecksPanelCreateReview(model: ChecksPanelCreateReviewInput) 
       if (!repo || !branch) {
         return
       }
-      setRightSidebarOpen(true)
-      setRightSidebarTab('checks')
+      if (createdReviewIsForeground(activeWorktreeId, model.mountedRef.current)) {
+        setRightSidebarOpen(true)
+        setRightSidebarTab('checks')
+      }
       try {
         const createdLink = resolveCreatedHostedReviewLink(result.provider, result.number)
         if (activeWorktreeId && result.provider !== 'unsupported') {
@@ -179,6 +183,7 @@ export function useChecksPanelCreateReview(model: ChecksPanelCreateReviewInput) 
       linkedGiteaPR,
       linkedGitLabMR,
       linkedPR,
+      model.mountedRef,
       refreshLinkedGitHubPullRequest,
       repo,
       setRightSidebarOpen,
@@ -263,12 +268,13 @@ export function useChecksPanelCreateReview(model: ChecksPanelCreateReviewInput) 
           return
         }
         if (result.ok) {
+          const foreground = createdReviewIsForeground(activeWorktreeId, model.mountedRef.current)
           await handlePullRequestCreated({
             provider: hostedReviewCreateProvider,
             number: result.number,
             url: result.url
           })
-          if (prCreationDefaults.openAfterCreate) {
+          if (prCreationDefaults.openAfterCreate && foreground) {
             openHttpLink(result.url, { worktreeId: activeWorktreeId })
           }
           if (activePullRequestGenerationKey) {
@@ -370,6 +376,7 @@ export function useChecksPanelCreateReview(model: ChecksPanelCreateReviewInput) 
       hostedReviewCreateCopy.titleLabel,
       hostedReviewCreateProvider,
       hostedReviewCreation?.blockedReason,
+      model.mountedRef,
       panelContextKey,
       prBase,
       prBody,
