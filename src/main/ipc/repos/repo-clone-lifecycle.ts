@@ -266,7 +266,10 @@ export function registerRepoCloneHandlers(mainWindow: BrowserWindow, store: Stor
                 return updated
               }
             }
-            // Why: the saved project's folder was just re-created, so its worktrees must be re-read.
+            // Why: git re-created this project's folder, so its worktree root is gone with it and
+            // the authorized-roots cache still holds the answers from before the folder came back.
+            await prepareLocalWorktreeRootForRepo(store, existing)
+            invalidateAuthorizedRootsCache()
             notifyReposChanged(mainWindow)
             emitRepoAdded('clone_url', true, true)
             return existing

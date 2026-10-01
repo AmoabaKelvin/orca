@@ -677,6 +677,9 @@ describe('repos:add + repos:clone', () => {
       expect(gitSpawnMock).toHaveBeenCalledTimes(1)
       expect(mockStore.addRepo).not.toHaveBeenCalled()
       expect(mockWindow.webContents.send).toHaveBeenCalledWith('repos:changed')
+      // The folder git just re-created has no worktree root, and the cached roots predate it.
+      expect(prepareLocalWorktreeRootForRepoMock).toHaveBeenCalledWith(mockStore, saved)
+      expect(invalidateAuthorizedRootsCacheMock).toHaveBeenCalled()
     })
 
     it('refuses, naming the project, when the saved project was a different repo', async () => {
