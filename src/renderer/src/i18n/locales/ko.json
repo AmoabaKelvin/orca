@@ -6183,6 +6183,7 @@
           "parkTerminal": "Park terminal"
         },
         "SidebarFeedbackImageAttachments": {
+          "preparing": "첨부 파일을 준비하는 중…",
           "attachImages": "Attach",
           "removeImage": "Remove {{fileName}}",
           "screenshotsHint": "최대 {{count}}장, 총 {{maxSize}}까지 스크린샷을 첨부하세요."

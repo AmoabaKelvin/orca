@@ -6260,6 +6260,7 @@
           "parkTerminal": "Parquer le terminal"
         },
         "SidebarFeedbackImageAttachments": {
+          "preparing": "Préparation des pièces jointes…",
           "attachImages": "Joindre",
           "removeImage": "Supprimer {{fileName}}",
           "screenshotsHint": "Joignez jusqu'à {{count}} captures d'écran, {{maxSize}} au total"
