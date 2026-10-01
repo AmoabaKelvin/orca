@@ -220,6 +220,48 @@ describe('readFeedbackImageFiles', () => {
     expect(errors).toEqual(['second.png would bring the attachments over 4.0 MB in total.'])
   })
 
+  // Why: a bigger screenshot was just shrunk and accepted, so "larger than 4 MB"
+  // would contradict it; the space the others use is what refuses this one.
+  it('blames the shared budget when a shrinkable image is refused for lack of room', async () => {
+    const almostSpent = MAX_FEEDBACK_IMAGE_TOTAL_BYTES - MIN_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES + 1
+    const noRoom = await readFeedbackImageFiles([pngFile('third.png', 5_600_000)], 2, almostSpent)
+
+    shrinkFeedbackImage.mockResolvedValue(null)
+    const tooLittleRoom = await readFeedbackImageFiles(
+      [pngFile('second.png', 5_600_000)],
+      1,
+      3_800_000
+    )
+
+    expect(noRoom.errors).toEqual(['third.png would bring the attachments over 4.0 MB in total.'])
+    expect(tooLittleRoom.errors).toEqual([
+      'second.png would bring the attachments over 4.0 MB in total.'
+    ])
+  })
+
+  it('still calls an oversized image too large when no budget could take it', async () => {
+    const apng = oversizedPng('anim.png', [
+      ['acTL', new Uint8Array(8)],
+      ['IDAT', new Uint8Array(16)]
+    ])
+
+    const { errors } = await readFeedbackImageFiles(
+      [
+        gifFile('anim.gif', MAX_FEEDBACK_IMAGE_BYTES + 1),
+        apng,
+        pngFile('enormous.png', MAX_FEEDBACK_IMAGE_SOURCE_BYTES + 1)
+      ],
+      1,
+      1_000_000
+    )
+
+    expect(errors).toEqual([
+      'anim.gif is larger than 4.0 MB.',
+      'anim.png is larger than 4.0 MB.',
+      'enormous.png is larger than 4.0 MB.'
+    ])
+  })
+
   it('does not re-encode an image that already fits', async () => {
     const { images, notices } = await readFeedbackImageFiles([pngFile('small.png', 1024)], 0)
 
