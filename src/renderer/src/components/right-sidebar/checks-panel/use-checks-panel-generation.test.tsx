@@ -153,4 +153,66 @@ describe('useChecksPanelGeneration outcome', () => {
 
     await expect(outcome).resolves.toEqual({ result: base ? { ...generated, base } : null })
   })
+
+  it("returns no result when a later run replaced this one, not the later run's details", async () => {
+    const generationKey = 'repo-1::worktree-1::feature'
+    let answer: (result: RuntimeGeneratePullRequestFieldsResult) => void = () => {}
+    runtime.generate.mockImplementation(
+      () =>
+        new Promise<RuntimeGeneratePullRequestFieldsResult>((resolve) => {
+          answer = resolve
+        })
+    )
+    const { setPullRequestGenerationRecord, updatePullRequestGenerationRecord } =
+      useAppStore.getState()
+    const { result } = renderHook(() =>
+      useChecksPanelGeneration({
+        activePullRequestGenerationKey: generationKey,
+        activePullRequestGenerationRecord: null,
+        activeWorktreeId: 'worktree-1',
+        activeWorktreePath: '/workspace/repo',
+        allocatePullRequestGenerationRequestId: vi.fn(() => 11),
+        branch: 'feature',
+        handleBranchChangedByPullRequestGeneration: vi.fn(),
+        hostedReviewCreateProvider: 'github',
+        ownerSettings: null,
+        prCreationDefaults: {
+          draft: false,
+          generateDetailsOnOpen: false,
+          openAfterCreate: false,
+          useTemplate: true
+        },
+        prGenerationRecords: {},
+        repo: {
+          id: 'repo-1',
+          path: '/workspace/repo',
+          displayName: 'repo',
+          badgeColor: '#000',
+          addedAt: 0
+        },
+        setPullRequestGenerationRecord,
+        updatePullRequestGenerationRecord
+      })
+    )
+    const fields = { base: 'main', title: 'Feature', body: '', draft: false }
+
+    const outcome = result.current.handleGeneratePullRequestFieldsForActive(
+      fields,
+      { base: 0, title: 0, body: 0, draft: 0 },
+      undefined,
+      { autoSubmit: true }
+    )
+    // Stop, then a Generate click whose run finishes before the stopped one winds down.
+    const stopped = useAppStore.getState().pullRequestGenerationRecords[generationKey]
+    expect(stopped?.status).toBe('running')
+    setPullRequestGenerationRecord(generationKey, {
+      ...stopped!,
+      context: { ...stopped!.context, requestId: 12 },
+      status: 'succeeded',
+      result: { ...fields, title: 'Later run' }
+    })
+    answer({ success: false, error: 'canceled', canceled: true })
+
+    await expect(outcome).resolves.toEqual({ result: null })
+  })
 })

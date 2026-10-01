@@ -132,4 +132,43 @@ describe('useChecksPanelCreateReview provider flow', () => {
       })
     )
   })
+
+  it('creates with the finished run even while the panel still shows it generating', async () => {
+    const generated = { base: 'main', title: 'Add create flow', body: 'Details.', draft: false }
+    let finish: () => void = () => {}
+    const input = makeInput({
+      activePullRequestGenerationKey: 'worktree-1::repo-1::feature/create',
+      handleGeneratePullRequestFields: vi.fn(
+        () =>
+          new Promise<{ result: typeof generated }>((resolve) => {
+            finish = () => resolve({ result: generated })
+          })
+      ),
+      ownerSettings: {
+        ...getDefaultSettings('/home/test'),
+        sourceControlAi: { ...getDefaultSourceControlAiSettings(), agentId: 'cursor' }
+      },
+      prAiGenerationEnabled: true,
+      prFieldsAreSeedPlaceholders: true
+    })
+    const { result, rerender } = renderHook(
+      (props: CreateInput) => useChecksPanelCreateReview(props),
+      { initialProps: input }
+    )
+
+    let click: Promise<void> = Promise.resolve()
+    act(() => {
+      click = result.current.handleCreatePullRequest(false)
+    })
+    rerender({ ...input, prGenerating: true })
+    await act(async () => {
+      finish()
+      await click
+    })
+
+    expect(input.createHostedReview).toHaveBeenCalledWith(
+      '/workspace/repo',
+      expect.objectContaining({ title: 'Add create flow', body: 'Details.' })
+    )
+  })
 })
