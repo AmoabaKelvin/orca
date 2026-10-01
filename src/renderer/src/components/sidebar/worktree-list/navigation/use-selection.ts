@@ -43,7 +43,7 @@ export function useSidebarWorktreeSelection(args: {
   )
   const [selectedWorktreeIds, setSelectedWorktreeIds] = useState<Set<string>>(new Set())
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null)
-  // Identity whose single-row selection a context menu created; any later selection change clears it.
+  // Identity whose single-row selection a context menu created; any user selection change resets it.
   const contextMenuSelectionRef = useRef<string | null>(null)
 
   const prunedSelection = pruneWorktreeSelection(
@@ -126,7 +126,11 @@ export function useSidebarWorktreeSelection(args: {
         contextMenuSelectionRef.current = null
         return selectedWorktrees
       }
-      contextMenuSelectionRef.current = worktreeIdentity
+      // Why: a row the user already selected stays selected; only a menu-made selection is undone on close.
+      const userSelectedRow =
+        selectedWorktreeIds.has(worktreeIdentity) &&
+        contextMenuSelectionRef.current !== worktreeIdentity
+      contextMenuSelectionRef.current = userSelectedRow ? null : worktreeIdentity
       setSelectedWorktreeIds(new Set([worktreeIdentity]))
       setSelectionAnchorId(worktreeIdentity)
       return [worktree]
@@ -137,10 +141,10 @@ export function useSidebarWorktreeSelection(args: {
   // Why: a highlight the menu left behind would not be what the mark-Done key acts on (the active row).
   const clearContextMenuSelection = useCallback((worktree: Worktree) => {
     const identity = getWorktreeHostIdentity(worktree)
+    // Why the ref survives: the close broadcast runs before a re-right-click of the same row decides ownership.
     if (contextMenuSelectionRef.current !== identity) {
       return
     }
-    contextMenuSelectionRef.current = null
     setSelectedWorktreeIds((previous) =>
       previous.size === 1 && previous.has(identity) ? new Set() : previous
     )
