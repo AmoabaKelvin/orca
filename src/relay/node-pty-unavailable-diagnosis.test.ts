@@ -174,6 +174,22 @@ describe('diagnoseNodePtyUnavailable', () => {
     expect(text).not.toContain('reconnect to retry')
   })
 
+  it('does not blame the build tools for an absent directory on a host that has them', () => {
+    // The node-pty-less reinstall also leaves no directory when it fails for a non-toolchain
+    // reason (ENOSPC, registry unreachable). Naming tools the host already has is the
+    // confidently-wrong diagnosis #20386's fix must not introduce.
+    const verdict = diagnose({
+      survey: { ...NOTHING_INSTALLED, installed: false, searched: [] },
+      toolchain: toolchain(['make', 'g++', 'python3'])
+    })
+    expect(verdict.reason).toBe('dependency_missing')
+    const text = formatNodePtyUnavailableMessage(verdict)
+    expect(text).toContain(`node-pty is not installed at ${MODULE_DIR}`)
+    expect(text).toContain('build tools needed to compile it are present')
+    expect(text).not.toContain('apt-get')
+    expect(text).not.toContain('not installed.')
+  })
+
   it('reports a binding that killed the probe as a crash rather than a miss', () => {
     const text = message({ probeSignal: 'SIGSEGV' })
     expect(text).toContain('SIGSEGV')
