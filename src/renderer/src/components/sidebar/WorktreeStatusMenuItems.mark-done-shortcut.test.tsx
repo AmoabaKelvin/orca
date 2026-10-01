@@ -39,6 +39,7 @@ function render(contextWorkspaceStatus: string): void {
         contextWorkspaceStatus={contextWorkspaceStatus}
         deletingContext={false}
         isMultiContext={false}
+        markDoneShortcutApplies
         onAssignWorkspaceStatus={() => {}}
         workspaceStatuses={DEFAULT_WORKSPACE_STATUSES}
       />

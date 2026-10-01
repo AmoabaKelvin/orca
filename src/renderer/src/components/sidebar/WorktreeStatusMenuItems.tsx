@@ -21,13 +21,16 @@ export function WorktreeStatusMenuItems(props: {
   contextWorkspaceStatus: string
   deletingContext: boolean
   isMultiContext: boolean
+  markDoneShortcutApplies: boolean
   onAssignWorkspaceStatus: (status: string) => void
   workspaceStatuses: readonly WorkspaceStatusDefinition[]
 }) {
-  // Why: the bare Delete shortcut only acts on In progress rows, so only advertise it there.
+  // Why: the mark-Done key only acts on In progress rows, so only advertise it there.
   const markDoneShortcut = useOptionalShortcutLabel('workspace.markDone')
   const showMarkDoneShortcut =
-    markDoneShortcut !== null && props.contextWorkspaceStatus === DEFAULT_WORKSPACE_STATUS_ID
+    props.markDoneShortcutApplies &&
+    markDoneShortcut !== null &&
+    props.contextWorkspaceStatus === DEFAULT_WORKSPACE_STATUS_ID
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger disabled={props.deletingContext}>
