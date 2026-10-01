@@ -305,6 +305,15 @@ describe('tab strip rows', () => {
     expect(lastRender('terminal-1').isPinned).toBe(true)
   })
 
+  it('re-renders only the two tabs a switch moves the active state between', () => {
+    renderStrip({ activeTabType: 'terminal' })
+    tabRenders.length = 0
+
+    renderStrip({ activeTabType: 'browser' })
+
+    expect(tabRenders.map((render) => render.id)).toEqual(['terminal-1', 'browser-1'])
+  })
+
   it('re-renders a tab when its own data changes', () => {
     renderStrip()
 
