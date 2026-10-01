@@ -70,9 +70,9 @@ async function encodeBitmap(
     )
   } finally {
     // Why: toBlob snapshots the backing store, so once it has answered the step's
-    // canvas can go. Holding six full-size ones until GC runs risks tripping the
-    // renderer's canvas memory budget, which hands back a blank canvas — and a
-    // blank screenshot would upload without anything noticing.
+    // canvas can go. Holding all six until GC runs risks tripping the renderer's
+    // canvas memory budget, which hands back a blank canvas — and a blank
+    // screenshot would upload without anything noticing.
     canvas.width = 0
     canvas.height = 0
   }
