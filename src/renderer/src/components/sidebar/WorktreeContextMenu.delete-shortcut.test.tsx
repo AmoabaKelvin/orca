@@ -288,6 +288,14 @@ describe('WorktreeContextMenu mark-Done shortcut display', () => {
   }
 
   const otherWorktree = { ...inProgressWorktree, id: 'repo::wt-2', name: 'wt-2' }
+  const thirdWorktree = { ...inProgressWorktree, id: 'repo::wt-3', name: 'wt-3' }
+  const inReviewWorktree = {
+    ...inProgressWorktree,
+    id: 'repo::wt-4',
+    name: 'wt-4',
+    workspaceStatus: 'in-review'
+  }
+  let knownWorktrees: Worktree[] = []
 
   function setActive(id: string | null, hostId: string | null = null): void {
     defaultStoreState.activeWorktreeId = id
@@ -298,10 +306,9 @@ describe('WorktreeContextMenu mark-Done shortcut display', () => {
     shortcutLabelMock.mockImplementation((action: string) =>
       action === 'workspace.markDone' ? 'Del' : null
     )
+    knownWorktrees = [inProgressWorktree, otherWorktree, thirdWorktree, inReviewWorktree]
     defaultStoreState.getKnownWorktreeById = (id, hostId) =>
-      [inProgressWorktree, otherWorktree].find(
-        (w) => w.id === id && (!hostId || (w.hostId ?? 'local') === hostId)
-      )
+      knownWorktrees.find((w) => w.id === id && (!hostId || (w.hostId ?? 'local') === hostId))
     setActive(inProgressWorktree.id)
   })
 
@@ -314,6 +321,7 @@ describe('WorktreeContextMenu mark-Done shortcut display', () => {
     }
     mounted.length = 0
     setActive(null)
+    defaultStoreState.deleteStateByWorktreeId = {}
   })
 
   it('advertises the key on the active row in the sidebar list, which handles it', () => {
@@ -332,12 +340,39 @@ describe('WorktreeContextMenu mark-Done shortcut display', () => {
   it('advertises the key on a multi-row selection, which the key acts on', () => {
     expect(
       openMenuShortcuts(
-        renderContextMenu(otherWorktree, undefined, () => [
-          otherWorktree,
-          { ...otherWorktree, id: 'repo::wt-3' }
-        ])
+        renderContextMenu(otherWorktree, undefined, () => [otherWorktree, thirdWorktree])
       )
     ).toEqual(['Del'])
+  })
+
+  it('does not advertise the key on the active row when it is not In progress', () => {
+    setActive(inReviewWorktree.id)
+    expect(openMenuShortcuts(renderContextMenu(inReviewWorktree))).toEqual([])
+  })
+
+  it('does not advertise the key on a selection it would only partly move', () => {
+    expect(
+      openMenuShortcuts(
+        renderContextMenu(otherWorktree, undefined, () => [otherWorktree, inReviewWorktree])
+      )
+    ).toEqual([])
+  })
+
+  it('does not advertise the key on a selection row that is mid-delete', () => {
+    const deleting = {
+      [thirdWorktree.id]: {
+        isDeleting: true,
+        error: null,
+        canForceDelete: false,
+        forceDeleteReason: null
+      }
+    }
+    defaultStoreState.deleteStateByWorktreeId = deleting
+    expect(
+      openMenuShortcuts(
+        renderContextMenu(otherWorktree, undefined, () => [otherWorktree, thirdWorktree])
+      )
+    ).toEqual([])
   })
 
   it('does not advertise the key on a board card, where it does nothing', () => {

@@ -9,18 +9,25 @@ import {
   isWorkspaceStatusId
 } from '../../../../../../shared/workspace-statuses'
 import type { WorkspaceStatusDefinition, Worktree } from '../../../../../../shared/worktree/types'
-import { getWorktreeHostIdentity } from '../../../../../../shared/worktree/host-qualified-identity'
+import { composeWorktreeHostIdentity } from '../../../../../../shared/worktree/host-qualified-identity'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../../../../shared/execution-host'
 import { getDeleteStateForWorktreeHost } from '../../worktree-delete-state-host-match'
 
 export type MarkDoneTarget = Pick<Worktree, 'id' | 'hostId'>
 
-type ActiveWorkspaceState = Pick<AppState, 'activeWorktreeId' | 'activeWorkspaceExecutionHostId'>
+type MarkDoneState = Pick<
+  AppState,
+  | 'activeWorktreeId'
+  | 'activeWorkspaceExecutionHostId'
+  | 'deleteStateByWorktreeId'
+  | 'getKnownWorktreeById'
+  | 'workspaceStatuses'
+>
 
 // Why: a multi-row selection is what the right-click status menu acts on. Otherwise the
 // target is the active row, which arrows move; hover (the delete shortcut's target) is a mouse signal.
-export function getMarkDoneTargets(
-  state: ActiveWorkspaceState,
+function getMarkDoneTargets(
+  state: MarkDoneState,
   selectedWorktrees: readonly MarkDoneTarget[]
 ): readonly MarkDoneTarget[] {
   if (selectedWorktrees.length > 1) {
@@ -35,18 +42,6 @@ export function getMarkDoneTargets(
     : []
 }
 
-/** Whether the key, pressed without a multi-row selection, acts on this row. */
-export function isActiveMarkDoneTarget(
-  state: ActiveWorkspaceState & Pick<AppState, 'getKnownWorktreeById'>,
-  worktree: MarkDoneTarget
-): boolean {
-  const [target] = getMarkDoneTargets(state, [])
-  const active = target ? state.getKnownWorktreeById(target.id, target.hostId) : undefined
-  return (
-    active !== undefined && getWorktreeHostIdentity(active) === getWorktreeHostIdentity(worktree)
-  )
-}
-
 function hasStatus(
   worktree: Pick<Worktree, 'workspaceStatus'> | undefined,
   status: string,
@@ -59,21 +54,17 @@ function hasStatus(
   )
 }
 
-/** Requests moving each In progress target to Done; true means a write was requested, not persisted. */
-export function markWorkspacesDone(
-  state: Pick<
-    AppState,
-    'deleteStateByWorktreeId' | 'getKnownWorktreeById' | 'updateWorktreeMeta' | 'workspaceStatuses'
-  >,
-  targets: readonly MarkDoneTarget[]
-): boolean {
+/** The rows the key would move; the only place its target and eligibility rules live. */
+export function resolveMarkDoneTargets(
+  state: MarkDoneState,
+  selectedWorktrees: readonly MarkDoneTarget[]
+): readonly Worktree[] {
   const statuses = state.workspaceStatuses
   // Why: statuses are user-editable; a board without Done has nothing to move to.
-  const doneStatus = statuses.find((status) => status.id === DONE_WORKSPACE_STATUS_ID)
-  if (!doneStatus) {
-    return false
+  if (!statuses.some((status) => status.id === DONE_WORKSPACE_STATUS_ID)) {
+    return []
   }
-  const worktrees = targets.flatMap((target) => {
+  return getMarkDoneTargets(state, selectedWorktrees).flatMap((target) => {
     const worktree = state.getKnownWorktreeById(target.id, target.hostId)
     if (!worktree || !hasStatus(worktree, DEFAULT_WORKSPACE_STATUS_ID, statuses)) {
       return []
@@ -83,7 +74,35 @@ export function markWorkspacesDone(
       ? []
       : [worktree]
   })
-  if (worktrees.length === 0) {
+}
+
+function hostQualifiedKey(worktree: MarkDoneTarget): string {
+  return composeWorktreeHostIdentity(worktree.hostId ?? LOCAL_EXECUTION_HOST_ID, worktree.id)
+}
+
+/** Whether the key, with `rows` as the sidebar selection, would move exactly `rows`. */
+export function markDoneKeyMovesExactly(
+  state: MarkDoneState,
+  rows: readonly MarkDoneTarget[]
+): boolean {
+  const moved = resolveMarkDoneTargets(state, rows)
+  const movedKeys = new Set(moved.map(hostQualifiedKey))
+  return (
+    moved.length === rows.length &&
+    movedKeys.size === rows.length &&
+    rows.every((row) => movedKeys.has(hostQualifiedKey(row)))
+  )
+}
+
+/** Requests moving the key's rows to Done; true means a write was requested, not persisted. */
+export function markWorkspacesDone(
+  state: MarkDoneState & Pick<AppState, 'updateWorktreeMeta'>,
+  selectedWorktrees: readonly MarkDoneTarget[]
+): boolean {
+  const statuses = state.workspaceStatuses
+  const doneStatus = statuses.find((status) => status.id === DONE_WORKSPACE_STATUS_ID)
+  const worktrees = resolveMarkDoneTargets(state, selectedWorktrees)
+  if (!doneStatus || worktrees.length === 0) {
     return false
   }
   for (const worktree of worktrees) {

@@ -14,7 +14,7 @@ import {
 } from './workspace-lineage-menu-actions'
 import { parseWorkspaceKey } from '../../../../shared/workspace-scope'
 import { getDeleteStateForWorktreeHost } from './worktree-delete-state-host-match'
-import { isActiveMarkDoneTarget } from './worktree-list/navigation/mark-done'
+import { markDoneKeyMovesExactly } from './worktree-list/navigation/mark-done'
 import {
   CLOSE_ALL_CONTEXT_MENUS_EVENT,
   EMPTY_BROWSER_TABS_BY_WORKTREE,
@@ -162,10 +162,10 @@ export function useWorktreeContextMenuModel({
     (item) => getDeleteStateForWorktreeHost(item, deleteStateByWorktreeId)?.isDeleting
   )
   const contextDeletePending = isMultiContext ? deletingContext : deletingSubtree
-  // Why: a single-row key press acts on the active workspace, not the right-clicked row; a
-  // multi-row context is the current selection, which the key does act on.
-  const markDoneKeyActsOnContext = useAppStore(
-    (s) => menuOpen && (isMultiContext || isActiveMarkDoneTarget(s, worktree))
+  // Why: right-click leaves the sidebar selection equal to the menu's rows, so ask the key's own
+  // resolver. Only the sidebar list handles the key; board cards wire their own status callback.
+  const markDoneShortcutApplies = useAppStore(
+    (s) => menuOpen && !onAssignWorkspaceStatus && markDoneKeyMovesExactly(s, contextWorktrees)
   )
   const contextWorkspaceStatus = useMemo(() => {
     const [first, ...rest] = activeContextWorktrees
@@ -376,8 +376,7 @@ export function useWorktreeContextMenuModel({
     isDeleting,
     isMultiContext,
     lineageDescendantCount,
-    // Why: only the sidebar list handles workspace.markDone; board cards wire their own status callback.
-    markDoneShortcutApplies: !onAssignWorkspaceStatus && markDoneKeyActsOnContext,
+    markDoneShortcutApplies,
     menuOpen,
     menuPoint,
     onContextMenuSelect,
