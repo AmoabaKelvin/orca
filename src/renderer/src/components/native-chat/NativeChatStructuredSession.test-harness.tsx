@@ -9,6 +9,7 @@ import type { NativeChatApprovalCardProps } from './NativeChatApprovalCard'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 import type { NativeChatQuestionCardProps } from './NativeChatQuestionCard'
 import type { NativeChatLaunchSeed } from './native-chat-composer-types'
+import type { NativeChatMessageListHandle } from './use-native-chat-reveal-latest'
 import type { NativeChatOlderPageResult } from './native-chat-pagination'
 import type { StructuredAgentSessionThreadGoal } from './use-structured-agent-session-thread-goal'
 import type { StructuredAgentSessionLaunchLifecycle } from '@/lib/structured-agent-session-launch'
@@ -50,7 +51,7 @@ export function DeliveryNoticesMock({
 }
 
 type StructuredSessionMessageListProps = {
-  ref?: React.Ref<{ revealLatest: () => void }>
+  ref?: React.Ref<NativeChatMessageListHandle>
   allowFileUriLinks?: boolean
   isVisible?: boolean
   onLinkClick?: (...args: unknown[]) => void
@@ -261,7 +262,10 @@ export function createStructuredSessionMocks() {
     nativeChatMessageList: () => ({
       NativeChatMessageList: (props: typeof mocks.messageListProps) => {
         mocks.messageListProps = props
-        useImperativeHandle(props?.ref, () => ({ revealLatest: mocks.revealLatest }))
+        useImperativeHandle(props?.ref, () => ({
+          revealLatest: mocks.revealLatest,
+          holdRevealLatest: () => mocks.revealLatest
+        }))
         return <DeliveryNoticesMock notices={props?.deliveryNotices} />
       }
     }),
