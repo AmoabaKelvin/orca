@@ -111,7 +111,7 @@ export function moveGesture(
   return { ...state, gesture: { ...gesture, shape: dragShapeTo(gesture.shape, point) } }
 }
 
-// Commits the gesture as one undoable step. An erase that removed nothing
+// Commits the gesture as one undoable step. A gesture with no visible result
 // leaves history untouched so Undo never has a step with no visible effect.
 export function endGesture(state: MarkupEditorState, pointerId: number): MarkupEditorState {
   const { doc, gesture } = state
@@ -119,7 +119,7 @@ export function endGesture(state: MarkupEditorState, pointerId: number): MarkupE
     return state
   }
   if (gesture.kind === 'draw') {
-    return { doc: commitShape(doc, gesture.shape), gesture: null }
+    return { doc: hasNoSize(gesture.shape) ? doc : commitShape(doc, gesture.shape), gesture: null }
   }
   const remaining = doc.shapes.filter((shape) => !gesture.erasedIds.has(shape.id))
   return {
@@ -135,9 +135,10 @@ export function cancelGesture(state: MarkupEditorState, pointerId: number): Mark
 }
 
 // Why: Undo mid-gesture takes back only that gesture, as the newest step, so the
-// next Undo takes back the last committed mark rather than both at once. An erase
-// that hides nothing is no step, so Undo goes to the document. Either way the
-// gesture is dropped, so the rest of that drag does nothing until the next press.
+// next Undo takes back the last committed mark rather than both at once. A gesture
+// that shows nothing yet (an erase hiding nothing, an unmoved shape press) is no
+// step, so Undo goes to the document. Either way the gesture is dropped, so the
+// rest of that drag does nothing until the next press.
 export function undoMarkup(state: MarkupEditorState): MarkupEditorState {
   if (gestureHasEffect(state.gesture)) {
     return { ...state, gesture: null }
@@ -151,7 +152,21 @@ export function canUndoMarkup(state: MarkupEditorState): boolean {
 
 // Whether releasing the gesture would change the document.
 function gestureHasEffect(gesture: MarkupGesture | null): boolean {
-  return gesture !== null && (gesture.kind === 'draw' || gesture.erasedIds.size > 0)
+  if (gesture === null) {
+    return false
+  }
+  return gesture.kind === 'draw' ? !hasNoSize(gesture.shape) : gesture.erasedIds.size > 0
+}
+
+// Why: a rectangle, ellipse or arrow pressed without dragging paints nothing; saved,
+// it would be an invisible topmost mark that soaks up the next eraser click there.
+function hasNoSize(shape: DraggedShape): boolean {
+  return (
+    shape.kind !== 'pen' &&
+    shape.kind !== 'highlight' &&
+    shape.from.x === shape.to.x &&
+    shape.from.y === shape.to.y
+  )
 }
 
 // Why: with nothing to redo the document stays put, so a held gesture is kept.
