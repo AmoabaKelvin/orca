@@ -234,15 +234,20 @@ export function EditorFileTabContextMenu({
             'Copy Relative Path'
           )}
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          disabled={revealBlocked}
-          onSelect={() => void revealInFileManager(file.filePath)}
-        >
-          <ExternalLink className="size-3.5" />
-          {getRevealInFileManagerLabel()}
-          {revealBlocked ? <LocalOnlyMenuHint /> : null}
-        </DropdownMenuItem>
+        {/* Why: virtual editor tabs use synthetic ids instead of on-disk paths. */}
+        {file.mode !== 'check-details' && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={revealBlocked}
+              onSelect={() => void revealInFileManager(file.filePath)}
+            >
+              <ExternalLink className="size-3.5" />
+              {getRevealInFileManagerLabel()}
+              {revealBlocked ? <LocalOnlyMenuHint /> : null}
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
