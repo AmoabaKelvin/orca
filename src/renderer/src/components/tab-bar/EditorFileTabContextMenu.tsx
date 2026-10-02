@@ -20,34 +20,17 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { useAppStore } from '@/store'
-import { showLocalPathOpenBlockedToast } from '@/lib/local-path-open-guard'
 import { useOptionalShortcutLabel } from '@/hooks/useShortcutLabel'
 import type { OpenFile } from '../../store/slices/editor'
-import { shouldBlockEditorTabLocalOpen } from './editor-tab-local-open-guard'
 import { translate } from '@/i18n/i18n'
+import { LocalOnlyMenuHint } from '@/components/local-only-menu-hint'
+import {
+  getRevealInFileManagerLabel,
+  isRevealInFileManagerBlocked,
+  revealInFileManager
+} from '@/lib/reveal-in-file-manager'
 import { TabWorkspaceLayoutMenuSection } from './TabWorkspaceLayoutMenuSection'
 import { TAB_CONTEXT_MENU_CONTENT_CLASS } from './tab-context-menu-sizing'
-
-const isMac = navigator.userAgent.includes('Mac')
-const isLinux = navigator.userAgent.includes('Linux')
-
-/** Platform-appropriate label: macOS → Finder, Windows → File Explorer, Linux → Files */
-function getRevealLabel(): string {
-  return isMac
-    ? translate(
-        'auto.components.tab.bar.EditorFileTabContextMenu.revealInFinder',
-        'Reveal in Finder'
-      )
-    : isLinux
-      ? translate(
-          'auto.components.tab.bar.EditorFileTabContextMenu.openContainingFolder',
-          'Open Containing Folder'
-        )
-      : translate(
-          'auto.components.tab.bar.EditorFileTabContextMenu.revealInFileExplorer',
-          'Reveal in File Explorer'
-        )
-}
 
 type EditorFileTabContextMenuProps = {
   open: boolean
@@ -116,6 +99,12 @@ export function EditorFileTabContextMenu({
   const renameShortcut = useOptionalShortcutLabel('tab.rename')
   const closeShortcut = useOptionalShortcutLabel('tab.close')
   const closeAllShortcut = useOptionalShortcutLabel('tab.closeAll')
+  const revealBlocked = useAppStore((s) =>
+    isRevealInFileManagerBlocked(s.settings, {
+      connectionId: repoConnectionId,
+      runtimeEnvironmentId: file.runtimeEnvironmentId
+    })
+  )
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
@@ -247,22 +236,12 @@ export function EditorFileTabContextMenu({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onSelect={() => {
-            if (
-              shouldBlockEditorTabLocalOpen(
-                useAppStore.getState().settings,
-                file.runtimeEnvironmentId,
-                repoConnectionId
-              )
-            ) {
-              showLocalPathOpenBlockedToast()
-              return
-            }
-            window.api.shell.openPath(file.filePath)
-          }}
+          disabled={revealBlocked}
+          onSelect={() => void revealInFileManager(file.filePath)}
         >
           <ExternalLink className="size-3.5" />
-          {getRevealLabel()}
+          {getRevealInFileManagerLabel()}
+          {revealBlocked ? <LocalOnlyMenuHint /> : null}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
