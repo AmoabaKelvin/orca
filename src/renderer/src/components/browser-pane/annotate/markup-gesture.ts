@@ -10,7 +10,11 @@ import {
   type MarkupShape,
   type TextShape
 } from './markup-drawing-model'
-import { shapesTouchedBySweep, type TextInkBoxMeasurer } from './markup-shape-hit-test'
+import {
+  shapesTouchedBySweep,
+  topmostShapeAt,
+  type TextInkBoxMeasurer
+} from './markup-shape-hit-test'
 
 export type DraggedShape = Exclude<MarkupShape, TextShape>
 
@@ -41,14 +45,18 @@ export function beginEraseGesture(
   if (settled.gesture) {
     return settled
   }
-  // Sweeping a zero-length segment makes a plain click erase what is under it.
-  const gesture = sweepEraser(
-    { kind: 'erase', pointerId, last: point, erasedIds: new Set() },
-    settled.doc.shapes,
-    point,
-    measureTextInkBox
-  )
-  return { ...settled, gesture }
+  // Why: a click takes only the mark on top. The first real move makes it a drag,
+  // and that sweep starts at the press point, so it takes the rest under it too.
+  const topmost = topmostShapeAt(settled.doc.shapes, point, measureTextInkBox)
+  return {
+    ...settled,
+    gesture: {
+      kind: 'erase',
+      pointerId,
+      last: point,
+      erasedIds: new Set(topmost ? [topmost.id] : [])
+    }
+  }
 }
 
 // Why: a pointer cannot press twice without releasing, so a press from the
@@ -69,6 +77,11 @@ export function moveGesture(
     return state
   }
   if (gesture.kind === 'erase') {
+    // Why: a move that reports the same point sweeps nothing new, and must not
+    // turn a click into a drag.
+    if (point.x === gesture.last.x && point.y === gesture.last.y) {
+      return state
+    }
     return { ...state, gesture: sweepEraser(gesture, state.doc.shapes, point, measureTextInkBox) }
   }
   return { ...state, gesture: { ...gesture, shape: dragShapeTo(gesture.shape, point) } }

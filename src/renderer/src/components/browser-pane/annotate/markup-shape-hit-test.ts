@@ -33,11 +33,32 @@ export function shapesTouchedBySweep(
   to: MarkupPoint,
   measureTextInkBox: TextInkBoxMeasurer
 ): MarkupShape[] {
-  return shapes.filter((shape) =>
-    shape.kind === 'text'
-      ? sweepTouchesBox(from, to, measureTextInkBox(shape))
-      : sweepTouchesStroke(from, to, strokedInk(shape))
-  )
+  return shapes.filter((shape) => sweepTouchesShape(shape, from, to, measureTextInkBox))
+}
+
+// The mark drawn last among those under `point`, i.e. the one painted on top.
+export function topmostShapeAt(
+  shapes: readonly MarkupShape[],
+  point: MarkupPoint,
+  measureTextInkBox: TextInkBoxMeasurer
+): MarkupShape | undefined {
+  for (let i = shapes.length - 1; i >= 0; i -= 1) {
+    if (sweepTouchesShape(shapes[i], point, point, measureTextInkBox)) {
+      return shapes[i]
+    }
+  }
+  return undefined
+}
+
+function sweepTouchesShape(
+  shape: MarkupShape,
+  from: MarkupPoint,
+  to: MarkupPoint,
+  measureTextInkBox: TextInkBoxMeasurer
+): boolean {
+  return shape.kind === 'text'
+    ? sweepTouchesBox(from, to, measureTextInkBox(shape))
+    : sweepTouchesStroke(from, to, strokedInk(shape))
 }
 
 function sweepTouchesStroke(from: MarkupPoint, to: MarkupPoint, ink: StrokedInk): boolean {

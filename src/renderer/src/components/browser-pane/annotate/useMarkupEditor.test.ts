@@ -96,6 +96,40 @@ describe('useMarkupEditor gestures', () => {
     expect(result.current.shapes).toEqual([first, second])
   })
 
+  it('shows a click on overlapping marks taking only the newest, and a drag taking both', () => {
+    const result = renderEditor({ wrapper: StrictMode })
+    drawLine(result, 0)
+    drawLine(result, 0)
+    const [older, newer] = result.current.shapes
+
+    act(() => result.current.setTool('eraser'))
+    act(() => result.current.onPointerDown(pointerEvent(50, 0)))
+    expect(result.current.shapes).toEqual([older])
+    act(() => result.current.onPointerUp(pointerEvent(50, 0)))
+    expect(result.current.shapes).toEqual([older])
+
+    act(() => result.current.undo())
+    act(() => result.current.onPointerDown(pointerEvent(50, 0)))
+    act(() => result.current.onPointerMove(pointerEvent(50, 40)))
+    expect(result.current.shapes).toEqual([])
+    act(() => result.current.onPointerUp(pointerEvent(50, 40)))
+
+    act(() => result.current.undo())
+    expect(result.current.shapes).toEqual([older, newer])
+  })
+
+  it('adds no undo step for an eraser click on empty space', () => {
+    const result = renderEditor()
+    drawLine(result, 0)
+
+    act(() => result.current.setTool('eraser'))
+    act(() => result.current.onPointerDown(pointerEvent(50, 300)))
+    act(() => result.current.onPointerUp(pointerEvent(50, 300)))
+    act(() => result.current.undo())
+
+    expect(result.current.shapes).toEqual([])
+  })
+
   it('lets only the finger that started an erase steer and end it', () => {
     const result = renderEditor()
     drawLine(result, 0)

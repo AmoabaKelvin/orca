@@ -57,6 +57,39 @@ describe('erase gesture', () => {
     expect(state.gesture).toBeNull()
   })
 
+  it('erases only the newest of two overlapping marks on a click', () => {
+    const before = editorWith(line('older', 0), line('newer', 0))
+    const pressed = erase(before, [{ x: 50, y: 0 }])
+    // The pointer is still down at the press point: only what a release commits is hidden.
+    expect(erasedIds(pressed)).toEqual(new Set(['newer']))
+
+    const after = endGesture(pressed, 1)
+    expect(ids(after)).toEqual(['older'])
+    expect(undoShape(after.doc).shapes.map((shape) => shape.id)).toEqual(['older', 'newer'])
+  })
+
+  it('keeps a click a click when a move reports the press point again', () => {
+    const pressed = erase(editorWith(line('older', 0), line('newer', 0)), [{ x: 50, y: 0 }])
+    const resent = moveGesture(pressed, 1, { x: 50, y: 0 }, noText)
+
+    expect(resent).toBe(pressed)
+    expect(ids(endGesture(resent, 1))).toEqual(['older'])
+  })
+
+  it('erases every mark under the press point once the click becomes a drag', () => {
+    const before = editorWith(line('older', 0), line('newer', 0), line('away', 200))
+    // The drag leaves the marks behind straight away, so only the press point touched them.
+    const dragged = erase(before, [
+      { x: 50, y: 0 },
+      { x: 50, y: 60 }
+    ])
+    expect(erasedIds(dragged)).toEqual(new Set(['older', 'newer']))
+
+    const after = endGesture(dragged, 1)
+    expect(ids(after)).toEqual(['away'])
+    expect(undoShape(after.doc).shapes.map((shape) => shape.id)).toEqual(['older', 'newer', 'away'])
+  })
+
   it('records a whole drag as one undo step that redo replays', () => {
     const before = editorWith(line('a', 0), line('b', 100), line('c', 200))
     const after = endGesture(
