@@ -117,6 +117,24 @@ describe('useMarkupEditor gestures', () => {
     expect(result.current.shapes).toEqual([first, second])
   })
 
+  it('abandons an in-flight erase when undo is pressed, leaving redo intact', () => {
+    const result = renderEditor()
+    drawLine(result, 0)
+    drawLine(result, 200)
+    const [first, second] = result.current.shapes
+
+    act(() => result.current.setTool('eraser'))
+    act(() => result.current.onPointerDown(pointerEvent(50, 0)))
+    act(() => result.current.undo())
+    expect(result.current.shapes).toEqual([first])
+
+    act(() => result.current.onPointerUp(pointerEvent(50, 0)))
+    expect(result.current.shapes).toEqual([first])
+
+    act(() => result.current.redo())
+    expect(result.current.shapes).toEqual([first, second])
+  })
+
   it('drops an in-flight stroke when everything is cleared', () => {
     const result = renderEditor()
 
