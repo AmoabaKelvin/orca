@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  clearShapes,
   commitShape,
   createMarkupDocument,
   redoShape,
@@ -9,10 +10,13 @@ import {
   type TextShape
 } from './markup-drawing-model'
 import {
+  applyDocumentCommand,
   beginDrawGesture,
   beginEraseGesture,
+  canUndoMarkup,
   endGesture,
   moveGesture,
+  undoMarkup,
   type MarkupEditorState
 } from './markup-gesture'
 
@@ -274,5 +278,66 @@ describe('draw gesture', () => {
     ])
     // A stray second release has no gesture left to commit.
     expect(endGesture(ended, 1)).toBe(ended)
+  })
+})
+
+describe('history commands mid-gesture', () => {
+  // A stroke from (0, 300) to (50, 300), still held down.
+  function drawing(state: MarkupEditorState): MarkupEditorState {
+    return moveGesture(beginDrawGesture(state, 1, line('held', 300)), 1, { x: 50, y: 300 }, noText)
+  }
+
+  // The rest of the held drag, which must neither draw nor erase.
+  function finishDrag(state: MarkupEditorState): MarkupEditorState {
+    return endGesture(moveGesture(state, 1, { x: 50, y: 100 }, noText), 1)
+  }
+
+  it('undo mid-stroke drops only the stroke, and the next undo takes the last mark', () => {
+    const before = editorWith(line('a', 0), line('b', 100))
+    const held = drawing(before)
+    expect(canUndoMarkup(held)).toBe(true)
+
+    const undone = undoMarkup(held)
+    expect(undone.doc).toBe(before.doc)
+    expect(undone.gesture).toBeNull()
+
+    const released = finishDrag(undone)
+    expect(released.doc).toBe(before.doc)
+    expect(released.gesture).toBeNull()
+    expect(ids(undoMarkup(released))).toEqual(['a'])
+  })
+
+  it('undo mid-erase restores the hidden marks and leaves the document alone', () => {
+    const before = editorWith(line('a', 0), line('b', 100))
+    const held = erase(before, [{ x: 50, y: 0 }])
+    expect(erasedIds(held)).toEqual(new Set(['a']))
+
+    const released = finishDrag(undoMarkup(held))
+    expect(released.doc).toBe(before.doc)
+    expect(ids(undoMarkup(released))).toEqual(['a'])
+  })
+
+  it('a second undo while the pointer is still down undoes the last committed mark', () => {
+    const held = undoMarkup(drawing(editorWith(line('a', 0), line('b', 100))))
+
+    const again = undoMarkup(held)
+    expect(ids(again)).toEqual(['a'])
+    expect(ids(finishDrag(again))).toEqual(['a'])
+  })
+
+  it('redo mid-gesture cancels the gesture, then redoes', () => {
+    const undone = undoMarkup(editorWith(line('a', 0), line('b', 100)))
+
+    const redone = applyDocumentCommand(drawing(undone), redoShape)
+    expect(ids(redone)).toEqual(['a', 'b'])
+    expect(ids(finishDrag(redone))).toEqual(['a', 'b'])
+  })
+
+  it('clear mid-erase cancels the erase, then clears as one undo step', () => {
+    const held = erase(editorWith(line('a', 0), line('b', 100)), [{ x: 50, y: 0 }])
+
+    const released = finishDrag(applyDocumentCommand(held, clearShapes))
+    expect(ids(released)).toEqual([])
+    expect(ids(undoMarkup(released))).toEqual(['a', 'b'])
   })
 })

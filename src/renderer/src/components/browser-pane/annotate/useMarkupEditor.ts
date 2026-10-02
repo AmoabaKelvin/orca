@@ -3,12 +3,16 @@ import { createBrowserUuid } from '@/lib/browser-uuid'
 import { blitMarkupScene, renderCommittedLayer } from './markup-canvas-render'
 import { useMarkupKeyboardShortcuts, type PendingText } from './useMarkupKeyboardShortcuts'
 import { useMarkupPointerHandlers } from './useMarkupPointerHandlers'
-import type { MarkupEditorState } from './markup-gesture'
+import {
+  applyDocumentCommand,
+  canUndoMarkup,
+  undoMarkup,
+  type MarkupEditorState
+} from './markup-gesture'
 import type { TextInkBoxMeasurer } from './markup-shape-hit-test'
 import { textInkBox } from './markup-shape-render'
 import {
   canRedo,
-  canUndo,
   clearShapes,
   commitShape,
   createMarkupDocument,
@@ -16,8 +20,6 @@ import {
   DEFAULT_MARKUP_FONT_SIZE,
   DEFAULT_MARKUP_WIDTH,
   redoShape,
-  undoShape,
-  type MarkupDocument,
   type MarkupTool
 } from './markup-drawing-model'
 
@@ -121,21 +123,14 @@ export function useMarkupEditor(busy: boolean, onCancel: () => void) {
     return () => cancelAnimationFrame(handle)
   }, [pendingText])
 
-  // Why: a history command drops the in-flight gesture, so a release can never
-  // commit marks that were hidden against a document that has since moved.
-  const applyHistory = useCallback(
-    (step: (current: MarkupDocument) => MarkupDocument) =>
-      setState((state) => ({ doc: step(state.doc), gesture: null })),
-    []
-  )
-  const undo = useCallback(() => applyHistory(undoShape), [applyHistory])
-  const redo = useCallback(() => applyHistory(redoShape), [applyHistory])
+  const undo = useCallback(() => setState(undoMarkup), [])
+  const redo = useCallback(() => setState((state) => applyDocumentCommand(state, redoShape)), [])
   const clear = useCallback(() => {
     // Why: also drop any open text input so a clear leaves a truly clean slate —
     // otherwise a pending input blur can re-add text.
     setPendingText(null)
-    applyHistory(clearShapes)
-  }, [applyHistory])
+    setState((state) => applyDocumentCommand(state, clearShapes))
+  }, [])
 
   const measureTextInkBox = useCallback<TextInkBoxMeasurer>((shape) => {
     const ctx = committedLayerRef.current?.getContext('2d')
@@ -191,7 +186,7 @@ export function useMarkupEditor(busy: boolean, onCancel: () => void) {
     fontSize,
     pendingText,
     shapes,
-    canUndo: canUndo(doc),
+    canUndo: canUndoMarkup({ doc, gesture }),
     canRedo: canRedo(doc),
     setTool,
     setColor,

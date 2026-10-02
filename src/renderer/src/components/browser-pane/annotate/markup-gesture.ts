@@ -3,8 +3,10 @@
 // latest state, and keeps the transitions safe to run twice under StrictMode.
 
 import {
+  canUndo,
   commitShape,
   setShapes,
+  undoShape,
   type MarkupDocument,
   type MarkupPoint,
   type MarkupShape,
@@ -102,6 +104,25 @@ export function endGesture(state: MarkupEditorState, pointerId: number): MarkupE
     doc: remaining.length === doc.shapes.length ? doc : setShapes(doc, remaining),
     gesture: null
   }
+}
+
+// Why: Undo mid-gesture takes back only that gesture, as the newest step, so the
+// next Undo takes back the last committed mark rather than both at once. With the
+// gesture gone, the rest of that drag does nothing until the next press.
+export function undoMarkup(state: MarkupEditorState): MarkupEditorState {
+  return state.gesture ? { ...state, gesture: null } : { ...state, doc: undoShape(state.doc) }
+}
+
+export function canUndoMarkup(state: MarkupEditorState): boolean {
+  return state.gesture !== null || canUndo(state.doc)
+}
+
+// Redo and Clear replace the document, so the gesture made against it is dropped.
+export function applyDocumentCommand(
+  state: MarkupEditorState,
+  command: (doc: MarkupDocument) => MarkupDocument
+): MarkupEditorState {
+  return { doc: command(state.doc), gesture: null }
 }
 
 type EraseGesture = Extract<MarkupGesture, { kind: 'erase' }>
