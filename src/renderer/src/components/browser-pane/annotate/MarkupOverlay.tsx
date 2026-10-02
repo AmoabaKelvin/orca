@@ -65,8 +65,8 @@ export function MarkupOverlay({
         onPointerDown={editor.onPointerDown}
         onPointerMove={editor.onPointerMove}
         onPointerUp={editor.onPointerUp}
-        onPointerCancel={editor.onPointerUp}
-        // Why: ends the gesture however the pointer was lost, so one can never be left open.
+        onPointerCancel={editor.onPointerCancel}
+        // Why: commits a gesture whose release never arrived, so one can never be left open.
         onLostPointerCapture={editor.onPointerUp}
       />
 

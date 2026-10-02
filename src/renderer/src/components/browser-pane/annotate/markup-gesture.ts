@@ -128,6 +128,12 @@ export function endGesture(state: MarkupEditorState, pointerId: number): MarkupE
   }
 }
 
+// Why: a cancelled pointer (an OS gesture or palm rejection took it) was not a
+// deliberate release, so its gesture is discarded rather than committed.
+export function cancelGesture(state: MarkupEditorState, pointerId: number): MarkupEditorState {
+  return state.gesture?.pointerId === pointerId ? { ...state, gesture: null } : state
+}
+
 // Why: Undo mid-gesture takes back only that gesture, as the newest step, so the
 // next Undo takes back the last committed mark rather than both at once. An erase
 // that hides nothing is no step, so Undo goes to the document. Either way the
