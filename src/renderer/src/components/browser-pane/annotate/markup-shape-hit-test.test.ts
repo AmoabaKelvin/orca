@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { arrowHeadGeometry, type MarkupPoint, type MarkupShape } from './markup-drawing-model'
-import { shapesTouchedBySweep } from './markup-shape-hit-test'
+import { shapesTouchedBySweep, topmostShapeAt } from './markup-shape-hit-test'
 
 // Pinned here on purpose: how close the pointer must come is part of the behaviour.
 const ERASER_RADIUS = 8
@@ -184,5 +184,21 @@ describe('shapesTouchedBySweep', () => {
       (shape) => shape.id
     )
     expect(ids).toEqual(['under', 'over'])
+  })
+})
+
+describe('topmostShapeAt', () => {
+  it('returns the mark drawn last among those under the point', () => {
+    const points = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 }
+    ]
+    const shapes: MarkupShape[] = [
+      { id: 'under', color: '#eab308', kind: 'highlight', width: 4, points },
+      { id: 'over', color: '#ef4444', kind: 'pen', width: 2, points },
+      { id: 'away', color: '#ef4444', kind: 'pen', width: 2, points: [{ x: 0, y: 300 }] }
+    ]
+    expect(topmostShapeAt(shapes, { x: 50, y: 0 }, noText)?.id).toBe('over')
+    expect(topmostShapeAt(shapes, { x: 50, y: 150 }, noText)).toBeUndefined()
   })
 })
