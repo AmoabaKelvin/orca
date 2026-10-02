@@ -17,9 +17,7 @@ type ItemProps = { onSelect?: () => void; children?: ReactNode }
 
 const items = vi.hoisted(() => ({ list: [] as ItemProps[] }))
 const imageCopy = vi.hoisted(() => ({
-  convertImageBlobToPng: vi.fn(),
-  toastError: vi.fn(),
-  toastSuccess: vi.fn()
+  convertImageBlobToPng: vi.fn()
 }))
 
 vi.mock('@/components/ui/dropdown-menu', () => ({
@@ -66,9 +64,21 @@ vi.mock('@/lib/image-blob-png', async (importOriginal) => ({
   convertImageBlobToPng: imageCopy.convertImageBlobToPng
 }))
 
-vi.mock('sonner', () => ({
-  toast: { error: imageCopy.toastError, success: imageCopy.toastSuccess }
-}))
+const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
+vi.mock('sonner', () => ({ toast: toasts }))
+
+const tooltips = vi.hoisted((): { list: ReactNode[] } => ({ list: [] }))
+vi.mock('@/components/ui/tooltip', () => {
+  const Pass = ({ children }: { children?: ReactNode }) => children
+  return {
+    Tooltip: Pass,
+    TooltipTrigger: Pass,
+    TooltipContent: ({ children }: { children?: ReactNode }) => {
+      tooltips.list.push(children)
+      return null
+    }
+  }
+})
 
 vi.mock('@/components/tab-bar/TabWorkspaceLayoutMenuSection', () => ({
   TabWorkspaceLayoutMenuSection: () => 'Move Tab to Split'
@@ -90,11 +100,13 @@ function childrenText(children: ReactNode): string {
 function Harness({
   onSwitchToTerminal,
   structured = false,
-  enabled = true
+  enabled = true,
+  orcaSessionId
 }: {
   onSwitchToTerminal?: () => void
   structured?: boolean
   enabled?: boolean
+  orcaSessionId?: string
 }) {
   const rootRef = createRef<HTMLDivElement>()
   const { menu } = useNativeChatContextMenu({
@@ -103,6 +115,7 @@ function Harness({
     onSwitchToTerminal,
     showTerminalPaneActions: !structured,
     workspaceLayout: structured ? { unifiedTabId: 'chat-tab', groupId: 'group-1' } : undefined,
+    resolveOrcaSessionId: orcaSessionId === undefined ? undefined : async () => orcaSessionId,
     actions: {
       ...emptyNativeChatContextMenuActions,
       onPaste: vi.fn()
@@ -175,8 +188,8 @@ describe('useNativeChatContextMenu', () => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
     imageCopy.convertImageBlobToPng.mockReset()
-    imageCopy.toastError.mockReset()
-    imageCopy.toastSuccess.mockReset()
+    toasts.error.mockReset()
+    toasts.success.mockReset()
   })
 
   it('copies the right-clicked image as a PNG of its full-size source', async () => {
@@ -189,8 +202,8 @@ describe('useNativeChatContextMenu', () => {
         `data:image/png;base64,${Buffer.from('png:blob:full-size').toString('base64')}`
       )
     )
-    expect(imageCopy.toastSuccess).toHaveBeenCalledWith('Image copied')
-    expect(imageCopy.toastError).not.toHaveBeenCalled()
+    expect(toasts.success).toHaveBeenCalledWith('Image copied')
+    expect(toasts.error).not.toHaveBeenCalled()
   })
 
   it('offers no image copy when the right-click is not on an image', () => {
@@ -206,7 +219,7 @@ describe('useNativeChatContextMenu', () => {
     const { writeClipboardImage } = await rightClickImageAndCopy({ revokeBeforeSelect: true })
 
     await waitFor(() => expect(writeClipboardImage).toHaveBeenCalledOnce())
-    expect(imageCopy.toastError).not.toHaveBeenCalled()
+    expect(toasts.error).not.toHaveBeenCalled()
   })
 
   it('releases the read image when the pane hides with the menu open', () => {
@@ -234,10 +247,10 @@ describe('useNativeChatContextMenu', () => {
       blobFor: () => new Blob([new Uint8Array(CLIPBOARD_IMAGE_MAX_SOURCE_BYTES + 1)])
     })
 
-    await waitFor(() => expect(imageCopy.toastError).toHaveBeenCalled())
+    await waitFor(() => expect(toasts.error).toHaveBeenCalled())
     expect(writeClipboardImage).not.toHaveBeenCalled()
-    expect(imageCopy.toastSuccess).not.toHaveBeenCalled()
-    expect(imageCopy.toastError).toHaveBeenCalledWith("Couldn't copy image", {
+    expect(toasts.success).not.toHaveBeenCalled()
+    expect(toasts.error).toHaveBeenCalledWith("Couldn't copy image", {
       description: 'The image is too large to copy.'
     })
   })
@@ -292,5 +305,58 @@ describe('useNativeChatContextMenu', () => {
     getSelection.mockClear()
     document.dispatchEvent(new Event('selectionchange'))
     expect(getSelection).not.toHaveBeenCalled()
+  })
+
+  describe('Copy Orca Session ID', () => {
+    const orcaSessionId = 'orca_session_id:4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37'
+    const writeClipboardText = vi.fn()
+
+    beforeEach(() => {
+      writeClipboardText.mockReset().mockResolvedValue(undefined)
+      toasts.success.mockReset()
+      toasts.error.mockReset()
+      tooltips.list = []
+      Object.assign(window, { api: { ui: { writeClipboardText } } })
+    })
+
+    function labels(): string[] {
+      return items.list.map((candidate) => childrenText(candidate.children))
+    }
+
+    function copyItem(): ItemProps | undefined {
+      return items.list.find(
+        (candidate) => childrenText(candidate.children) === 'Copy Orca Session ID'
+      )
+    }
+
+    it('copies the Orca session ID in a chat tab, explaining what it is', async () => {
+      renderToStaticMarkup(<Harness structured orcaSessionId={orcaSessionId} />)
+
+      copyItem()?.onSelect?.()
+
+      await vi.waitFor(() => expect(toasts.success).toHaveBeenCalledWith('Orca session ID copied'))
+      expect(writeClipboardText).toHaveBeenCalledWith(orcaSessionId)
+      expect(tooltips.list.map(childrenText)).toContain(
+        "Orca's ID for this chat, separate from the agent CLI's own session ID. Agents use it to refer to each other through Orca."
+      )
+    })
+
+    it('is absent for a chat with no Orca session ID', () => {
+      renderToStaticMarkup(<Harness structured />)
+
+      expect(labels()).not.toContain('Copy Orca Session ID')
+    })
+
+    it('reports a failed copy instead of claiming success', async () => {
+      writeClipboardText.mockRejectedValue(new Error('denied'))
+      renderToStaticMarkup(<Harness structured orcaSessionId={orcaSessionId} />)
+
+      copyItem()?.onSelect?.()
+
+      await vi.waitFor(() =>
+        expect(toasts.error).toHaveBeenCalledWith('Unable to copy Orca session ID')
+      )
+      expect(toasts.success).not.toHaveBeenCalled()
+    })
   })
 })
