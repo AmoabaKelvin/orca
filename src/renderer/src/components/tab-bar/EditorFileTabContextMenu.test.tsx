@@ -208,9 +208,10 @@ async function renderMenu(
     repoConnectionId?: string | null
     runtimeEnvironmentId?: string | null
     externalSshTargetId?: string
+    mode?: 'edit' | 'check-details'
   } = {}
 ): Promise<unknown> {
-  const { runtimeEnvironmentId, externalSshTargetId, ...props } = overrides
+  const { runtimeEnvironmentId, externalSshTargetId, mode = 'edit', ...props } = overrides
   const module = await import('./EditorFileTabContextMenu')
   return module.EditorFileTabContextMenu({
     open: true,
@@ -223,7 +224,7 @@ async function renderMenu(
       worktreeId: 'wt-1',
       language: 'typescript',
       isDirty: false,
-      mode: 'edit',
+      mode,
       runtimeEnvironmentId,
       externalSshTargetId
     },
@@ -397,5 +398,9 @@ describe('EditorFileTabContextMenu reveal in file manager', () => {
 
     expect(reveal.props.disabled).toBe(true)
     expect(extractText(reveal.props.children)).toContain('Local only')
+  })
+
+  it('offers no reveal for a check-details tab, which has no file on disk', async () => {
+    expect(await renderRevealItem({ mode: 'check-details' })).toBeUndefined()
   })
 })
