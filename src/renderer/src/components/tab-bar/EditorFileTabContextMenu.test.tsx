@@ -207,9 +207,10 @@ async function renderMenu(
     onOpenRenameInput?: () => void
     repoConnectionId?: string | null
     runtimeEnvironmentId?: string | null
+    externalSshTargetId?: string
   } = {}
 ): Promise<unknown> {
-  const { runtimeEnvironmentId, ...props } = overrides
+  const { runtimeEnvironmentId, externalSshTargetId, ...props } = overrides
   const module = await import('./EditorFileTabContextMenu')
   return module.EditorFileTabContextMenu({
     open: true,
@@ -223,7 +224,8 @@ async function renderMenu(
       language: 'typescript',
       isDirty: false,
       mode: 'edit',
-      runtimeEnvironmentId
+      runtimeEnvironmentId,
+      externalSshTargetId
     },
     unifiedTabId: 'tab-1',
     groupId: 'group-1',
@@ -388,7 +390,8 @@ describe('EditorFileTabContextMenu reveal in file manager', () => {
 
   it.each([
     ['on an SSH host', { repoConnectionId: 'ssh-1' }],
-    ['owned by a remote runtime', { runtimeEnvironmentId: 'env-1' }]
+    ['owned by a remote runtime', { runtimeEnvironmentId: 'env-1' }],
+    ['opened from an SSH host outside the workspace', { externalSshTargetId: 'ssh-1' }]
   ])('disables reveal as local-only for a file %s', async (_owner, overrides) => {
     const reveal = await renderRevealItem(overrides)
 

@@ -271,8 +271,11 @@ describe('EditorPanelHeaderPath reveal in file manager', () => {
     expect(openInFileManager).toHaveBeenCalledWith('/repo/notes.md')
   })
 
-  it('disables reveal as local-only for a file a remote runtime owns', () => {
-    renderPath(baseFile({ runtimeEnvironmentId: 'env-1' }))
+  it.each([
+    ['a remote runtime owns', { runtimeEnvironmentId: 'env-1' }],
+    ['opened from an SSH host outside the workspace', { externalSshTargetId: 'ssh-1' }]
+  ])('disables reveal as local-only for a file %s', (_owner, overrides) => {
+    renderPath(baseFile(overrides))
 
     const reveal = openPathMenu()
 
