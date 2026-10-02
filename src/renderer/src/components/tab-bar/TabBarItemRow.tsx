@@ -14,8 +14,6 @@ import type { TabDragItemData } from '../tab-group/useTabDragSplit'
 import { getTabDragLabel, resolveTerminalItemTab, type TabBarItem } from './tab-bar-item-model'
 import type { TabBarItemActions } from './use-tab-bar-item-actions'
 
-const EMPTY_STATUS_BY_RELATIVE_PATH = new Map<string, GitFileStatus>()
-
 // Why only values and `actions`: anything a tab draws must be a compared prop, or a skipped render shows it stale.
 type TabBarItemRowProps = {
   item: TabBarItem
@@ -35,8 +33,8 @@ type TabBarItemRowProps = {
   /** Unified tab whose view mode the terminal tab toggles; absent when it has none. */
   viewModeTabId: string | undefined
   canDuplicate: boolean
-  /** Editor tabs only, so a git status write doesn't re-render the other kinds. */
-  statusByRelativePath: Map<string, GitFileStatus> | undefined
+  /** This editor tab's own status, so a git status write re-renders only the tabs it changed. */
+  gitStatus: GitFileStatus | null
 }
 
 function TabBarItemRow({
@@ -56,7 +54,7 @@ function TabBarItemRow({
   isChatView,
   viewModeTabId,
   canDuplicate,
-  statusByRelativePath = EMPTY_STATUS_BY_RELATIVE_PATH
+  gitStatus
 }: TabBarItemRowProps): React.JSX.Element {
   // Why: the tabs' labels come from `translate()`, which a skipped render would leave in the old language.
   useTranslation()
@@ -154,7 +152,7 @@ function TabBarItemRow({
   const fileTabProps = {
     ...shared,
     ...closeScope,
-    statusByRelativePath,
+    gitStatus,
     onActivate: () => actions.activateFile(item.id),
     onClose: () => actions.closeFile(item.id),
     onCloseAll: actions.closeAllFiles

@@ -2,7 +2,11 @@ import React from 'react'
 import { canToggleNativeChat } from '../native-chat/native-chat-availability'
 import { resolveNativeChatTabAgentEvidence } from './native-chat-tab-agent-evidence'
 import type { DropIndicator } from './drop-indicator'
-import { resolveTerminalItemTab, type TabBarItem } from './tab-bar-item-model'
+import {
+  resolveEditorTabGitStatus,
+  resolveTerminalItemTab,
+  type TabBarItem
+} from './tab-bar-item-model'
 import type { TabBarProps } from './tab-bar-props'
 import type { TabBarRuntimeModel } from './use-tab-bar-runtime-model'
 import type { TabBarItemActions } from './use-tab-bar-item-actions'
@@ -140,8 +144,10 @@ export function renderTabBarItems({
         isChatView={isChatView}
         viewModeTabId={viewModeTabId}
         canDuplicate={item.type === 'browser' && managedBrowserCreationEnabled}
-        statusByRelativePath={
-          item.type === 'editor' || item.type === 'simulator' ? statusByRelativePath : undefined
+        gitStatus={
+          item.type === 'editor'
+            ? resolveEditorTabGitStatus(item.data.relativePath, statusByRelativePath)
+            : null
         }
       />
     )

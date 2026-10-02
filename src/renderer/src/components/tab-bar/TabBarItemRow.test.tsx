@@ -26,6 +26,7 @@ type TabProps = {
   isPinned: boolean
   onActivate: (id: string) => void
   onDuplicate?: () => void
+  gitStatus?: string | null
 }
 
 // Every render of every tab, in order, keyed by the id the strip shows it under.
@@ -134,6 +135,7 @@ type StripInputs = {
   browserTitle?: string
   activeTabType?: WorkspaceVisibleTabType
   activeClientHostedBrowserRowId?: string | null
+  statusByRelativePath?: TabBarItemSurfaceRuntime['statusByRelativePath']
 }
 
 function Strip({
@@ -143,7 +145,8 @@ function Strip({
   terminalPinned,
   browserTitle,
   activeTabType = 'terminal',
-  activeClientHostedBrowserRowId = null
+  activeClientHostedBrowserRowId = null,
+  statusByRelativePath = STATUS_BY_RELATIVE_PATH
 }: StripInputs): React.JSX.Element {
   const props: TabBarItemSurfaceProps = {
     worktreeId: 'wt-1',
@@ -163,7 +166,7 @@ function Strip({
     nativeChatTabWideFallbackUnsafeTabsById: {},
     nativeChatTranscriptIsLocalReadable: false,
     managedBrowserCreationEnabled,
-    statusByRelativePath: STATUS_BY_RELATIVE_PATH
+    statusByRelativePath
   }
   const actions = useTabBarItemActions({
     props: {
@@ -320,6 +323,17 @@ describe('tab strip rows', () => {
     renderStrip({ browserTitle: 'Renamed page' })
 
     expect(lastRender('browser-1').tab?.title).toBe('Renamed page')
+    expect(tabRenders).toHaveLength(TAB_IDS.length + 1)
+  })
+
+  it('re-renders an editor tab only when a git status write changes its own status', () => {
+    renderStrip()
+
+    renderStrip({ statusByRelativePath: new Map([['other.md', 'modified']]) })
+    expect(tabRenders).toHaveLength(TAB_IDS.length)
+
+    renderStrip({ statusByRelativePath: new Map([['notes.md', 'modified']]) })
+    expect(lastRender('file-1').gitStatus).toBe('modified')
     expect(tabRenders).toHaveLength(TAB_IDS.length + 1)
   })
 

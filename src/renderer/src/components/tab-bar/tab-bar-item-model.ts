@@ -1,4 +1,5 @@
 import type { BrowserTab as BrowserTabState } from '../../../../shared/browser-workspace-types'
+import type { GitFileStatus } from '../../../../shared/git-status-types'
 import type { Tab, WorkspaceVisibleTabType } from '../../../../shared/tab-types'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import { resolveTerminalTabTitle } from '../../../../shared/tab-title-resolution'
@@ -54,6 +55,16 @@ export function resolveTerminalItemTab(
   generatedTitlesEnabled: boolean
 ): TerminalTab & { unifiedTabId?: string } {
   return { ...tab, title: resolveTerminalTabTitle(tab, generatedTitlesEnabled, tab.title) }
+}
+
+export function resolveEditorTabGitStatus(
+  relativePath: string,
+  statusByRelativePath: Map<string, GitFileStatus>
+): GitFileStatus | null {
+  if (relativePath === 'All Changes') {
+    return null
+  }
+  return statusByRelativePath.get(normalizeRelativePath(relativePath)) ?? null
 }
 
 export function getTabDragLabel(item: TabBarItem, generatedTitlesEnabled: boolean): string {
