@@ -14732,6 +14732,7 @@
           "tool": {
             "arrow": "Flecha",
             "ellipse": "Elipse",
+            "eraser": "Borrador",
             "highlight": "Resaltador",
             "pen": "Lápiz",
             "rect": "Rectángulo",
