@@ -51,7 +51,7 @@ test('@golden opens an unstaged file diff from Source Control', async ({
   await expect(probe).toBeFocused()
 })
 
-test('offers to reveal a changed file in the OS file manager from its Source Control row', async ({
+test('@golden offers to reveal a changed file in the OS file manager from its Source Control row', async ({
   orcaPage,
   testRepoPath,
   registerPostElectronShutdownCleanup

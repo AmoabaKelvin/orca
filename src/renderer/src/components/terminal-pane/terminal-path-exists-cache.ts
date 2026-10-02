@@ -76,7 +76,7 @@ export async function probeTerminalPathExists({
   fileContext: RuntimeFileOperationArgs
   absolutePath: string
   runtimeEnvironmentId?: string | null
-  /** Ask the host again about a path remembered as missing, which may have been created since. */
+  /** Never trust "missing", which may have been created since: ask again, and don't remember it. */
   recheckMissing?: boolean
 }): Promise<boolean> {
   const isRemoteRuntimePath = isRemoteRuntimeFileOperation(fileContext, absolutePath)
@@ -91,6 +91,9 @@ export async function probeTerminalPathExists({
     remembered === undefined || (recheckMissing && !remembered)
       ? await pathExists(fileContext, absolutePath, isRemoteRuntimePath)
       : remembered
-  writeTerminalPathExistsCache(cache, cacheKey, exists)
+  // Why: a caller that re-asks never trusts "missing"; remembering it would only hide the path from callers that do.
+  if (exists || !recheckMissing) {
+    writeTerminalPathExistsCache(cache, cacheKey, exists)
+  }
   return exists
 }

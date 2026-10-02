@@ -50,7 +50,8 @@ export function EditorPanelHeaderPath({
   const isVirtualEditorTab = activeFile.mode === 'check-details'
   const revealBlocked = useAppStore((s) =>
     isRevealInFileManagerBlocked(s.settings, {
-      connectionId: getConnectionIdFromState(s, activeFile.worktreeId),
+      connectionId:
+        activeFile.externalSshTargetId ?? getConnectionIdFromState(s, activeFile.worktreeId),
       runtimeEnvironmentId: activeFile.runtimeEnvironmentId
     })
   )

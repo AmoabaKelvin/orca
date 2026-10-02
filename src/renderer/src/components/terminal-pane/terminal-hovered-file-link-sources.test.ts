@@ -202,6 +202,18 @@ describe('OSC 8 hyperlinks', () => {
     expect(pathExists).toHaveBeenCalledTimes(2)
   })
 
+  it('leaves a path printed later linkable when its hyperlink was hovered before the file existed', async () => {
+    setPlatform('Macintosh')
+    pathExists.mockResolvedValueOnce(false)
+    const pathExistsCache = new Map<string, boolean>()
+    const terminal = makeTerminal([makeBufferLine('Wrote out/report.md')])
+
+    setHoveredOscFileLink(terminal, 'file:///repo/out/report.md', range, deps({ pathExistsCache }))
+    await existenceProbeSettled()
+
+    expect(await provideLinks(terminal, pathExistsCache)).toHaveLength(1)
+  })
+
   describe('revealing the offered link', () => {
     const openInFileManager = vi.fn()
 

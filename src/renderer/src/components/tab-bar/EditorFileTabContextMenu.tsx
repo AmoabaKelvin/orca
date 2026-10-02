@@ -101,7 +101,7 @@ export function EditorFileTabContextMenu({
   const closeAllShortcut = useOptionalShortcutLabel('tab.closeAll')
   const revealBlocked = useAppStore((s) =>
     isRevealInFileManagerBlocked(s.settings, {
-      connectionId: repoConnectionId,
+      connectionId: file.externalSshTargetId ?? repoConnectionId,
       runtimeEnvironmentId: file.runtimeEnvironmentId
     })
   )
