@@ -339,6 +339,26 @@ describe('history commands mid-gesture', () => {
     expect(ids(undoMarkup(released))).toEqual(['a'])
   })
 
+  it('undo during an erase that hides nothing undoes the last mark and ends the erase', () => {
+    const before = editorWith(line('a', 0), line('b', 100))
+    const held = erase(before, [{ x: 50, y: 300 }])
+    expect(erasedIds(held)).toEqual(new Set())
+    expect(canUndoMarkup(held)).toBe(true)
+
+    const undone = undoMarkup(held)
+    expect(ids(undone)).toEqual(['a'])
+    expect(undone.gesture).toBeNull()
+    // The rest of the drag crosses the restored `b`, but must not erase it.
+    expect(ids(finishDrag(undone))).toEqual(['a'])
+  })
+
+  it('undo during an erase that hides nothing, with no history, keeps the erase', () => {
+    const held = erase(editorWith(), [{ x: 50, y: 300 }])
+    expect(canUndoMarkup(held)).toBe(false)
+
+    expect(undoMarkup(held)).toBe(held)
+  })
+
   it('a second undo while the pointer is still down undoes the last committed mark', () => {
     const held = undoMarkup(drawing(editorWith(line('a', 0), line('b', 100))))
 

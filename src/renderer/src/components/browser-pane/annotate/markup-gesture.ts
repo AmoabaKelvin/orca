@@ -127,14 +127,23 @@ export function endGesture(state: MarkupEditorState, pointerId: number): MarkupE
 }
 
 // Why: Undo mid-gesture takes back only that gesture, as the newest step, so the
-// next Undo takes back the last committed mark rather than both at once. With the
-// gesture gone, the rest of that drag does nothing until the next press.
+// next Undo takes back the last committed mark rather than both at once. An erase
+// that hides nothing is no step, so Undo goes to the document. Either way the
+// gesture is dropped, so the rest of that drag does nothing until the next press.
 export function undoMarkup(state: MarkupEditorState): MarkupEditorState {
-  return state.gesture ? { ...state, gesture: null } : { ...state, doc: undoShape(state.doc) }
+  if (gestureHasEffect(state.gesture)) {
+    return { ...state, gesture: null }
+  }
+  return canUndo(state.doc) ? { doc: undoShape(state.doc), gesture: null } : state
 }
 
 export function canUndoMarkup(state: MarkupEditorState): boolean {
-  return state.gesture !== null || canUndo(state.doc)
+  return gestureHasEffect(state.gesture) || canUndo(state.doc)
+}
+
+// Whether releasing the gesture would change the document.
+function gestureHasEffect(gesture: MarkupGesture | null): boolean {
+  return gesture !== null && (gesture.kind === 'draw' || gesture.erasedIds.size > 0)
 }
 
 // Redo and Clear replace the document, so the gesture made against it is dropped.
