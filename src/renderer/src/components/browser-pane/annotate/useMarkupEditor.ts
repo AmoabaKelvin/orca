@@ -121,19 +121,21 @@ export function useMarkupEditor(busy: boolean, onCancel: () => void) {
     return () => cancelAnimationFrame(handle)
   }, [pendingText])
 
-  const updateDoc = useCallback(
-    (update: (current: MarkupDocument) => MarkupDocument) =>
-      setState((state) => ({ ...state, doc: update(state.doc) })),
+  // Why: a history command drops the in-flight gesture, so a release can never
+  // commit marks that were hidden against a document that has since moved.
+  const applyHistory = useCallback(
+    (step: (current: MarkupDocument) => MarkupDocument) =>
+      setState((state) => ({ doc: step(state.doc), gesture: null })),
     []
   )
-  const undo = useCallback(() => updateDoc(undoShape), [updateDoc])
-  const redo = useCallback(() => updateDoc(redoShape), [updateDoc])
+  const undo = useCallback(() => applyHistory(undoShape), [applyHistory])
+  const redo = useCallback(() => applyHistory(redoShape), [applyHistory])
   const clear = useCallback(() => {
-    // Why: also drop any open text input / in-flight gesture so a clear leaves a
-    // truly clean slate — otherwise a pending input blur can re-add text.
+    // Why: also drop any open text input so a clear leaves a truly clean slate —
+    // otherwise a pending input blur can re-add text.
     setPendingText(null)
-    setState((state) => ({ doc: clearShapes(state.doc), gesture: null }))
-  }, [])
+    applyHistory(clearShapes)
+  }, [applyHistory])
 
   const measureTextInkBox = useCallback<TextInkBoxMeasurer>((shape) => {
     const ctx = committedLayerRef.current?.getContext('2d')
@@ -162,8 +164,9 @@ export function useMarkupEditor(busy: boolean, onCancel: () => void) {
       if (!at || trimmed.length === 0) {
         return
       }
-      updateDoc((document) =>
-        commitShape(document, {
+      setState((state) => ({
+        ...state,
+        doc: commitShape(state.doc, {
           id: createBrowserUuid(),
           kind: 'text',
           color,
@@ -171,9 +174,9 @@ export function useMarkupEditor(busy: boolean, onCancel: () => void) {
           text: trimmed,
           fontSize
         })
-      )
+      }))
     },
-    [color, fontSize, pendingText, updateDoc]
+    [color, fontSize, pendingText]
   )
 
   const cancelPendingText = useCallback(() => setPendingText(null), [])

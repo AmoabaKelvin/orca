@@ -138,11 +138,11 @@ describe('erase gesture', () => {
 
   it('commits against the document as it is on release', () => {
     const swept = erase(editorWith(line('a', 0)), [{ x: 50, y: 0 }])
-    // Undo pressed mid-drag already removed the mark.
-    const undoneMidDrag = { ...swept, doc: undoShape(swept.doc) }
-    const after = endGesture(undoneMidDrag, 1)
+    // The document moved under the gesture and no longer holds the mark.
+    const without = { ...swept, doc: undoShape(swept.doc) }
+    const after = endGesture(without, 1)
 
-    expect(after.doc).toBe(undoneMidDrag.doc)
+    expect(after.doc).toBe(without.doc)
     expect(after.gesture).toBeNull()
   })
 })
