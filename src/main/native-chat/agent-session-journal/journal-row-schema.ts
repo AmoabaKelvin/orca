@@ -12,6 +12,7 @@ import {
   type AgentJournalItemBody,
   type AgentJournalMessageItem,
   type AgentJournalProducerLinkage,
+  type AgentJournalTurnScope,
   type AgentSessionProviderHandle
 } from '../../../shared/agent-session-journal-types'
 import {
@@ -19,6 +20,7 @@ import {
   isAdmissibleAgentJournalMessageBody
 } from '../../../shared/agent-session-journal-schemas'
 import { isAdmissibleAgentSessionContextUsage } from '../../../shared/agent-session-context-usage-schema'
+import type { StructuredAgentSessionStopCause } from '../agent-session-wire/structured-agent-session-stop-cause'
 
 /** Producer linkage rides the row BASE rather than the body: the two nested
  *  prompt shapes are `.strict()`, so an unknown key on a body would make the
@@ -37,6 +39,10 @@ type JournalRowBase = AgentJournalProducerLinkage & {
   ts: number
   /** Set when crash reconciliation appended the row after the fact. */
   recovered?: true
+  /** Which turn the item this row creates belongs to. Rides the base, and is not a `v` bump,
+   *  for the reason linkage does. Absent on rows from hosts that predate it: the reducer
+   *  derives one for them on read. */
+  turnScope?: AgentJournalTurnScope
 }
 
 /** First row of every epoch: binds the epoch to a provider handle and records why it opened. */
@@ -67,6 +73,37 @@ export type JournalTombstoneRow = JournalRowBase & {
   kind: 'tombstone'
   itemId: string
   revision: number
+  /** Present: not a removal but a Stop's event, on an id no item ever takes. */
+  stopEvent?: JournalStopEvent
+  /** Present: not a removal but a person's Resume of the queue, on an id no item ever takes. */
+  queueResume?: true
+}
+
+/** One Stop that took effect. Temporary carrier: a tombstone's extra key, because a released host
+ *  deletes the journal from the first row kind it does not know (`journal-open.ts` then
+ *  `journal-store-open.ts`) but ignores an unknown key; a row kind of its own once released hosts
+ *  skip unknown kinds instead. */
+export type JournalStopEvent = {
+  /** Persisted: never rename an arm. Only `user-stop` pauses the queue. */
+  reason: StructuredAgentSessionStopCause
+  /** The turn the Stop named, else the one running when it took effect. */
+  turnId?: string
+  /** When it took effect; a rewind's restatement keeps it. */
+  at: number
+  /** Who asked (`StructuredAgentSessionCaller.callerKey`). */
+  caller?: string
+}
+
+/** A tombstone that carries a Stop event or a Resume mark instead of removing an item. */
+export type JournalStopOrResumeRow = JournalTombstoneRow &
+  (
+    | { stopEvent: NonNullable<JournalTombstoneRow['stopEvent']> }
+    | { queueResume: NonNullable<JournalTombstoneRow['queueResume']> }
+  )
+
+/** A Stop's event or a Resume. Any value counts, so a newer build's mark never removes an item. */
+export function isJournalStopOrResumeRow(row: JournalRow): row is JournalStopOrResumeRow {
+  return row.kind === 'tombstone' && (row.stopEvent !== undefined || row.queueResume !== undefined)
 }
 
 /** The write-ahead row. Durable BEFORE the adapter dispatches anything; it
@@ -81,7 +118,17 @@ export type JournalSubmissionRow = JournalRowBase & {
   /** Accepted to be handed over by a later `dispatch{pending}` row; absent on rows whose writer
    *  dispatched in the same step. Older readers keep the key and ignore it. */
   handoverRecorded?: true
+  /** The queued draft this submission hands off; absent for a direct send. Older readers keep
+   *  the key and ignore it. */
+  queuedMessageId?: string
+  /** Who asked for this turn: `client` for a person's send over the client send RPC (typed, or
+   *  a queued card they sent now); `host` for Orca's own — orchestration mail, a restart
+   *  continuation, a launch prompt, the queue's automatic drain. Absent on rows from before it
+   *  was recorded. Older readers keep the key and ignore it. */
+  origin?: JournalSubmissionOrigin
 }
+
+export type JournalSubmissionOrigin = 'client' | 'host'
 
 export type JournalDispatchRow = JournalRowBase & {
   kind: 'dispatch'
@@ -90,6 +137,8 @@ export type JournalDispatchRow = JournalRowBase & {
   /** Provider item identity adopted on accept. */
   providerItemId: string | null
   reason: string | null
+  /** On `pending`: the turn the message was handed into, which becomes its row's scope. */
+  turnScope?: AgentJournalTurnScope
   /** On `rejected`: why, typed. Older readers keep the key and ignore it; a malformed one is
    *  dropped when read, never the row. */
   rejection?: AgentSessionFailureFact
@@ -105,6 +154,7 @@ export type JournalLifecycleMutation =
       itemId: string
       revision: number
       body: AgentJournalItemBody
+      turnScope?: AgentJournalTurnScope
     })
   | { kind: 'tombstone'; itemId: string; revision: number }
 
@@ -170,10 +220,12 @@ export function parseJournalRow(line: string): JournalRowParse {
   }
   const upcast = upcastRow(record, version)
   dropUnusableProducerLinkage(upcast)
+  dropUnusableTurnScope(upcast)
   if (upcast.kind === 'lifecycle-batch' && Array.isArray(upcast.mutations)) {
     for (const mutation of upcast.mutations) {
       if (isPlainObject(mutation)) {
         dropUnusableProducerLinkage(mutation)
+        dropUnusableTurnScope(mutation)
       }
     }
   }
@@ -199,6 +251,24 @@ function dropUnusableProducerLinkage(record: Record<string, unknown>): void {
   }
   if (record.attempt !== undefined && !Number.isInteger(record.attempt)) {
     delete record.attempt
+  }
+}
+
+/** A scope this build cannot place, removed like unusable linkage: the row then reads as one
+ *  written before scopes existed, and the reducer derives its scope. */
+function dropUnusableTurnScope(record: Record<string, unknown>): void {
+  const scope = record.turnScope
+  if (
+    scope !== undefined &&
+    !(
+      isPlainObject(scope) &&
+      (scope.kind === 'thread' ||
+        (scope.kind === 'turn' &&
+          typeof scope.turnItemId === 'string' &&
+          scope.turnItemId.length > 0))
+    )
+  ) {
+    delete record.turnScope
   }
 }
 
