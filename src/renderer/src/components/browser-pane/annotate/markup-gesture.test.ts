@@ -13,6 +13,7 @@ import {
   applyDocumentCommand,
   beginDrawGesture,
   beginEraseGesture,
+  cancelGesture,
   canUndoMarkup,
   endGesture,
   moveGesture,
@@ -301,6 +302,42 @@ describe('draw gesture', () => {
     ])
     // A stray second release has no gesture left to commit.
     expect(endGesture(ended, 1)).toBe(ended)
+  })
+})
+
+describe('cancelled pointer', () => {
+  it('discards a stroke in progress without adding history', () => {
+    const before = editorWith(line('a', 0))
+    const held = moveGesture(
+      beginDrawGesture(before, 1, line('held', 300)),
+      1,
+      { x: 50, y: 300 },
+      noText
+    )
+
+    const cancelled = cancelGesture(held, 1)
+    expect(cancelled.doc).toBe(before.doc)
+    expect(cancelled.gesture).toBeNull()
+  })
+
+  it('discards an erase, so the marks it hid stay, and a later lost capture does nothing', () => {
+    const before = editorWith(line('a', 0), line('b', 100))
+    const held = erase(before, [
+      { x: 50, y: -50 },
+      { x: 50, y: 150 }
+    ])
+    expect(erasedIds(held)).toEqual(new Set(['a', 'b']))
+
+    const cancelled = cancelGesture(held, 1)
+    expect(cancelled.doc).toBe(before.doc)
+    // lostpointercapture follows pointercancel and ends the same pointer's gesture.
+    expect(endGesture(cancelled, 1)).toBe(cancelled)
+  })
+
+  it('ignores a cancel from a pointer that does not own the gesture', () => {
+    const held = erase(editorWith(line('a', 0)), [{ x: 50, y: 0 }], 1)
+
+    expect(cancelGesture(held, 2)).toBe(held)
   })
 })
 

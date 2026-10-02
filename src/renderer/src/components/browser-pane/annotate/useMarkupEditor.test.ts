@@ -202,6 +202,19 @@ describe('useMarkupEditor gestures', () => {
     expect(result.current.shapes).toEqual([second])
   })
 
+  it('discards a stroke whose pointer was cancelled', () => {
+    const result = renderEditor({ wrapper: StrictMode })
+
+    act(() => result.current.onPointerDown(pointerEvent(0, 0)))
+    act(() => result.current.onPointerMove(pointerEvent(100, 0)))
+    act(() => result.current.onPointerCancel(pointerEvent(100, 0)))
+    // The lost capture that follows a cancel must not commit anything.
+    act(() => result.current.onPointerUp(pointerEvent(100, 0)))
+
+    expect(result.current.shapes).toEqual([])
+    expect(result.current.canUndo).toBe(false)
+  })
+
   it('drops an in-flight stroke when everything is cleared', () => {
     const result = renderEditor()
 

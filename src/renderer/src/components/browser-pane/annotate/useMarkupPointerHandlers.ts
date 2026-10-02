@@ -6,6 +6,7 @@ import type { MarkupPoint, MarkupTool } from './markup-drawing-model'
 import {
   beginDrawGesture,
   beginEraseGesture,
+  cancelGesture,
   endGesture,
   moveGesture,
   type MarkupEditorState
@@ -111,5 +112,13 @@ export function useMarkupPointerHandlers(params: MarkupPointerParams) {
     [setState]
   )
 
-  return { onPointerDown, onPointerMove, onPointerUp }
+  const onPointerCancel = useCallback(
+    (event: React.PointerEvent<HTMLCanvasElement>) => {
+      const { pointerId } = event
+      setState((state) => cancelGesture(state, pointerId))
+    },
+    [setState]
+  )
+
+  return { onPointerDown, onPointerMove, onPointerUp, onPointerCancel }
 }
