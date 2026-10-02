@@ -151,22 +151,41 @@ describe('useMarkupEditor gestures', () => {
     expect(result.current.shapes).toEqual([first, second])
   })
 
-  it('abandons an in-flight erase when undo is pressed, leaving redo intact', () => {
-    const result = renderEditor()
+  it('takes back only an in-flight erase on undo, and ignores the rest of that drag', () => {
+    const result = renderEditor({ wrapper: StrictMode })
     drawLine(result, 0)
     drawLine(result, 200)
     const [first, second] = result.current.shapes
 
     act(() => result.current.setTool('eraser'))
     act(() => result.current.onPointerDown(pointerEvent(50, 0)))
+    expect(result.current.shapes).toEqual([second])
+    act(() => result.current.undo())
+    expect(result.current.shapes).toEqual([first, second])
+
+    // The held pointer sweeps across the second mark, then lifts.
+    act(() => result.current.onPointerMove(pointerEvent(50, 200)))
+    act(() => result.current.onPointerUp(pointerEvent(50, 200)))
+    expect(result.current.shapes).toEqual([first, second])
+
     act(() => result.current.undo())
     expect(result.current.shapes).toEqual([first])
+  })
 
-    act(() => result.current.onPointerUp(pointerEvent(50, 0)))
-    expect(result.current.shapes).toEqual([first])
+  it('takes back only an in-flight stroke on undo, even the first one', () => {
+    const result = renderEditor({ wrapper: StrictMode })
+    expect(result.current.canUndo).toBe(false)
 
-    act(() => result.current.redo())
-    expect(result.current.shapes).toEqual([first, second])
+    act(() => result.current.onPointerDown(pointerEvent(0, 0)))
+    expect(result.current.canUndo).toBe(true)
+    act(() => result.current.undo())
+    act(() => result.current.onPointerMove(pointerEvent(100, 0)))
+    act(() => result.current.onPointerUp(pointerEvent(100, 0)))
+    expect(result.current.shapes).toEqual([])
+    expect(result.current.canUndo).toBe(false)
+
+    drawLine(result, 50)
+    expect(result.current.shapes).toHaveLength(1)
   })
 
   it('drops an in-flight stroke when everything is cleared', () => {
@@ -175,7 +194,8 @@ describe('useMarkupEditor gestures', () => {
     act(() => result.current.onPointerDown(pointerEvent(0, 0)))
     act(() => result.current.onPointerMove(pointerEvent(100, 0)))
     act(() => result.current.clear())
-    act(() => result.current.onPointerUp(pointerEvent(100, 0)))
+    act(() => result.current.onPointerMove(pointerEvent(150, 0)))
+    act(() => result.current.onPointerUp(pointerEvent(150, 0)))
 
     expect(result.current.shapes).toEqual([])
   })
