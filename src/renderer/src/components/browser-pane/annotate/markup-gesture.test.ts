@@ -19,6 +19,7 @@ import {
   moveGesture,
   redoMarkup,
   undoMarkup,
+  type DraggedShape,
   type MarkupEditorState
 } from './markup-gesture'
 
@@ -46,6 +47,11 @@ function erase(state: MarkupEditorState, path: MarkupPoint[], pointerId = 1): Ma
   const [first, ...rest] = path
   const begun = beginEraseGesture(state, pointerId, first, noText)
   return rest.reduce((current, point) => moveGesture(current, pointerId, point, noText), begun)
+}
+
+// A rectangle, ellipse or arrow as pressed: no drag yet, so from === to.
+function pressedShape(kind: 'rect' | 'ellipse' | 'arrow', at: MarkupPoint): DraggedShape {
+  return { id: kind, kind, color: '#ef4444', width: 4, from: at, to: at }
 }
 
 const ids = (state: MarkupEditorState) => state.doc.shapes.map((shape) => shape.id)
@@ -303,6 +309,37 @@ describe('draw gesture', () => {
     // A stray second release has no gesture left to commit.
     expect(endGesture(ended, 1)).toBe(ended)
   })
+
+  it.each(['rect', 'ellipse', 'arrow'] as const)(
+    'saves no %s released without being dragged, so it adds no undo step',
+    (kind) => {
+      const before = editorWith(line('a', 0))
+      const pressed = beginDrawGesture(before, 1, pressedShape(kind, { x: 50, y: 0 }))
+      // Undo with only the unmoved press held goes straight to the last mark.
+      expect(ids(undoMarkup(pressed))).toEqual([])
+
+      expect(endGesture(pressed, 1).doc).toBe(before.doc)
+    }
+  )
+
+  it('lets an eraser click take a mark where a shape was pressed without dragging', () => {
+    const at = { x: 50, y: 0 }
+    const clicked = endGesture(
+      beginDrawGesture(editorWith(line('a', 0)), 1, pressedShape('rect', at)),
+      1
+    )
+
+    expect(ids(endGesture(erase(clicked, [at]), 1))).toEqual([])
+  })
+
+  it('still saves a pen tap, which leaves a visible dot', () => {
+    const tapped = endGesture(
+      beginDrawGesture(editorWith(), 1, { ...line('dot', 0), points: [{ x: 50, y: 0 }] }),
+      1
+    )
+
+    expect(ids(tapped)).toEqual(['dot'])
+  })
 })
 
 describe('cancelled pointer', () => {
@@ -395,6 +432,16 @@ describe('history commands mid-gesture', () => {
     expect(canUndoMarkup(held)).toBe(false)
 
     expect(undoMarkup(held)).toBe(held)
+  })
+
+  it('an unmoved shape press on an empty canvas leaves undo disabled and is kept', () => {
+    const held = beginDrawGesture(editorWith(), 1, pressedShape('ellipse', { x: 50, y: 0 }))
+    expect(canUndoMarkup(held)).toBe(false)
+    expect(undoMarkup(held)).toBe(held)
+
+    // Dragging it out still draws the ellipse.
+    const ended = endGesture(moveGesture(held, 1, { x: 90, y: 40 }, noText), 1)
+    expect(ids(ended)).toEqual(['ellipse'])
   })
 
   it('a second undo while the pointer is still down undoes the last committed mark', () => {
