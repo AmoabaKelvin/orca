@@ -261,11 +261,13 @@ describe('tab strip rows', () => {
     expect(first).not.toHaveBeenCalled()
   })
 
-  it('keeps the committed handler when React abandons a render', () => {
+  it('keeps the committed handler when React abandons a render', async () => {
     const committed = vi.fn()
     const abandoned = vi.fn()
     renderStrip({ onActivate: committed })
-    act(() => startTransition(() => root!.render(stripTree({ onActivate: abandoned }, true))))
+    await act(async () =>
+      startTransition(() => root!.render(stripTree({ onActivate: abandoned }, true)))
+    )
 
     lastRender('terminal-1').onActivate('terminal-1')
 
