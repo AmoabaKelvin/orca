@@ -72,12 +72,34 @@ describe('erase gesture', () => {
     expect(undoShape(after.doc).shapes.map((shape) => shape.id)).toEqual(['older', 'newer'])
   })
 
-  it('keeps a click a click when a move reports the press point again', () => {
+  it('keeps a click a click when a tap jitters by a fraction of a pixel', () => {
     const pressed = erase(editorWith(line('older', 0), line('newer', 0)), [{ x: 50, y: 0 }])
-    const resent = moveGesture(pressed, 1, { x: 50, y: 0 }, noText)
+    const jittered = moveGesture(pressed, 1, { x: 50.6, y: 0.4 }, noText)
 
-    expect(resent).toBe(pressed)
-    expect(ids(endGesture(resent, 1))).toEqual(['older'])
+    expect(jittered).toBe(pressed)
+    expect(ids(endGesture(jittered, 1))).toEqual(['older'])
+  })
+
+  it('keeps a click a click when the pointer wanders inside the slop and back', () => {
+    const before = editorWith(line('older', 0), line('newer', 0), line('near', 12))
+    // `near` is out of reach of the press point but within reach 3.5px below it.
+    const wandered = erase(before, [
+      { x: 50, y: 0 },
+      { x: 50, y: 3.5 },
+      { x: 50, y: 0 }
+    ])
+
+    expect(erasedIds(wandered)).toEqual(new Set(['newer']))
+    expect(ids(endGesture(wandered, 1))).toEqual(['older', 'near'])
+  })
+
+  it('becomes a drag once the pointer leaves the slop', () => {
+    const dragged = erase(editorWith(line('older', 0), line('newer', 0)), [
+      { x: 50, y: 0 },
+      { x: 54, y: 0 }
+    ])
+
+    expect(erasedIds(dragged)).toEqual(new Set(['older', 'newer']))
   })
 
   it('erases every mark under the press point once the click becomes a drag', () => {

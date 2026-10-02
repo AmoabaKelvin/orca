@@ -24,9 +24,20 @@ export type DraggedShape = Exclude<MarkupShape, TextShape>
 // gesture the first one owns.
 export type MarkupGesture =
   | { kind: 'draw'; pointerId: number; shape: DraggedShape }
-  | { kind: 'erase'; pointerId: number; last: MarkupPoint; erasedIds: ReadonlySet<string> }
+  | {
+      kind: 'erase'
+      pointerId: number
+      origin: MarkupPoint
+      // A 'pressed' erase is still a click; it becomes 'dragging' past ERASER_CLICK_SLOP.
+      phase: 'pressed' | 'dragging'
+      last: MarkupPoint
+      erasedIds: ReadonlySet<string>
+    }
 
 export type MarkupEditorState = { doc: MarkupDocument; gesture: MarkupGesture | null }
+
+// How far (CSS px) an erase press may travel and stay a click: touch and pen taps jitter.
+const ERASER_CLICK_SLOP = 4
 
 export function beginDrawGesture(
   state: MarkupEditorState,
@@ -47,7 +58,7 @@ export function beginEraseGesture(
   if (settled.gesture) {
     return settled
   }
-  // Why: a click takes only the mark on top. The first real move makes it a drag,
+  // Why: a click takes only the mark on top. Leaving the slop makes it a drag,
   // and that sweep starts at the press point, so it takes the rest under it too.
   const topmost = topmostShapeAt(settled.doc.shapes, point, measureTextInkBox)
   return {
@@ -55,6 +66,8 @@ export function beginEraseGesture(
     gesture: {
       kind: 'erase',
       pointerId,
+      origin: point,
+      phase: 'pressed',
       last: point,
       erasedIds: new Set(topmost ? [topmost.id] : [])
     }
@@ -79,10 +92,17 @@ export function moveGesture(
     return state
   }
   if (gesture.kind === 'erase') {
-    // Why: a move that reports the same point sweeps nothing new, and must not
-    // turn a click into a drag.
-    if (point.x === gesture.last.x && point.y === gesture.last.y) {
-      return state
+    if (gesture.phase === 'pressed') {
+      const { origin } = gesture
+      if (Math.hypot(point.x - origin.x, point.y - origin.y) < ERASER_CLICK_SLOP) {
+        return state
+      }
+      // `last` is still the origin here, so the first sweep starts at the press point.
+      const dragging: EraseGesture = { ...gesture, phase: 'dragging' }
+      return {
+        ...state,
+        gesture: sweepEraser(dragging, state.doc.shapes, point, measureTextInkBox)
+      }
     }
     return { ...state, gesture: sweepEraser(gesture, state.doc.shapes, point, measureTextInkBox) }
   }
