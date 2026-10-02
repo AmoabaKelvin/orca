@@ -27,7 +27,8 @@ export function beginDrawGesture(
   pointerId: number,
   shape: DraggedShape
 ): MarkupEditorState {
-  return state.gesture ? state : { ...state, gesture: { kind: 'draw', pointerId, shape } }
+  const settled = settleMissedRelease(state, pointerId)
+  return settled.gesture ? settled : { ...settled, gesture: { kind: 'draw', pointerId, shape } }
 }
 
 export function beginEraseGesture(
@@ -36,17 +37,25 @@ export function beginEraseGesture(
   point: MarkupPoint,
   measureTextInkBox: TextInkBoxMeasurer
 ): MarkupEditorState {
-  if (state.gesture) {
-    return state
+  const settled = settleMissedRelease(state, pointerId)
+  if (settled.gesture) {
+    return settled
   }
   // Sweeping a zero-length segment makes a plain click erase what is under it.
   const gesture = sweepEraser(
     { kind: 'erase', pointerId, last: point, erasedIds: new Set() },
-    state.doc.shapes,
+    settled.doc.shapes,
     point,
     measureTextInkBox
   )
-  return { ...state, gesture }
+  return { ...settled, gesture }
+}
+
+// Why: a pointer cannot press twice without releasing, so a press from the
+// gesture's own pointer means its release was lost; settle it as that release
+// would have, instead of letting it block the new press and steer from a stale point.
+function settleMissedRelease(state: MarkupEditorState, pointerId: number): MarkupEditorState {
+  return state.gesture?.pointerId === pointerId ? endGesture(state, pointerId) : state
 }
 
 export function moveGesture(
