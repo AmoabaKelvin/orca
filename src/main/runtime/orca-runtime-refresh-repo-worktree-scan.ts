@@ -13,8 +13,7 @@ import { withTimeoutResult } from './runtime-async-boundaries'
 import { readRepoWorktreeAdminFingerprint } from './repo-worktree-admin-fingerprint'
 import type { RuntimeWorktreeScanResult } from './repo-worktree-resolution-scan'
 import { scanLocalRepoWorktreesForResolution } from './repo-worktree-resolution-scan'
-import { resolveRepeatedWorktreeRows } from './repeated-worktree-rows'
-import { readCheckedOutWorktreeHead } from './checked-out-worktree-head'
+import { dropRepeatedWorktreeRows } from './repeated-worktree-rows'
 import { getSshGitProvider } from '../providers/ssh-git-dispatch'
 import type { GitWorktreeInfo } from '../../shared/worktree/types'
 import { listStoredWorktreeRowsForRepo } from './repo-worktree-row-resolution'
@@ -65,23 +64,16 @@ export class OrcaRuntimeWithRefreshRepoWorktreeScan extends OrcaRuntimeWithListK
       if (current !== null && current === reusable.adminFingerprint) {
         return {
           result: reusable.result,
-          repeatedRowsSettled: reusable.repeatedRowsSettled,
           adminFingerprint: current,
           adminFingerprintProbe: null,
           scannedAt: reusable.scannedAt
         }
       }
     }
-    const repeatedRows = resolveRepeatedWorktreeRows(
-      await this.listRepoWorktreesForResolutionUncached(repo, projectRuntime),
-      (worktreePath) =>
-        readCheckedOutWorktreeHead(
-          repo,
-          getLocalProjectWorktreeGitOptionsForRuntime(repo, projectRuntime),
-          worktreePath
-        )
+    const result = dropRepeatedWorktreeRows(
+      await this.listRepoWorktreesForResolutionUncached(repo, projectRuntime)
     )
-    return { ...repeatedRows, adminFingerprint: null, adminFingerprintProbe: probe, scannedAt }
+    return { result, adminFingerprint: null, adminFingerprintProbe: probe, scannedAt }
   }
 
   /**
@@ -149,8 +141,7 @@ export class OrcaRuntimeWithRefreshRepoWorktreeScan extends OrcaRuntimeWithListK
     for (const keys of [
       this.worktreeScanGenerations.keys(),
       this.worktreeScanCache.keys(),
-      this.worktreeScanInFlight.keys(),
-      this.worktreeScanOvertaken.keys()
+      this.worktreeScanInFlight.keys()
     ]) {
       for (const key of keys) {
         if (key.startsWith(prefix)) {
@@ -162,8 +153,6 @@ export class OrcaRuntimeWithRefreshRepoWorktreeScan extends OrcaRuntimeWithListK
       this.worktreeScanGenerations.set(key, (this.worktreeScanGenerations.get(key) ?? 0) + 1)
       this.worktreeScanCache.delete(key)
       this.worktreeScanInFlight.delete(key)
-      this.worktreeScanOvertaken.get(key)?.abort()
-      this.worktreeScanOvertaken.delete(key)
     }
   }
 
@@ -182,8 +171,6 @@ export class OrcaRuntimeWithRefreshRepoWorktreeScan extends OrcaRuntimeWithListK
       this.worktreeScanGenerations.set(key, (this.worktreeScanGenerations.get(key) ?? 0) + 1)
       this.worktreeScanCache.delete(key)
       this.worktreeScanInFlight.delete(key)
-      this.worktreeScanOvertaken.get(key)?.abort()
-      this.worktreeScanOvertaken.delete(key)
     }
     if (affectedScopeKeys.size > 0) {
       this.resolvedWorktrees.invalidateResolved()

@@ -92,9 +92,6 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
 
   protected worktreeScanInFlight = new Map<string, RuntimeWorktreeScanInFlight>()
 
-  /** Per scan scope; aborted by a worktree change so no caller keeps waiting on rows it will discard. */
-  protected worktreeScanOvertaken = new Map<string, AbortController>()
-
   /** Repos whose Git-admin probe has not settled yet; caps abandoned fs work at one per repo. */
   protected worktreeAdminFingerprintProbes = new Set<string>()
 
@@ -150,7 +147,7 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
     listResolved: () => this.listResolvedWorktrees(),
     resolveRepo: (selector) => this.resolveRepoSelector(selector),
     selectRepos: (selector) => this.selectReposBySelector(selector),
-    scanRepo: (repo, askedAt) => this.listRepoWorktreesForResolution(repo, undefined, askedAt),
+    scanRepo: (repo) => this.listRepoWorktreesForResolution(repo),
     listKnownHostIds: () => this.listKnownExecutionHostIds()
   })
 
