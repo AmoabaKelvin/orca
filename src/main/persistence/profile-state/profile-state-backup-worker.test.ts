@@ -181,11 +181,12 @@ describe('profile state backup worker', () => {
       const cancellation = new AbortController()
       const pending = runProfileStateBackupWorker(job, {
         workerPath: worker,
-        timeoutMs: 500,
+        // Worker startup must not race the cancellation assertion.
+        timeoutMs: mode === 'cancel' ? 10_000 : 500,
         signal: cancellation.signal
       })
       const failed = expect(pending).rejects.toThrow(mode === 'cancel' ? 'cancelled' : 'timed out')
-      await vi.waitFor(() => expect(existsSync(ready)).toBe(true))
+      await vi.waitFor(() => expect(existsSync(ready)).toBe(true), { timeout: 5_000 })
       expect(readdirSync(directory).filter((name) => name.startsWith('backup.db.'))).toHaveLength(4)
       if (mode === 'cancel') {
         cancellation.abort()
@@ -230,8 +231,7 @@ describe('profile state backup worker', () => {
     rmSync(directory, { recursive: true })
   })
 
-  // The Bun profile suite runs this file too; there the worker is mandatory by design.
-  describe.skipIf(!!(process.versions.electron || process.versions.bun))('under plain Node', () => {
+  describe.skipIf(!!process.versions.electron)('under plain Node', () => {
     it('uses the bundled worker whenever its entry exists', async () => {
       const { directory, job } = fixture()
       const marker = script(
