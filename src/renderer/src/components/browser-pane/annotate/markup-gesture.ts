@@ -3,8 +3,10 @@
 // latest state, and keeps the transitions safe to run twice under StrictMode.
 
 import {
+  canRedo,
   canUndo,
   commitShape,
+  redoShape,
   setShapes,
   undoShape,
   type MarkupDocument,
@@ -144,6 +146,11 @@ export function canUndoMarkup(state: MarkupEditorState): boolean {
 // Whether releasing the gesture would change the document.
 function gestureHasEffect(gesture: MarkupGesture | null): boolean {
   return gesture !== null && (gesture.kind === 'draw' || gesture.erasedIds.size > 0)
+}
+
+// Why: with nothing to redo the document stays put, so a held gesture is kept.
+export function redoMarkup(state: MarkupEditorState): MarkupEditorState {
+  return canRedo(state.doc) ? applyDocumentCommand(state, redoShape) : state
 }
 
 // Redo and Clear replace the document, so the gesture made against it is dropped.

@@ -6,6 +6,7 @@ import { useMarkupPointerHandlers } from './useMarkupPointerHandlers'
 import {
   applyDocumentCommand,
   canUndoMarkup,
+  redoMarkup,
   undoMarkup,
   type MarkupEditorState
 } from './markup-gesture'
@@ -19,7 +20,6 @@ import {
   DEFAULT_MARKUP_COLOR,
   DEFAULT_MARKUP_FONT_SIZE,
   DEFAULT_MARKUP_WIDTH,
-  redoShape,
   type MarkupTool
 } from './markup-drawing-model'
 
@@ -124,7 +124,7 @@ export function useMarkupEditor(busy: boolean, onCancel: () => void) {
   }, [pendingText])
 
   const undo = useCallback(() => setState(undoMarkup), [])
-  const redo = useCallback(() => setState((state) => applyDocumentCommand(state, redoShape)), [])
+  const redo = useCallback(() => setState(redoMarkup), [])
   const clear = useCallback(() => {
     // Why: also drop any open text input so a clear leaves a truly clean slate —
     // otherwise a pending input blur can re-add text.

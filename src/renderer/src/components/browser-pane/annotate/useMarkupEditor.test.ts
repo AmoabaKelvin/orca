@@ -188,6 +188,20 @@ describe('useMarkupEditor gestures', () => {
     expect(result.current.shapes).toHaveLength(1)
   })
 
+  it('keeps an in-flight erase when redo has nothing to redo', () => {
+    const result = renderEditor()
+    drawLine(result, 0)
+    drawLine(result, 200)
+    const [, second] = result.current.shapes
+
+    act(() => result.current.setTool('eraser'))
+    act(() => result.current.onPointerDown(pointerEvent(50, 0)))
+    act(() => result.current.redo())
+    act(() => result.current.onPointerUp(pointerEvent(50, 0)))
+
+    expect(result.current.shapes).toEqual([second])
+  })
+
   it('drops an in-flight stroke when everything is cleared', () => {
     const result = renderEditor()
 

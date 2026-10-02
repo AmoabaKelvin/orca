@@ -16,6 +16,7 @@ import {
   canUndoMarkup,
   endGesture,
   moveGesture,
+  redoMarkup,
   undoMarkup,
   type MarkupEditorState
 } from './markup-gesture'
@@ -370,9 +371,16 @@ describe('history commands mid-gesture', () => {
   it('redo mid-gesture cancels the gesture, then redoes', () => {
     const undone = undoMarkup(editorWith(line('a', 0), line('b', 100)))
 
-    const redone = applyDocumentCommand(drawing(undone), redoShape)
+    const redone = redoMarkup(drawing(undone))
     expect(ids(redone)).toEqual(['a', 'b'])
     expect(ids(finishDrag(redone))).toEqual(['a', 'b'])
+  })
+
+  it('redo with nothing to redo keeps the held gesture', () => {
+    const held = erase(editorWith(line('a', 0), line('b', 100)), [{ x: 50, y: 0 }])
+
+    expect(redoMarkup(held)).toBe(held)
+    expect(ids(endGesture(held, 1))).toEqual(['b'])
   })
 
   it('clear mid-erase cancels the erase, then clears as one undo step', () => {
