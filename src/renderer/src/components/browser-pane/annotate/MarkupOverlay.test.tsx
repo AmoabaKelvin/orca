@@ -21,14 +21,21 @@ function renderOverlay() {
   }
   canvas.setPointerCapture = vi.fn()
   const undoButton = view.getByRole('button', { name: 'Undo' })
-  return { canvas, undoButton }
+  const redoButton = view.getByRole('button', { name: 'Redo' })
+  return { canvas, undoButton, redoButton }
 }
 
-function stroke(canvas: HTMLCanvasElement, end: 'pointerUp' | 'pointerCancel'): void {
+// Every ending is followed by the lost capture the browser fires after it.
+function stroke(
+  canvas: HTMLCanvasElement,
+  end: 'pointerUp' | 'pointerCancel' | 'lostPointerCapture'
+): void {
   act(() => {
     fireEvent.pointerDown(canvas, { pointerId: 1, button: 0, clientX: 0, clientY: 0 })
     fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 50, clientY: 0 })
-    fireEvent[end](canvas, { pointerId: 1, clientX: 50, clientY: 0 })
+    if (end !== 'lostPointerCapture') {
+      fireEvent[end](canvas, { pointerId: 1, clientX: 50, clientY: 0 })
+    }
     fireEvent.lostPointerCapture(canvas, { pointerId: 1 })
   })
 }
@@ -40,6 +47,18 @@ describe('MarkupOverlay canvas pointer wiring', () => {
     stroke(canvas, 'pointerUp')
 
     expect(undoButton).toHaveProperty('disabled', false)
+  })
+
+  it('commits a stroke whose release never arrived once the canvas loses the pointer', () => {
+    const { canvas, undoButton, redoButton } = renderOverlay()
+
+    stroke(canvas, 'lostPointerCapture')
+    act(() => {
+      fireEvent.click(undoButton)
+    })
+
+    // Only a committed stroke leaves something to redo; a still-held one is just dropped.
+    expect(redoButton).toHaveProperty('disabled', false)
   })
 
   it('discards a stroke whose pointer was cancelled', () => {
