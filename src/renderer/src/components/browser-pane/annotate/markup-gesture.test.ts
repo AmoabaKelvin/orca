@@ -136,6 +136,23 @@ describe('erase gesture', () => {
     expect(ids(endGesture(first, 1))).toEqual(['b'])
   })
 
+  it('settles an erase whose release was lost when the same pointer presses again', () => {
+    const swept = erase(editorWith(line('a', 0), line('b', 100), line('c', 200)), [{ x: 50, y: 0 }])
+
+    // No release for pointer 1; it presses again below every mark and drags a little.
+    const after = endGesture(
+      erase(swept, [
+        { x: 50, y: 300 },
+        { x: 60, y: 300 }
+      ]),
+      1
+    )
+
+    // The new press must not sweep from the stale point, which would cross b and c.
+    expect(ids(after)).toEqual(['b', 'c'])
+    expect(undoShape(after.doc).shapes.map((shape) => shape.id)).toEqual(['a', 'b', 'c'])
+  })
+
   it('commits against the document as it is on release', () => {
     const swept = erase(editorWith(line('a', 0)), [{ x: 50, y: 0 }])
     // The document moved under the gesture and no longer holds the mark.
@@ -170,6 +187,32 @@ describe('draw gesture', () => {
         ]
       }
     ])
+  })
+
+  it('commits a stroke whose release was lost and starts afresh on the next press', () => {
+    const stale = moveGesture(
+      beginDrawGesture(editorWith(), 1, line('old', 0)),
+      1,
+      { x: 120, y: 0 },
+      noText
+    )
+
+    const next = beginDrawGesture(stale, 1, {
+      id: 'new',
+      kind: 'pen',
+      color: '#ef4444',
+      width: 2,
+      points: [{ x: 0, y: 300 }]
+    })
+    const ended = endGesture(moveGesture(next, 1, { x: 50, y: 300 }, noText), 1)
+
+    expect(ended.doc.shapes.map((shape) => shape.id)).toEqual(['old', 'new'])
+    expect(ended.doc.shapes[1]).toMatchObject({
+      points: [
+        { x: 0, y: 300 },
+        { x: 50, y: 300 }
+      ]
+    })
   })
 
   it('extends the shape on move and commits it once on release', () => {
