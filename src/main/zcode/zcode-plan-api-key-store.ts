@@ -138,8 +138,10 @@ export function saveZcodePlanApiKey(key: string): void {
       try {
         writeSecureFile(keyPath, previousEnvelope.toString('utf8'))
       } catch {
-        // Why: a restore that fails before replacing the file leaves the rejected key published.
-        removeRejectedPlaintextEnvelope(keyPath, attemptedEnvelope)
+        // Why: identical bytes are the previous key, not a new rejected secret.
+        if (previousEnvelope.toString('utf8') !== attemptedEnvelope) {
+          removeRejectedPlaintextEnvelope(keyPath, attemptedEnvelope)
+        }
       }
     }
     throw new Error('GLM Coding Plan API key could not be stored securely on this device')

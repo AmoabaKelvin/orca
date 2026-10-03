@@ -207,6 +207,24 @@ describe('zcode-plan-api-key-store', () => {
     warn.mockRestore()
   })
 
+  it('keeps an identical plaintext key when restore fails after publishing it', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    safeStorageMock.isEncryptionAvailable.mockReturnValue(false)
+    const sameKey = Buffer.from(envelope('plaintext', 'same-key'))
+    existsSyncMock.mockReturnValue(true)
+    readFileSyncMock.mockReturnValue(sameKey)
+    writeSecureFileMock.mockReturnValueOnce(false).mockImplementationOnce(() => {
+      throw new Error('restore failed after publish')
+    })
+    const store = await loadStore()
+
+    expect(() => store.saveZcodePlanApiKey('same-key')).toThrow(
+      'could not be stored securely on this device'
+    )
+    expect(rmSyncMock).not.toHaveBeenCalledWith(storePath, expect.anything())
+    warn.mockRestore()
+  })
+
   it('refuses to decrypt an encrypted envelope once safeStorage becomes unavailable', async () => {
     safeStorageMock.isEncryptionAvailable.mockReturnValue(false)
     existsSyncMock.mockReturnValue(true)
