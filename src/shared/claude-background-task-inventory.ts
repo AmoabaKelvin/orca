@@ -82,8 +82,9 @@ export function readClaudeBackgroundAgentTasks(hookPayload: Record<string, unkno
     // Why: future non-agent types and nonterminal labels must fail active; only typed agent rows or explicit terminal states can safely retire work.
     if (!isAgentTask && !isTerminal) {
       hasRunningNonAgentTask = true
-      if (typeof obj.id === 'string') {
-        runningNonAgentTaskIds.push(obj.id.trim())
+      const id = typeof obj.id === 'string' ? obj.id.trim() : ''
+      if (id.length > 0) {
+        runningNonAgentTaskIds.push(id)
       }
     }
     if (!isAgentTask) {

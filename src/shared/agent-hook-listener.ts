@@ -212,8 +212,6 @@ export function normalizeHookPayload(
     if (!payload) {
       return null
     }
-    // Why: the process that would have been woken is gone.
-    state.claudeLaunchedBackgroundTasksByPaneKey.delete(paneKey)
     return {
       paneKey,
       source,

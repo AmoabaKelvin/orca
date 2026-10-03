@@ -11,6 +11,8 @@ type ClaudeLaunchedBackgroundTask = {
   kind: 'agent' | 'shell'
   /** When the task was seen to end; set while its notification has not reached the main agent. */
   notificationOwedAt?: number
+  /** A sub-agent already announced (or given up on); kept only because it can be resumed. */
+  settled?: true
 }
 
 /** How long an idle main agent is still expected to be woken. Claude's Stop is never final and no
@@ -20,7 +22,8 @@ type ClaudeLaunchedBackgroundTask = {
  *  fired 60 s after the last Stop in every capture that idled that long). */
 export const CLAUDE_OWED_TASK_NOTIFICATION_LEASE_MS = 60_000
 
-/** A session can launch tasks without bound; past this, tasks nobody is waiting on are forgotten. */
+/** A session can launch tasks without bound; past this, settled ones are forgotten first, and a
+ *  launch that finds none is not tracked rather than displacing a task still being waited on. */
 const CLAUDE_LAUNCHED_BACKGROUND_TASK_LIMIT = 256
 
 /** The task id a main-agent PostToolUse reports for work it left running in the background. */
@@ -50,12 +53,11 @@ export function recordClaudeBackgroundTaskLaunch(
     return
   }
   if (tasks.size >= CLAUDE_LAUNCHED_BACKGROUND_TASK_LIMIT) {
-    for (const [id, task] of tasks) {
-      if (task.notificationOwedAt === undefined) {
-        tasks.delete(id)
-        break
-      }
+    const settledId = [...tasks].find(([, task]) => task.settled)?.[0]
+    if (settledId === undefined) {
+      return
     }
+    tasks.delete(settledId)
   }
   tasks.set(launch.id, { kind: launch.kind })
 }
@@ -69,6 +71,7 @@ export function oweClaudeAgentTaskNotification(
   const task = tasks?.get(agentId)
   if (task?.kind === 'agent') {
     task.notificationOwedAt = now
+    task.settled = undefined
   }
 }
 
@@ -105,6 +108,7 @@ function stopOwingClaudeTaskNotification(
 ): void {
   if (task.kind === 'agent') {
     task.notificationOwedAt = undefined
+    task.settled = true
   } else {
     tasks.delete(taskId)
   }

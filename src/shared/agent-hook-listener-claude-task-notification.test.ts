@@ -226,6 +226,74 @@ describe('Claude owed task notifications outside the captures', () => {
     expect(post({ hook_event_name: 'Stop', background_tasks: [] })?.payload.state).toBe('working')
   })
 
+  it('at its cap makes room by forgetting a sub-agent already announced', () => {
+    const state = createHookListenerState()
+    const post = (payload: Record<string, unknown>) =>
+      normalizeHookPayload(state, 'claude', { paneKey: PANE_KEY, payload }, 'production')
+    post({ hook_event_name: 'UserPromptSubmit', prompt: 'fan out' })
+    launchAgent(post, 'a1')
+    post({ hook_event_name: 'SubagentStop', agent_id: 'a1' })
+    post({
+      hook_event_name: 'UserPromptSubmit',
+      prompt: '<task-notification>\n<task-id>a1</task-id>\n<status>completed</status>'
+    })
+    for (let index = 2; index <= 257; index += 1) {
+      post({
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Agent',
+        tool_response: { isAsync: true, status: 'async_launched', agentId: `a${index}` }
+      })
+    }
+    post({
+      hook_event_name: 'Stop',
+      background_tasks: [{ id: 'a257', type: 'subagent', status: 'running' }]
+    })
+
+    expect(post({ hook_event_name: 'SubagentStop', agent_id: 'a257' })?.payload.state).toBe(
+      'working'
+    )
+  })
+
+  it('owes a vanished shell on a failed turn end too', () => {
+    const post = listener()
+    post({
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Bash',
+      tool_response: { backgroundTaskId: 'b1' }
+    })
+    post({ hook_event_name: 'Stop', background_tasks: [shell('b1')] })
+    post({ hook_event_name: 'UserPromptSubmit', prompt: 'and now?' })
+
+    expect(post({ hook_event_name: 'StopFailure', background_tasks: [] })?.payload.state).toBe(
+      'working'
+    )
+  })
+
+  it('past its cap never forgets a task that is still running', () => {
+    const state = createHookListenerState()
+    const post = (payload: Record<string, unknown>) =>
+      normalizeHookPayload(state, 'claude', { paneKey: PANE_KEY, payload }, 'production')
+    post({ hook_event_name: 'UserPromptSubmit', prompt: 'fan out' })
+    launchAgent(post, 'a1')
+    post({
+      hook_event_name: 'Stop',
+      background_tasks: [{ id: 'a1', type: 'subagent', status: 'running' }]
+    })
+    for (let index = 0; index < 300; index += 1) {
+      post({
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Agent',
+        tool_response: { isAsync: true, status: 'async_launched', agentId: `a${index + 2}` }
+      })
+    }
+    post({
+      hook_event_name: 'Stop',
+      background_tasks: [{ id: 'a1', type: 'subagent', status: 'running' }]
+    })
+
+    expect(post({ hook_event_name: 'SubagentStop', agent_id: 'a1' })?.payload.state).toBe('working')
+  })
+
   it('does not take a status tag printed by a Monitor for the task having ended', () => {
     const post = listener()
     post({ hook_event_name: 'PostToolUse', tool_name: 'Monitor', tool_response: { taskId: 'b1' } })
@@ -419,18 +487,6 @@ describe('Claude owed task notifications that never arrive', () => {
     expect(restated).toEqual([])
     vi.advanceTimersByTime(1)
     expect(restated.map((row) => row.payload.state)).toEqual(['done'])
-  })
-
-  it('drops what was owed when the Claude process exits', () => {
-    const { post, restated } = shellGoneUnannounced()
-    post({ hook_event_name: 'SessionEnd', reason: 'prompt_input_exit' }, PANE_KEY, {
-      agentProcess: { pid: 4242, platform: 'darwin', startTime: 'Fri Oct  2 12:00:00 2026' }
-    })
-
-    vi.advanceTimersByTime(LEASE)
-
-    // The process that would have been woken is gone, so nothing is owed any more.
-    expect(restated).toEqual([])
   })
 
   it('stops waiting on the next hook too, when no timer restated the pane', () => {
