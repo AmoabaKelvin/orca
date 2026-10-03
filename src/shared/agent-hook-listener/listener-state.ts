@@ -16,6 +16,12 @@ import type { CodexSubagentRoster } from '../codex-subagent-roster'
 import type { CodexSubagentTranscriptState } from '../codex-subagent-transcript'
 import type { MuseSessionLogState } from '../muse-session-log'
 import type { AgentHookEventPayload, ToolSnapshot } from './listener-event'
+import {
+  deletePaneScopedCacheEntry,
+  deletePaneScopedSetEntry,
+  movePaneScopedMapEntries,
+  movePaneScopedSetEntries
+} from './pane-scoped-cache-entries'
 import type { JcodeUserPromptEvidence } from '../jcode-session-files'
 import {
   moveOpenCodeSessionBindings,
@@ -243,34 +249,6 @@ export function paneHasStateClaims(state: HookListenerState, paneKey: string): b
   )
 }
 
-export function movePaneScopedMapEntries<T>(
-  map: Map<string, T>,
-  fromPaneKey: string,
-  toPaneKey: string
-): void {
-  for (const [key, value] of Array.from(map.entries())) {
-    if (key !== fromPaneKey && !key.startsWith(`${fromPaneKey}\0`)) {
-      continue
-    }
-    map.delete(key)
-    map.set(`${toPaneKey}${key.slice(fromPaneKey.length)}`, value)
-  }
-}
-
-export function movePaneScopedSetEntries(
-  set: Set<string>,
-  fromPaneKey: string,
-  toPaneKey: string
-): void {
-  for (const key of Array.from(set)) {
-    if (key !== fromPaneKey && !key.startsWith(`${fromPaneKey}\0`)) {
-      continue
-    }
-    set.delete(key)
-    set.add(`${toPaneKey}${key.slice(fromPaneKey.length)}`)
-  }
-}
-
 export function movePaneCacheState(
   state: HookListenerState,
   fromPaneKey: string,
@@ -311,26 +289,6 @@ export function clearPaneTurnCacheState(state: HookListenerState, paneKey: strin
   state.ampCompletedCacheKeys.delete(paneKey)
   state.grokActiveTurnByPaneKey.delete(paneKey)
   state.grokMainAgentStatusByPaneKey.delete(paneKey)
-}
-
-export function deletePaneScopedCacheEntry(map: Map<string, unknown>, paneKey: string): void {
-  map.delete(paneKey)
-  const scopedPrefix = `${paneKey}\0`
-  for (const key of map.keys()) {
-    if (key.startsWith(scopedPrefix)) {
-      map.delete(key)
-    }
-  }
-}
-
-export function deletePaneScopedSetEntry(set: Set<string>, paneKey: string): void {
-  set.delete(paneKey)
-  const scopedPrefix = `${paneKey}\0`
-  for (const key of set) {
-    if (key.startsWith(scopedPrefix)) {
-      set.delete(key)
-    }
-  }
 }
 
 export function clearAllListenerCaches(state: HookListenerState): void {
