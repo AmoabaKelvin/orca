@@ -44,7 +44,7 @@ export function trackClaudeTaskNotificationDelivery(
     if (notification?.status) {
       settleClaudeTaskNotification(tasks, notification.taskId)
     }
-  } else if (eventName === 'Stop' && inventory.present) {
+  } else if ((eventName === 'Stop' || eventName === 'StopFailure') && inventory.present) {
     oweClaudeShellTaskNotifications(tasks, new Set(inventory.runningNonAgentTaskIds), Date.now())
   }
 }
