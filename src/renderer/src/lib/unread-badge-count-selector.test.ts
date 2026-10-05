@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createTabsSliceMockApi } from '@/store/slices/tabs-slice-test-harness'
 import {
   createTestStore,
@@ -7,14 +7,41 @@ import {
   TEST_REPO
 } from '@/store/slices/store-test-helpers'
 import { makeFolderWorkspace } from '@/store/slices/worktrees-slice-test-fixtures'
+import type { FolderWorkspace } from '../../../shared/folder-workspace-types'
+import type { ProjectGroup } from '../../../shared/project-group-types'
+import { folderWorkspaceKey } from '../../../shared/workspace-scope'
 import { createUnreadBadgeCountSelector } from './unread-badge-count-selector'
 
-createTabsSliceMockApi()
+// Why: marking a folder workspace unread persists through this API; echo the write back.
+Object.assign(createTabsSliceMockApi(), {
+  folderWorkspaces: {
+    update: vi.fn(async ({ updates }: { updates: Partial<FolderWorkspace> }) => ({
+      ...makeFolderWorkspace({ connectionId: 'ssh-1' }),
+      ...updates
+    }))
+  }
+})
 
 const BELL_WORKTREE = 'repo1::/path/bell'
 const OTHER_WORKTREE = 'repo1::/path/other'
 
 type TestStore = ReturnType<typeof createTestStore>
+
+function makeProjectGroup(overrides: Partial<ProjectGroup> = {}): ProjectGroup {
+  return {
+    id: 'group-1',
+    name: 'platform',
+    parentPath: '/work',
+    parentGroupId: null,
+    createdFrom: 'manual',
+    tabOrder: 0,
+    isCollapsed: false,
+    color: null,
+    createdAt: 0,
+    updatedAt: 0,
+    ...overrides
+  }
+}
 
 function createStoreOnOtherWorktree(): TestStore {
   const store = createTestStore()
@@ -106,7 +133,7 @@ describe('Dock unread count against the sidebar (#23363)', () => {
     const store = createStoreOnOtherWorktree()
     const selectCount = createUnreadBadgeCountSelector()
     const folderWorkspace = makeFolderWorkspace()
-    store.setState({ folderWorkspaces: [folderWorkspace] })
+    store.setState({ projectGroups: [makeProjectGroup()], folderWorkspaces: [folderWorkspace] })
     expect(selectCount(store.getState())).toBe(0)
 
     store.setState({ folderWorkspaces: [{ ...folderWorkspace, isUnread: true }] })
@@ -140,5 +167,62 @@ describe('Dock unread count against the sidebar (#23363)', () => {
 
     store.setState({ worktreesByRepo: { repo1: [row, { ...row, hostId: 'ssh:remote' }] } })
     expect(selectCount(store.getState())).toBe(2)
+  })
+
+  describe('under the sidebar host filter', () => {
+    it('skips an unread SSH folder workspace until its host is shown', () => {
+      const store = createStoreOnOtherWorktree()
+      const selectCount = createUnreadBadgeCountSelector()
+      const folderWorkspace = makeFolderWorkspace({ connectionId: 'ssh-1' })
+      store.setState({
+        projectGroups: [makeProjectGroup({ connectionId: 'ssh-1' })],
+        folderWorkspaces: [folderWorkspace]
+      })
+      store.getState().setVisibleWorkspaceHostIds(['local'])
+
+      store.getState().markWorktreeUnread(folderWorkspaceKey(folderWorkspace.id))
+      expect(store.getState().folderWorkspaces[0].isUnread).toBe(true)
+      expect(selectCount(store.getState())).toBe(0)
+
+      store.getState().setVisibleWorkspaceHostIds(['local', 'ssh:ssh-1'])
+      expect(selectCount(store.getState())).toBe(1)
+    })
+
+    it('recounts when a project group or repo changes which host a flagged row is on', () => {
+      const store = createStoreOnOtherWorktree()
+      const selectCount = createUnreadBadgeCountSelector()
+      store.setState({
+        projectGroups: [makeProjectGroup()],
+        folderWorkspaces: [makeFolderWorkspace({ isUnread: true })]
+      })
+      store.getState().markWorktreeUnread(BELL_WORKTREE)
+      store.getState().setVisibleWorkspaceHostIds(['local'])
+      expect(selectCount(store.getState())).toBe(2)
+
+      store.setState({ projectGroups: [makeProjectGroup({ connectionId: 'ssh-1' })] })
+      expect(selectCount(store.getState())).toBe(1)
+
+      store.setState({ repos: [{ ...TEST_REPO, connectionId: 'ssh-1' }] })
+      expect(selectCount(store.getState())).toBe(0)
+    })
+
+    it('counts one worktree id on two hosts once per shown host', () => {
+      const store = createTestStore()
+      const selectCount = createUnreadBadgeCountSelector()
+      store.setState({
+        repos: [{ ...TEST_REPO, executionHostId: 'local' }],
+        worktreesByRepo: {
+          repo1: [
+            makeWorktree({ id: BELL_WORKTREE, repoId: 'repo1', hostId: 'local' }),
+            makeWorktree({ id: BELL_WORKTREE, repoId: 'repo1', hostId: 'ssh:ssh-1' })
+          ]
+        }
+      })
+      store.getState().markWorktreeUnread(BELL_WORKTREE)
+      expect(selectCount(store.getState())).toBe(2)
+
+      store.getState().setVisibleWorkspaceHostIds(['local'])
+      expect(selectCount(store.getState())).toBe(1)
+    })
   })
 })

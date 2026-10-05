@@ -1,65 +1,117 @@
 import { describe, expect, it } from 'vitest'
-import { getUnreadBadgeCount, type UnreadBadgeWorktree } from './unread-badge-count'
+import { makeWorktree, TEST_REPO } from '@/store/slices/store-test-helpers'
+import { makeFolderWorkspace } from '@/store/slices/worktrees-slice-test-fixtures'
+import type { ProjectGroup } from '../../../shared/project-group-types'
+import type { Worktree } from '../../../shared/worktree/types'
+import { getUnreadBadgeCount, type UnreadBadgeCountSources } from './unread-badge-count'
 
-function worktree(
-  id: string,
-  isUnread: boolean,
-  overrides: Partial<UnreadBadgeWorktree> = {}
-): UnreadBadgeWorktree {
-  return { id, isUnread, isArchived: false, ...overrides }
+function worktree(id: string, overrides: Partial<Worktree> = {}): Worktree {
+  return makeWorktree({ id, repoId: TEST_REPO.id, isUnread: true, ...overrides })
+}
+
+function projectGroup(overrides: Partial<ProjectGroup> = {}): ProjectGroup {
+  return {
+    id: 'group-1',
+    name: 'platform',
+    parentPath: '/work',
+    parentGroupId: null,
+    createdFrom: 'manual',
+    tabOrder: 0,
+    isCollapsed: false,
+    color: null,
+    createdAt: 0,
+    updatedAt: 0,
+    ...overrides
+  }
+}
+
+function count(overrides: Partial<UnreadBadgeCountSources>): number {
+  return getUnreadBadgeCount({
+    worktreesByRepo: {},
+    folderWorkspaces: [],
+    projectGroups: [projectGroup()],
+    repoMap: new Map([[TEST_REPO.id, TEST_REPO]]),
+    visibleHostIds: null,
+    defaultHostId: 'local',
+    hiddenOtherDevicePairings: null,
+    ...overrides
+  })
 }
 
 describe('getUnreadBadgeCount', () => {
   it('counts unread worktrees', () => {
     expect(
-      getUnreadBadgeCount({
-        worktreesByRepo: { repo: [worktree('wt-1', true), worktree('wt-2', false)] },
-        folderWorkspaces: []
+      count({
+        worktreesByRepo: { repo1: [worktree('wt-1'), worktree('wt-2', { isUnread: false })] }
       })
     ).toBe(1)
   })
 
   it('skips archived worktrees, which the sidebar never shows', () => {
-    expect(
-      getUnreadBadgeCount({
-        worktreesByRepo: { repo: [worktree('wt-1', true, { isArchived: true })] },
-        folderWorkspaces: []
-      })
-    ).toBe(0)
+    expect(count({ worktreesByRepo: { repo1: [worktree('wt-1', { isArchived: true })] } })).toBe(0)
   })
 
   it('counts one worktree id on two hosts as the two sidebar rows it is', () => {
-    expect(
-      getUnreadBadgeCount({
-        worktreesByRepo: {
-          repo: [
-            worktree('wt-1', true, { hostId: 'local' }),
-            worktree('wt-1', true, { hostId: 'ssh:remote' })
-          ]
-        },
-        folderWorkspaces: []
-      })
-    ).toBe(2)
+    const rows = [worktree('wt-1', { hostId: 'local' }), worktree('wt-1', { hostId: 'ssh:remote' })]
+    expect(count({ worktreesByRepo: { repo1: rows } })).toBe(2)
+    expect(count({ worktreesByRepo: { repo1: rows }, visibleHostIds: new Set(['local']) })).toBe(1)
   })
 
   it('counts a row repeated across repo buckets once', () => {
     expect(
-      getUnreadBadgeCount({
+      count({
         worktreesByRepo: {
-          'repo-a': [worktree('wt-1', true, { hostId: 'local' })],
-          'repo-b': [worktree('wt-1', true, { hostId: 'local' })]
-        },
-        folderWorkspaces: []
+          'repo-a': [worktree('wt-1', { hostId: 'local' })],
+          'repo-b': [worktree('wt-1', { hostId: 'local' })]
+        }
       })
     ).toBe(1)
   })
 
   it('counts unread folder workspaces alongside worktrees', () => {
     expect(
-      getUnreadBadgeCount({
-        worktreesByRepo: { repo: [worktree('wt-1', true)] },
-        folderWorkspaces: [{ isUnread: true }, { isUnread: false }]
+      count({
+        worktreesByRepo: { repo1: [worktree('wt-1')] },
+        folderWorkspaces: [
+          makeFolderWorkspace({ id: 'folder-1', isUnread: true }),
+          makeFolderWorkspace({ id: 'folder-2' })
+        ]
       })
     ).toBe(2)
+  })
+
+  it('skips an unread folder workspace the sidebar has no row for', () => {
+    const localOnly = { visibleHostIds: new Set(['local'] as const) }
+    const remoteFolderInLocalGroup = {
+      folderWorkspaces: [makeFolderWorkspace({ isUnread: true, executionHostId: 'ssh:ssh-1' })]
+    }
+    const localFolderInRemoteGroup = {
+      folderWorkspaces: [makeFolderWorkspace({ isUnread: true, executionHostId: 'local' })],
+      projectGroups: [projectGroup({ connectionId: 'ssh-1' })]
+    }
+
+    expect(count(remoteFolderInLocalGroup)).toBe(1)
+    expect(count({ ...remoteFolderInLocalGroup, ...localOnly })).toBe(0)
+    expect(count(localFolderInRemoteGroup)).toBe(1)
+    expect(count({ ...localFolderInRemoteGroup, ...localOnly })).toBe(0)
+    // A group with no folder on disk renders no rows.
+    expect(
+      count({
+        folderWorkspaces: [makeFolderWorkspace({ isUnread: true })],
+        projectGroups: [projectGroup({ parentPath: null })]
+      })
+    ).toBe(0)
+  })
+
+  it('skips a folder workspace from another device while the sidebar hides those', () => {
+    const fromOtherDevice = makeFolderWorkspace({
+      isUnread: true,
+      creatorProvenance: { kind: 'paired-device', deviceId: 'phone' }
+    })
+
+    expect(count({ folderWorkspaces: [fromOtherDevice] })).toBe(1)
+    expect(
+      count({ folderWorkspaces: [fromOtherDevice], hiddenOtherDevicePairings: new Map() })
+    ).toBe(0)
   })
 })

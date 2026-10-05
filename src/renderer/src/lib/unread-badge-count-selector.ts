@@ -1,13 +1,28 @@
+import { getVisibleWorkspaceHostIdSet } from '@/components/sidebar/visible-worktree-host-scope'
+import { getPairedDeviceIdsByEnvironment } from '@/components/sidebar/workspace-creator-visibility'
+import { getRepoMapFromState } from '@/store/selectors'
+import type { AppState } from '@/store/types'
+import { getSettingsFocusedExecutionHostId } from '../../../shared/execution-host'
+import type { Worktree } from '../../../shared/worktree/types'
 import { sameBucketRecords } from './bucket-record-equality'
-import {
-  type UnreadBadgeCountSources,
-  type UnreadBadgeWorktree,
-  getUnreadBadgeCount
-} from './unread-badge-count'
+import { getUnreadBadgeCount } from './unread-badge-count'
 
-const EMPTY_BUCKETS = Object.freeze({})
+type UnreadBadgeCountState = Pick<
+  AppState,
+  | 'worktreesByRepo'
+  | 'folderWorkspaces'
+  | 'projectGroups'
+  | 'repos'
+  | 'settings'
+  | 'workspaceHostScope'
+  | 'visibleWorkspaceHostIds'
+  | 'hideWorkspacesFromOtherDevices'
+  | 'runtimeEnvironments'
+  | 'runtimeStatusByEnvironmentId'
+>
 
-function sameBadgeWorktree(previous: UnreadBadgeWorktree, next: UnreadBadgeWorktree): boolean {
+/** The worktree fields the count reads (`id` embeds `repoId`), so equality over them is a sound cache key. */
+function sameBadgeWorktree(previous: Worktree, next: Worktree): boolean {
   return (
     previous.id === next.id &&
     previous.hostId === next.hostId &&
@@ -16,32 +31,54 @@ function sameBadgeWorktree(previous: UnreadBadgeWorktree, next: UnreadBadgeWorkt
   )
 }
 
+function sameCountInputs(previous: UnreadBadgeCountState, next: UnreadBadgeCountState): boolean {
+  return (
+    previous.folderWorkspaces === next.folderWorkspaces &&
+    previous.projectGroups === next.projectGroups &&
+    previous.repos === next.repos &&
+    previous.workspaceHostScope === next.workspaceHostScope &&
+    previous.visibleWorkspaceHostIds === next.visibleWorkspaceHostIds &&
+    previous.settings?.activeRuntimeEnvironmentId === next.settings?.activeRuntimeEnvironmentId &&
+    previous.hideWorkspacesFromOtherDevices === next.hideWorkspacesFromOtherDevices &&
+    // Why gated: runtime status reallocates on remote activity and only this filter reads it.
+    (!next.hideWorkspacesFromOtherDevices ||
+      (previous.runtimeEnvironments === next.runtimeEnvironments &&
+        previous.runtimeStatusByEnvironmentId === next.runtimeStatusByEnvironmentId)) &&
+    sameBucketRecords(previous.worktreesByRepo, next.worktreesByRepo, sameBadgeWorktree)
+  )
+}
+
 /**
  * Why: the App root holds this subscription for a single integer. Returning the raw maps re-rendered
  * the whole shell on every agent title frame; selecting the count instead means the subscription
  * only notifies when the badge value can actually have moved.
  *
- * Why chaining against the immediately preceding state is enough: equality over the count's read set
- * — the worktree projection and the folder workspace list identity — is transitive, so a run of
- * unchanged states is equivalent to comparing against the state that produced the cached count.
+ * Why chaining against the immediately preceding state is enough: equality over the count's read
+ * set is transitive, so a run of unchanged states is equivalent to comparing against the state
+ * that produced the cached count.
  */
-export function createUnreadBadgeCountSelector(): (state: UnreadBadgeCountSources) => number {
-  let previousWorktreesByRepo: UnreadBadgeCountSources['worktreesByRepo'] = EMPTY_BUCKETS
-  let previousFolderWorkspaces: UnreadBadgeCountSources['folderWorkspaces'] | undefined
+export function createUnreadBadgeCountSelector(): (state: UnreadBadgeCountState) => number {
+  let previousState: UnreadBadgeCountState | undefined
   let unreadCount = 0
-  let counted = false
 
   return (state) => {
-    const unchanged =
-      counted &&
-      previousFolderWorkspaces === state.folderWorkspaces &&
-      sameBucketRecords(previousWorktreesByRepo, state.worktreesByRepo, sameBadgeWorktree)
-    if (!unchanged) {
-      unreadCount = getUnreadBadgeCount(state)
-      previousFolderWorkspaces = state.folderWorkspaces
-      counted = true
+    if (!previousState || !sameCountInputs(previousState, state)) {
+      unreadCount = getUnreadBadgeCount({
+        worktreesByRepo: state.worktreesByRepo,
+        folderWorkspaces: state.folderWorkspaces,
+        projectGroups: state.projectGroups,
+        repoMap: getRepoMapFromState(state),
+        visibleHostIds: getVisibleWorkspaceHostIdSet(state),
+        defaultHostId: getSettingsFocusedExecutionHostId(state.settings),
+        hiddenOtherDevicePairings: state.hideWorkspacesFromOtherDevices
+          ? getPairedDeviceIdsByEnvironment(
+              state.runtimeEnvironments,
+              state.runtimeStatusByEnvironmentId
+            )
+          : null
+      })
     }
-    previousWorktreesByRepo = state.worktreesByRepo
+    previousState = state
     return unreadCount
   }
 }
