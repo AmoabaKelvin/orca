@@ -460,6 +460,7 @@ describe('Delete on the focused workspace list', () => {
 
     expect(mocks.activate).toHaveBeenCalledWith('b', {
       navigationIntent: 'user-open',
+      revealInSidebar: false,
       executionHostId: 'ssh:box'
     })
     expect(state.updateWorktreeMeta).toHaveBeenCalledTimes(1)
