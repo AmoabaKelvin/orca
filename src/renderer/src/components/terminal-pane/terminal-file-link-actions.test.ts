@@ -1,13 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TerminalLinkActionContext } from './terminal-link-action-request'
 
-const mocks = vi.hoisted(() => ({
-  canOpenWithSystemDefault: true,
-  downloadAndOpen: vi.fn(),
-  openDetectedFilePath: vi.fn(),
-  settings: { activeRuntimeEnvironmentId: null as string | null },
-  worktreeRoot: false
-}))
+const mocks = vi.hoisted(() => {
+  const settings: { activeRuntimeEnvironmentId: string | null } = {
+    activeRuntimeEnvironmentId: null
+  }
+  return {
+    canOpenWithSystemDefault: true,
+    downloadAndOpen: vi.fn(),
+    openDetectedFilePath: vi.fn(),
+    settings,
+    worktreeRoot: false
+  }
+})
 
 vi.mock('@/store', () => ({
   useAppStore: { getState: () => ({ settings: mocks.settings }) }
