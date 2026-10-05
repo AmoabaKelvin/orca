@@ -17,7 +17,7 @@ type ItemProps = { onSelect?: () => void; children?: ReactNode }
 
 const items = vi.hoisted(() => ({ list: [] as ItemProps[] }))
 const imageCopy = vi.hoisted(() => ({
-  convertImageBlobToPng: vi.fn(),
+  convertImageBlobToPng: vi.fn()
 }))
 
 vi.mock('@/components/ui/dropdown-menu', () => ({
@@ -78,7 +78,6 @@ vi.mock('@/lib/image-blob-png', async (importOriginal) => ({
   ...(await importOriginal<typeof ImageBlobPng>()),
   convertImageBlobToPng: imageCopy.convertImageBlobToPng
 }))
-
 
 vi.mock('@/components/tab-bar/TabWorkspaceLayoutMenuSection', () => ({
   TabWorkspaceLayoutMenuSection: () => 'Move Tab to Split'
