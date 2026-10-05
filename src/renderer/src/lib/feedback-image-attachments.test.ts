@@ -12,11 +12,6 @@ import {
   maxFeedbackImageBatchBytes,
   readFeedbackImageFiles
 } from './feedback-image-attachments'
-import {
-  feedbackImageShrinkSteps,
-  shrinkFeedbackImageWithin,
-  type FeedbackImageShrinkStep
-} from './feedback-image-shrink'
 import type * as FeedbackImageShrinkModule from './feedback-image-shrink'
 
 // Spelled out rather than read from the cap constant, so the policy is what is pinned.
@@ -24,7 +19,7 @@ const HALF_THE_BUDGET = MAX_FEEDBACK_IMAGE_TOTAL_BYTES / 2
 
 const { shrinkFeedbackImage } = vi.hoisted(() => ({ shrinkFeedbackImage: vi.fn() }))
 
-// Why: happy-dom has no image decoder; the shrink steps are covered in their own test.
+// Why: happy-dom has no image decoder; full-resolution PNG encoding has a separate test.
 vi.mock('./feedback-image-shrink', async (importOriginal) => ({
   ...(await importOriginal<typeof FeedbackImageShrinkModule>()),
   shrinkFeedbackImage
@@ -101,49 +96,6 @@ function gifFile(name: string, size: number): File {
 
 function encoded(size: number, type: string): Blob {
   return new Blob([new Uint8Array(size)], { type })
-}
-
-type StepSizes = Record<`${FeedbackImageShrinkStep['contentType']}@${number}`, number>
-
-// Encode sizes measured from three 3024x1964 Retina screenshots in Electron;
-// the PNG@0.75 and other unmeasured steps of the 2nd and 3rd are estimates.
-const RETINA_STEP_SIZES: readonly StepSizes[] = [
-  {
-    'image/png@0.75': 3_810_000,
-    'image/png@0.5': 1_750_000,
-    'image/jpeg@1': 1_380_000,
-    'image/jpeg@0.75': 760_000,
-    'image/jpeg@0.5': 380_000,
-    'image/jpeg@0.25': 110_000
-  },
-  {
-    'image/png@0.75': 3_300_000,
-    'image/png@0.5': 1_510_000,
-    'image/jpeg@1': 1_300_000,
-    'image/jpeg@0.75': 710_000,
-    'image/jpeg@0.5': 360_000,
-    'image/jpeg@0.25': 105_000
-  },
-  {
-    'image/png@0.75': 3_500_000,
-    'image/png@0.5': 1_630_000,
-    'image/jpeg@1': 1_340_000,
-    'image/jpeg@0.75': 730_000,
-    'image/jpeg@0.5': 370_000,
-    'image/jpeg@0.25': 108_000
-  }
-]
-
-/** Runs the real step walk, with each step's encode size taken from the file's table. */
-function shrinkByStepSizes(sizesByName: Record<string, StepSizes>): void {
-  shrinkFeedbackImage.mockImplementation((file: File, maxBytes: number) =>
-    shrinkFeedbackImageWithin(
-      feedbackImageShrinkSteps(file.type),
-      async (step) =>
-        encoded(sizesByName[file.name][`${step.contentType}@${step.scale}`], step.contentType),
-      maxBytes
-    )
-  )
 }
 
 describe('hasAttachableFeedbackImage', () => {
@@ -235,7 +187,28 @@ describe('maxFeedbackImageBatchBytes', () => {
     }
   })
 
-  it('reserves each file in a batch against the space the ones before it reserved', () => {
+  it('covers a GIF admitted by slack from an earlier optimization', async () => {
+    shrinkFeedbackImage.mockResolvedValue(encoded(1_750_000, 'image/png'))
+    const batch = [pngFile('retina.png', 6_400_000), gifFile('anim.gif', 2_444_304)]
+
+    const reserved = maxFeedbackImageBatchBytes(batch, 0, 0)
+    const { images, errors } = await readFeedbackImageFiles(batch, 0)
+
+    expect(errors).toEqual([])
+    expect(images).toHaveLength(2)
+    expect(images.reduce((total, image) => total + image.bytes, 0)).toBe(4_194_304)
+    expect(reserved).toBeGreaterThanOrEqual(4_194_304)
+  })
+
+  it('reserves later files when an earlier rejected file can free a count slot', () => {
+    const batch = [pngFile('maybe-invalid.png', 1000), gifFile('anim.gif', 2_444_304)]
+
+    expect(
+      maxFeedbackImageBatchBytes(batch, MAX_FEEDBACK_IMAGE_COUNT - 1, 0)
+    ).toBeGreaterThanOrEqual(2_444_304)
+  })
+
+  it('caps independent file reservations at the total budget', () => {
     const batch = [
       pngFile('first.png', 6_400_000),
       pngFile('second.png', 6_400_000),
@@ -282,11 +255,10 @@ describe('readFeedbackImageFiles', () => {
     expect(errors.at(-1)).toBe('96 additional images could not be attached.')
   })
 
-  // Why: the whole budget free must not let one shrink take the PNG@0.75 step and
-  // leave the next screenshot a blurry JPEG.
+  // Why: optimizing one image must still leave room for another attachment.
   it('shrinks an oversized screenshot to at most half the budget even when all of it is free', async () => {
     const file = pngFile('retina.png', 6_400_000)
-    shrinkByStepSizes({ 'retina.png': RETINA_STEP_SIZES[0] })
+    shrinkFeedbackImage.mockResolvedValue(encoded(1_750_000, 'image/png'))
 
     const { images, errors, notices } = await readFeedbackImageFiles([file], 0)
 
@@ -304,34 +276,31 @@ describe('readFeedbackImageFiles', () => {
     ])
   })
 
-  it('keeps three Retina screenshots added one after another readable within the budget', async () => {
-    const names = ['first.png', 'second.png', 'third.png']
-    shrinkByStepSizes(
-      Object.fromEntries(names.map((name, index) => [name, RETINA_STEP_SIZES[index]]))
+  it('refuses an additional image when full-resolution PNG cannot fit the remaining budget', async () => {
+    shrinkFeedbackImage.mockImplementation(async (_file: File, maxBytes: number) =>
+      maxBytes >= 1_750_000 ? encoded(1_750_000, 'image/png') : null
     )
-    const sources = [6_400_000, 5_350_000, 5_700_000]
     const attached: { contentType: string; bytes: number }[] = []
 
-    for (const [index, name] of names.entries()) {
-      const committed = attached.reduce((total, image) => total + image.bytes, 0)
+    for (const name of ['first.png', 'second.png']) {
       const { images, errors } = await readFeedbackImageFiles(
-        [pngFile(name, sources[index], { width: 3024, height: 1964 })],
+        [pngFile(name, 6_400_000)],
         attached.length,
-        committed
+        attached.reduce((total, image) => total + image.bytes, 0)
       )
       expect(errors).toEqual([])
       attached.push(...images)
     }
-
-    expect(attached.map((image) => [image.contentType, image.bytes])).toEqual([
-      ['image/png', 1_750_000],
-      ['image/png', 1_510_000],
-      ['image/jpeg', 730_000]
-    ])
-    expect(attached.every((image) => image.bytes <= HALF_THE_BUDGET)).toBe(true)
-    expect(attached.reduce((total, image) => total + image.bytes, 0)).toBeLessThanOrEqual(
-      MAX_FEEDBACK_IMAGE_TOTAL_BYTES
+    const { images, errors, notices } = await readFeedbackImageFiles(
+      [pngFile('third.png', 6_400_000)],
+      attached.length,
+      attached.reduce((total, image) => total + image.bytes, 0)
     )
+
+    expect(attached.map((image) => image.contentType)).toEqual(['image/png', 'image/png'])
+    expect(images).toEqual([])
+    expect(errors).toEqual(['third.png would bring the attachments over 4.0 MB in total.'])
+    expect(notices).toEqual([])
   })
 
   // Why: the cap applies only to a re-encode; an image that fits is sent as taken.
@@ -349,7 +318,7 @@ describe('readFeedbackImageFiles', () => {
   it('shrinks into the space left when less than half the budget remains', async () => {
     const first = pngFile('first.png', 3_000_000)
     const second = pngFile('second.png', 3_000_000)
-    shrinkFeedbackImage.mockResolvedValue(encoded(900_000, 'image/jpeg'))
+    shrinkFeedbackImage.mockResolvedValue(encoded(900_000, 'image/png'))
 
     const { images, errors } = await readFeedbackImageFiles([first, second], 0)
 
@@ -361,7 +330,7 @@ describe('readFeedbackImageFiles', () => {
     )
     expect(images.map((image) => [image.name, image.contentType, image.bytes])).toEqual([
       ['first.png', 'image/png', 3_000_000],
-      ['second.png', 'image/jpeg', 900_000]
+      ['second.png', 'image/png', 900_000]
     ])
   })
 

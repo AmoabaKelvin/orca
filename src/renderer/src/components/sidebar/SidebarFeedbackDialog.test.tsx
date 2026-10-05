@@ -584,6 +584,70 @@ describe('SidebarFeedbackDialog image submission', () => {
     expect(paste.defaultPrevented).toBe(false)
   })
 
+  it('preserves pasted text while a mixed pending batch can fill the byte budget', async () => {
+    const user = userEvent.setup()
+    let finishFirstRead: ((value: unknown) => void) | undefined
+    mocks.readFeedbackImageFiles
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishFirstRead = resolve
+        })
+      )
+      .mockResolvedValueOnce({ images: [], errors: ['No room for second.png'], notices: [] })
+    const { container } = render(<SidebarFeedbackDialog open onOpenChange={vi.fn()} />)
+    const textarea = screen.getByPlaceholderText<HTMLTextAreaElement>('What could we improve?')
+    await waitFor(() => expect(textarea.value).toContain('Orca:'))
+    fireEvent.change(textarea, { target: { value: 'before after' } })
+    const retina = new File(['x'], 'retina.png', { type: 'image/png' })
+    const gif = new File(['x'], 'anim.gif', { type: 'image/gif' })
+    Object.defineProperty(retina, 'size', { value: 6_400_000 })
+    Object.defineProperty(gif, 'size', { value: 2_444_304 })
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [retina, gif] }
+    })
+    await waitFor(() => expect(mocks.readFeedbackImageFiles).toHaveBeenCalledTimes(1))
+    textarea.focus()
+    textarea.setSelectionRange(7, 7)
+    const clipboard = new DataTransfer()
+    clipboard.setData('text/plain', 'report')
+    const second = new File(['x'], 'second.png', { type: 'image/png' })
+    Object.defineProperty(second, 'size', { value: 1_500_000 })
+    Object.defineProperty(clipboard, 'files', { value: [second] })
+
+    await user.paste(clipboard)
+    expect(textarea.value).toBe('before reportafter')
+    await user.keyboard('!')
+    expect(textarea.value).toBe('before report!after')
+    await act(async () =>
+      finishFirstRead?.({
+        images: [
+          {
+            id: 'retina',
+            name: 'retina.png',
+            contentType: 'image/png',
+            bytes: 1_750_000,
+            data: new Uint8Array([1]),
+            previewUrl: 'blob:retina'
+          },
+          {
+            id: 'gif',
+            name: 'anim.gif',
+            contentType: 'image/gif',
+            bytes: 2_444_304,
+            data: new Uint8Array([1]),
+            previewUrl: 'blob:gif'
+          }
+        ],
+        errors: [],
+        notices: []
+      })
+    )
+    await waitFor(() => expect(mocks.readFeedbackImageFiles).toHaveBeenCalledTimes(2))
+    expect(mocks.readFeedbackImageFiles).toHaveBeenNthCalledWith(2, [second], 2, 4_194_304)
+    expect(textarea.value).toBe('before report!after')
+    expect(textarea.selectionStart).toBe(14)
+  })
+
   // Why: a screenshot still shrinking will commit at most half the budget; holding
   // its raw size against the gate would let a second paste spill into the textarea.
   it('consumes a second oversized paste while the first is still shrinking', async () => {

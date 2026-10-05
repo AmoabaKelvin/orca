@@ -80,11 +80,9 @@ export function useSidebarFeedbackImages(params: {
         )
         return
       }
-      const reserved = getReservedImageCapacity()
       const pendingReads = pendingImageReadsRef.current
-      // Why: an oversized screenshot commits at most its shrink target, so reserving
-      // its file size would turn the paste gate against the next one while it shrinks.
-      const batchBytes = maxFeedbackImageBatchBytes(files, reserved.count, reserved.bytes)
+      // Why: earlier reads can fail and attached images can be removed before this reads.
+      const batchBytes = maxFeedbackImageBatchBytes(files, 0, 0)
       pendingReads.count += files.length
       pendingReads.bytes += batchBytes
       setPendingImageReadCount((current) => current + files.length)
@@ -134,7 +132,7 @@ export function useSidebarFeedbackImages(params: {
         console.error('Failed to settle a feedback image batch:', error)
       })
     },
-    [getReservedImageCapacity, params.isSubmitting, params.mountedRef]
+    [params.isSubmitting, params.mountedRef]
   )
 
   const handleRemoveImage = useCallback((id: string) => {

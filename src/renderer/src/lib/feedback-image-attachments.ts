@@ -29,10 +29,9 @@ export const FEEDBACK_IMAGE_FILE_ACCEPT = SUPPORTED_FEEDBACK_IMAGE_TYPES.join(',
 const MAX_FEEDBACK_IMAGE_DETAIL_ERRORS = 4
 // Why: an oversized image is read whole before it can be shrunk, so cap the read.
 export const MAX_FEEDBACK_IMAGE_SOURCE_BYTES = 32 * 1024 * 1024
-// Why: a Retina screenshot's smallest step measured ~110 KB; below this, shrinks only burn encodes.
+// Why: a nearly spent budget is unlikely to fit a full-resolution PNG re-encode.
 export const MIN_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES = 64 * 1024
-// Why: a shrink keeps the largest step that fits, so given the whole budget the
-// first screenshot leaves the next only a blurry JPEG and the third no room.
+// Why: reserve room for another image instead of filling the budget with one optimization.
 export const MAX_FEEDBACK_IMAGE_SHRINK_TARGET_BYTES = MAX_FEEDBACK_IMAGE_TOTAL_BYTES / 2
 
 export type FeedbackImageDraft = {
@@ -115,30 +114,27 @@ export function hasAttachableFeedbackImage(
   )
 }
 
-/**
- * The most a batch can commit, for the paste gate to reserve while it is read:
- * each file's own size if it fits the space left, else its capped shrink target.
- */
+/** Upper bound independent of earlier files shrinking, failing, or freeing slots. */
 export function maxFeedbackImageBatchBytes(
   files: readonly File[],
   existingCount: number,
   existingBytes: number
 ): number {
-  let remaining = MAX_FEEDBACK_IMAGE_COUNT - existingCount
-  let remainingBytes = MAX_FEEDBACK_IMAGE_TOTAL_BYTES - existingBytes
+  if (existingCount >= MAX_FEEDBACK_IMAGE_COUNT) {
+    return 0
+  }
+  const remainingBytes = Math.max(0, MAX_FEEDBACK_IMAGE_TOTAL_BYTES - existingBytes)
+  const fitBytes = feedbackImageFitBytes(remainingBytes)
   let batchBytes = 0
   for (const file of files) {
-    if (remaining <= 0) {
-      break
-    }
-    const fitBytes = feedbackImageFitBytes(remainingBytes)
     if (!isSupportedType(file.type) || file.size === 0 || !canAttachWithin(file, fitBytes)) {
       continue
     }
     const fileBytes = file.size <= fitBytes ? file.size : feedbackImageShrinkTargetBytes(fitBytes)
-    remaining -= 1
-    remainingBytes -= fileBytes
     batchBytes += fileBytes
+    if (batchBytes >= remainingBytes) {
+      return remainingBytes
+    }
   }
   return batchBytes
 }
@@ -160,7 +156,7 @@ function feedbackImageDisplayName(file: File): string {
 }
 
 /**
- * Converts picked/pasted/dropped files into drafts, shrinking any that would not
+ * Converts picked/pasted/dropped files into drafts, optimizing full-resolution PNG for any that would not
  * fit. Rejections and compressions come back as messages, because a silently
  * dropped or degraded attachment is the exact failure this feature exists to fix.
  */
