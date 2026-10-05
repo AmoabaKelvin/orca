@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   createAgentStatusExtensionHarness,
-  type AgentStatusExtensionHarness
+  type AgentStatusExtensionHarness,
+  type HookContext
 } from './agent-status-extension-test-harness'
 import {
   agentEndCount,
@@ -496,7 +497,7 @@ describe('OMP session switches', () => {
     return { context, switchTo: (next: string) => (id = next) }
   }
 
-  async function holdOmpRunOpen(harness: AgentStatusExtensionHarness, context: object) {
+  async function holdOmpRunOpen(harness: AgentStatusExtensionHarness, context: HookContext) {
     await harness.callHook('agent_start', {}, context)
     harness.emitPiEvent('task:subagent:lifecycle', { id: 'c1', agent: 'task', status: 'started' })
     await harness.callHook('agent_end', {}, context)
