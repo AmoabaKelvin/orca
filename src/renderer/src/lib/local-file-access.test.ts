@@ -208,8 +208,6 @@ const USER_NAMED_ACCESS_IMPORTERS = [
   'components/browser-pane/describe-page/browser-artifact-upload.ts',
   'components/native-chat/use-native-chat-external-attachments.ts',
   'components/sidebar/useSidebarProjectDrop.ts',
-  // The explicit Reveal action stats a directory; hovering never grants this access.
-  'components/terminal-pane/terminal-hovered-file-link.ts',
   'hooks/composer-state/attachment-drop-state.ts',
   'lib/local-file-access.ts',
   'lib/user-opened-local-path.ts'

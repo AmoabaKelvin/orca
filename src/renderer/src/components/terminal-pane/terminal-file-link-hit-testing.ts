@@ -131,7 +131,7 @@ export function dedupeLogicalLines(logicalLines: WrappedLogicalLine[]): WrappedL
   })
 }
 
-export function rangeContainsBufferPosition(
+function rangeContainsBufferPosition(
   range: IBufferRange,
   position: { x: number; y: number },
   terminalColumns: number

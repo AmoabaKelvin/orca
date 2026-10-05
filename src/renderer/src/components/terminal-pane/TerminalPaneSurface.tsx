@@ -234,7 +234,6 @@ export function TerminalPaneSurface({
         menuPaneIsExpanded={
           contextMenu.menuPaneId !== null && contextMenu.menuPaneId === expandedPaneId
         }
-        fileLinkReveal={contextMenu.fileLinkReveal}
         onCopy={() => void contextMenu.onCopy()}
         onSelectAll={contextMenu.onSelectAll}
         onPaste={() => void contextMenu.onPaste()}

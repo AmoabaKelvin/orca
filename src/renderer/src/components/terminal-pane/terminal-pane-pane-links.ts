@@ -16,8 +16,7 @@ import { createTerminalHandleLinkProvider } from './terminal-handle-links'
 import { installTerminalLinkifierClickPriming } from './terminal-linkifier-click-priming'
 import { installTerminalLinkPointerGesture } from './terminal-link-pointer-gesture'
 import { installHttpLinkClickFallback } from './terminal-url-link-hit-testing'
-import { handleOscLink, setHoveredOscFileLink } from './terminal-osc-link-routing'
-import { setHoveredTerminalFileLink } from './terminal-hovered-file-link'
+import { handleOscLink } from './terminal-osc-link-routing'
 import { copyTerminalSelection } from './terminal-selection-copy'
 import { readTerminalClipboardSelection } from './terminal-clipboard-selection-text'
 import { installTerminalNativeCopyGutterTrim } from './terminal-native-copy-gutter'
@@ -192,12 +191,7 @@ export function installTerminalPaneLinkHandling(context: PaneLinkContext): void 
         pane.terminal.clearSelection()
       }
     },
-    hover: (_event, text, range) => {
-      setHoveredOscFileLink(pane.terminal, text, range, {
-        ...linkDeps,
-        startupCwd: getPaneLinkCwd(pane.id),
-        runtimeEnvironmentId: linkDeps.getRuntimeEnvironmentIdForPane?.(pane.id) ?? null
-      })
+    hover: (_event, text) => {
       oscTooltipHoverToken += 1
       const hoverToken = oscTooltipHoverToken
       const hint = getUrlOpenLinkHint(pane.id)
@@ -212,7 +206,6 @@ export function installTerminalPaneLinkHandling(context: PaneLinkContext): void 
       )
     },
     leave: () => {
-      setHoveredTerminalFileLink(pane.terminal, null)
       oscTooltipHoverToken += 1
       pane.linkTooltip.style.display = 'none'
     }

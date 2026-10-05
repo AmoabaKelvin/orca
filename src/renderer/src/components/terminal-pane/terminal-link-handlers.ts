@@ -6,6 +6,7 @@ import {
   resolveTerminalFileLink
 } from '@/lib/terminal-links'
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
+import { isRemoteRuntimeFileOperation } from '@/runtime/runtime-file-client'
 import {
   buildCandidateLogicalLinesForBufferPosition,
   dedupeLogicalLines,
@@ -24,7 +25,11 @@ import {
   rangeForParsedFileLink,
   type WrappedLogicalLine
 } from './wrapped-terminal-link-ranges'
-import { probeTerminalPathExists } from './terminal-path-exists-cache'
+import {
+  getTerminalPathExistsCacheKey,
+  readTerminalPathExistsCache,
+  writeTerminalPathExistsCache
+} from './terminal-path-exists-cache'
 import {
   getTerminalHtmlFileOpenHint,
   getTerminalOrcaFileOpenHint,
@@ -37,7 +42,6 @@ import { isTerminalLinkDirectActivation } from './terminal-link-activation'
 import { getTerminalBufferPositionForMouseEvent } from './terminal-mouse-buffer-position'
 import type { TerminalLinkActionContext } from './terminal-link-action-request'
 import { handleTerminalFileLink } from './terminal-file-link-actions'
-import { setHoveredTerminalFileLink } from './terminal-hovered-file-link'
 
 export { openDetectedFilePath } from './terminal-file-open-routing'
 export { mapTerminalFilePath } from './terminal-file-open-routing'
@@ -154,23 +158,27 @@ export function createFilePathLinkProvider(
                 worktreePath,
                 runtimeEnvironmentId
               )
+              const isRemoteRuntimePath = isRemoteRuntimeFileOperation(fileContext, mappedPath)
+              const cacheKey = getTerminalPathExistsCacheKey({
+                absolutePath: mappedPath,
+                connectionId: fileContext.connectionId,
+                isRemoteRuntimePath,
+                runtimeEnvironmentId
+              })
               const worktreeRootLink = resolveKnownWorktreeRootPathLink(mappedPath)
               if (/[\\/]$/.test(parsed.pathText) && !worktreeRootLink) {
                 return null
               }
               // Why: exact known workspace roots must stay clickable for SSH or
               // stale local paths even when filesystem probing says "missing".
-              if (
-                !worktreeRootLink &&
-                !(await probeTerminalPathExists({
-                  cache: pathExistsCache,
-                  pathExists,
-                  fileContext,
-                  absolutePath: mappedPath,
-                  runtimeEnvironmentId
-                }))
-              ) {
-                return null
+              if (!worktreeRootLink) {
+                const cachedExists = readTerminalPathExistsCache(pathExistsCache, cacheKey)
+                const exists =
+                  cachedExists ?? (await pathExists(fileContext, mappedPath, isRemoteRuntimePath))
+                writeTerminalPathExistsCache(pathExistsCache, cacheKey, exists)
+                if (!exists) {
+                  return null
+                }
               }
 
               return {
@@ -218,15 +226,9 @@ export function createFilePathLinkProvider(
                         : getTerminalOrcaFileOpenHint(showActions)
                     linkTooltip.textContent = `${mappedPath} (${hint})`
                     linkTooltip.style.display = ''
-                    setHoveredTerminalFileLink(pane.terminal, {
-                      path: mappedPath,
-                      range,
-                      clientOsCanOpen: canOpenWithSystemDefault
-                    })
                   },
                   leave: () => {
                     linkTooltip.style.display = 'none'
-                    setHoveredTerminalFileLink(pane.terminal, null)
                   }
                 }
               }

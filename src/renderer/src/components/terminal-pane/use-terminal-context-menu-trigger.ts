@@ -1,17 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
 import type { TerminalPasteSource } from './terminal-paste-coordinator'
-import type { PtyTransport } from './pty-transport'
-import {
-  terminalFileLinkRevealAtMouseEvent,
-  type TerminalFileLinkReveal
-} from './terminal-hovered-file-link'
 import { copyTerminalSelection } from './terminal-selection-copy'
 import { CLOSE_ALL_CONTEXT_MENUS_EVENT } from '@/lib/close-all-context-menus'
 
 type UseTerminalContextMenuTriggerDeps = {
   managerRef: React.RefObject<PaneManager | null>
-  paneTransportsRef: React.RefObject<Map<number, PtyTransport>>
   containerRef: React.RefObject<HTMLDivElement | null>
   contextPaneIdRef: React.RefObject<number | null>
   rightClickToPaste: boolean
@@ -24,8 +18,6 @@ type TerminalContextMenuTrigger = {
   open: boolean
   setOpen: React.Dispatch<React.SetStateAction<boolean>>
   point: { x: number; y: number }
-  /** The file link under the right-click, if any. */
-  fileLinkReveal: TerminalFileLinkReveal | null
   menuOpenedAtRef: React.RefObject<number>
   onContextMenuCapture: (event: React.MouseEvent<HTMLDivElement>) => void
   onPaneTitleContextMenu: (event: React.MouseEvent<HTMLElement>, paneId: number) => void
@@ -33,7 +25,6 @@ type TerminalContextMenuTrigger = {
 
 export function useTerminalContextMenuTrigger({
   managerRef,
-  paneTransportsRef,
   containerRef,
   contextPaneIdRef,
   rightClickToPaste,
@@ -42,7 +33,6 @@ export function useTerminalContextMenuTrigger({
   const menuOpenedAtRef = useRef(0)
   const [open, setOpen] = useState(false)
   const [point, setPoint] = useState({ x: 0, y: 0 })
-  const [fileLinkReveal, setFileLinkReveal] = useState<TerminalFileLinkReveal | null>(null)
 
   useEffect(() => {
     const closeMenu = (): void => {
@@ -58,8 +48,7 @@ export function useTerminalContextMenuTrigger({
   const openContextMenu = (
     event: React.MouseEvent<HTMLElement>,
     clickedPaneId: number | null,
-    boundsElement: HTMLElement,
-    linkReveal: TerminalFileLinkReveal | null
+    boundsElement: HTMLElement
   ): void => {
     event.preventDefault()
     window.dispatchEvent(new Event(CLOSE_ALL_CONTEXT_MENUS_EVENT))
@@ -98,8 +87,6 @@ export function useTerminalContextMenuTrigger({
     menuOpenedAtRef.current = Date.now()
     const bounds = boundsElement.getBoundingClientRect()
     setPoint({ x: event.clientX - bounds.left, y: event.clientY - bounds.top })
-    // Why: set on every open so a title-bar menu never inherits the last link.
-    setFileLinkReveal(linkReveal)
     setOpen(true)
   }
 
@@ -117,14 +104,7 @@ export function useTerminalContextMenuTrigger({
       return
     }
     const clickedPane = manager.getPanes().find((pane) => pane.container.contains(target)) ?? null
-    const linkReveal = clickedPane
-      ? terminalFileLinkRevealAtMouseEvent(
-          clickedPane.terminal,
-          event.nativeEvent,
-          paneTransportsRef.current.get(clickedPane.id)
-        )
-      : null
-    openContextMenu(event, clickedPane?.id ?? null, event.currentTarget, linkReveal)
+    openContextMenu(event, clickedPane?.id ?? null, event.currentTarget)
   }
 
   const onPaneTitleContextMenu = (event: React.MouseEvent<HTMLElement>, paneId: number): void => {
@@ -133,16 +113,8 @@ export function useTerminalContextMenuTrigger({
       event.preventDefault()
       return
     }
-    openContextMenu(event, paneId, boundsElement, null)
+    openContextMenu(event, paneId, boundsElement)
   }
 
-  return {
-    open,
-    setOpen,
-    point,
-    fileLinkReveal,
-    menuOpenedAtRef,
-    onContextMenuCapture,
-    onPaneTitleContextMenu
-  }
+  return { open, setOpen, point, menuOpenedAtRef, onContextMenuCapture, onPaneTitleContextMenu }
 }
