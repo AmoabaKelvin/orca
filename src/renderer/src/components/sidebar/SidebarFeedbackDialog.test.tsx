@@ -278,7 +278,7 @@ describe('SidebarFeedbackDialog image submission', () => {
 
     expect(screen.queryByText('Preparing attachments…')).toBeNull()
     await screen.findByRole('button', { name: 'Remove small.png' })
-    // Past the show delay: a hint that had started would still be up for its minimum time.
+    // Past the show delay: a completed read must not leave a stale hint.
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 300))
     })

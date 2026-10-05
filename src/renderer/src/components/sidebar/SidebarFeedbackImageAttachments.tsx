@@ -3,7 +3,6 @@ import { ImagePlus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
-import { useDelayedStatus } from '@/hooks/use-delayed-status'
 import {
   FEEDBACK_IMAGE_FILE_ACCEPT,
   MAX_FEEDBACK_IMAGE_COUNT,
@@ -40,12 +39,17 @@ export function SidebarFeedbackImageAttachments({
   const attachedBytes = images.reduce((total, image) => total + image.bytes, 0)
   const atCapacity =
     images.length >= MAX_FEEDBACK_IMAGE_COUNT || attachedBytes >= MAX_FEEDBACK_IMAGE_TOTAL_BYTES
-  const isPreparing =
-    useDelayedStatus(
-      'feedback-images',
-      pendingCount > 0 ? 'preparing' : null,
-      PREPARING_HINT_DELAY_MS
-    ) !== null
+  const hasPendingReads = pendingCount > 0
+  const [showPreparing, setShowPreparing] = React.useState(false)
+  React.useEffect(() => {
+    if (!hasPendingReads) {
+      setShowPreparing(false)
+      return
+    }
+    const timer = window.setTimeout(() => setShowPreparing(true), PREPARING_HINT_DELAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [hasPendingReads])
+  const isPreparing = hasPendingReads && showPreparing
 
   return (
     <div
