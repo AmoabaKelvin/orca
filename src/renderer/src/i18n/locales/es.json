@@ -3352,10 +3352,7 @@
             "1d04b1630b": "Dividir hacia abajo",
             "6b3efb106e": "Dividir hacia arriba",
             "fdd29eb669": "Fijar pestaña",
-            "8e9d603a09": "Desanclar pestaña",
-            "revealInFinder": "Revelar en Finder",
-            "openContainingFolder": "Abrir carpeta contenedora",
-            "revealInFileExplorer": "Revelar en el Explorador de archivos"
+            "8e9d603a09": "Desanclar pestaña"
           },
           "QuickLaunchButton": {
             "348a04c1ad": "Ajustes de Agents…",
@@ -15073,10 +15070,7 @@
           "f0fd4174b5": "Abre la pestaña de archivo para usar la edición enriquecida de Markdown",
           "a10d9b8337": "Abrir archivo",
           "2076ecfc9c": "Cambio anterior",
-          "631dab0df3": "Cambio siguiente",
-          "revealInFinder": "Revelar en Finder",
-          "openContainingFolder": "Abrir carpeta contenedora",
-          "revealInFileExplorer": "Revelar en el Explorador de archivos"
+          "631dab0df3": "Cambio siguiente"
         },
         "EditorPanelMarkdownActionsMenu": {
           "3e0ce48c24": "Exportar como PDF",
