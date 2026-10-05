@@ -116,8 +116,6 @@ describe('AgentHookServer removed-worktree retirement', () => {
     }
   })
 
-  // A pane has one terminal: its row names the occupant, and a commitment naming another owner is
-  // what an earlier occupant left behind across an SSH disconnect clear.
   it.each([
     { occupant: 'the removed worktree', sshWorktree: KEPT, localWorktree: REMOVED, host: 'local' },
     {
@@ -159,11 +157,12 @@ describe('AgentHookServer removed-worktree retirement', () => {
 
         server.flushStatusPersistSync()
         const file = JSON.parse(readFileSync(lastStatusPath(), 'utf8'))
-        expect(file.authorityCommitments?.[pane]).toBeUndefined()
         if (localWorktree === REMOVED) {
-          // The pane is retired, so the removed worktree's late report cannot bring the row back.
+          expect(file.authorityCommitments?.[pane]).toMatchObject({ worktreeId: KEPT })
+          // The retained foreign launch fence rejects the removed workspace's late repaint.
           expect(file.entries[pane]).toBeUndefined()
         } else {
+          expect(file.authorityCommitments?.[pane]).toBeUndefined()
           // The occupant keeps reporting, without the removed owner's token hash stamped on its row.
           expect(file.entries[pane]).toMatchObject({ worktreeId: KEPT, payload: { state: 'done' } })
           expect(file.entries[pane].launchTokenHash).toBeUndefined()

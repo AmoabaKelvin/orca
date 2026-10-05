@@ -1,6 +1,7 @@
 import type { AgentProcessPresence } from '../../../shared/agent-process-presence'
 import {
   admitLegacyAgentStatus,
+  clearPaneCacheState,
   deleteLegacyAgentStatus,
   paneHasStateClaims
 } from '../../../shared/agent-hook-listener/listener-state'
@@ -203,12 +204,35 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
     }
     for (const paneKey of paneKeys) {
       const row = this.state.lastStatusByPaneKey.get(paneKey)
-      // Why the row first: a pane has one terminal, so its newest report names who occupies it.
-      const occupant = row ?? this.persistedAuthorityCommitmentsByPaneKey.get(paneKey)
+      const commitment = this.persistedAuthorityCommitmentsByPaneKey.get(paneKey)
+      if (row && ownedByRemoved(row) && commitment && !ownedByRemoved(commitment)) {
+        // A tokenless repaint cannot prove a foreign launch exited; retain it behind its token fence.
+        const observation = this.currentAuthorityObservations.get(paneKey)
+        const deleted = this.deleteStatusEntry(paneKey, { preserveAuthority: true })
+        clearPaneCacheState(this.state, paneKey)
+        if (observation && !ownedByRemoved(observation)) {
+          this.currentAuthorityObservations.set(paneKey, observation)
+        }
+        this.restartedStatusLaunchTokenHashByPaneKey.set(paneKey, {
+          hash: commitment.launchTokenHash,
+          allowRetainedOwner: true
+        })
+        this.observations.forget(paneKey)
+        this.commitStatusRowMutation(deleted, undefined)
+        this.scheduleStatusPersist()
+        this.notifyStatusChangeListeners()
+        this.emitPaneStatusCleared({ paneKey })
+        continue
+      }
+      const occupant = row ?? commitment
       if (occupant && !ownedByRemoved(occupant)) {
         // Another owner has the pane now; only our outlived commitment is left to clear.
         if (this.revokeHydratedAuthorityForPaneKeys(new Set([paneKey]))) {
           this.scheduleStatusPersist()
+        }
+        const observation = this.currentAuthorityObservations.get(paneKey)
+        if (observation && ownedByRemoved(observation)) {
+          this.currentAuthorityObservations.delete(paneKey)
         }
         continue
       }
