@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, createElement } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
+import { act } from 'react'
+import { cleanup, renderHook } from '@testing-library/react'
 import {
   NATIVE_FILE_DROP_TARGET,
   type NativeFileDropPayload
@@ -14,42 +14,13 @@ let pickAttachments: ReturnType<typeof vi.fn>
 type DropListener = (payload: NativeFileDropPayload) => void
 
 let dropListeners: DropListener[] = []
-let root: Root | null = null
-
-function Probe({
-  attachExternalPaths,
-  onReady
-}: {
+function renderProbe(
   attachExternalPaths: (paths: string[]) => void
-  onReady: (api: { pickAttachments: () => void }) => void
-}): null {
-  onReady(useNativeChatFileAttachmentActions(SCOPE_KEY, attachExternalPaths))
-  return null
-}
-
-async function renderProbe(
-  attachExternalPaths: (paths: string[]) => void
-): Promise<() => { pickAttachments: () => void }> {
-  const container = document.createElement('div')
-  document.body.append(container)
-  let api: { pickAttachments: () => void } | null = null
-  root = createRoot(container)
-  await act(async () => {
-    root?.render(
-      createElement(Probe, {
-        attachExternalPaths,
-        onReady: (next) => {
-          api = next
-        }
-      })
-    )
-  })
-  return () => {
-    if (!api) {
-      throw new Error('probe never rendered')
-    }
-    return api
-  }
+): () => { pickAttachments: () => void } {
+  const { result } = renderHook(() =>
+    useNativeChatFileAttachmentActions(SCOPE_KEY, attachExternalPaths)
+  )
+  return () => result.current
 }
 
 describe('useNativeChatFileAttachmentActions', () => {
@@ -72,17 +43,12 @@ describe('useNativeChatFileAttachmentActions', () => {
     })
   })
 
-  afterEach(async () => {
-    await act(async () => {
-      root?.unmount()
-    })
-    root = null
-  })
+  afterEach(cleanup)
 
   it('attaches every path the picker returns, not just the first', async () => {
     pickAttachments.mockResolvedValue(['/picked/notes.md', '/picked/diagram.png'])
     const attachExternalPaths = vi.fn()
-    const latest = await renderProbe(attachExternalPaths)
+    const latest = renderProbe(attachExternalPaths)
     await act(async () => {
       latest().pickAttachments()
     })
@@ -95,7 +61,7 @@ describe('useNativeChatFileAttachmentActions', () => {
   it('attaches nothing when the picker is canceled', async () => {
     pickAttachments.mockResolvedValue([])
     const attachExternalPaths = vi.fn()
-    const latest = await renderProbe(attachExternalPaths)
+    const latest = renderProbe(attachExternalPaths)
     await act(async () => {
       latest().pickAttachments()
     })
@@ -105,7 +71,7 @@ describe('useNativeChatFileAttachmentActions', () => {
 
   it('only attaches a drop aimed at this pane', async () => {
     const attachExternalPaths = vi.fn()
-    await renderProbe(attachExternalPaths)
+    renderProbe(attachExternalPaths)
     await act(async () => {
       for (const listener of dropListeners) {
         listener({
