@@ -715,6 +715,7 @@ describe('OMP session switches', () => {
 
   it('keeps describing the lead’s children after a task child registers on its own bus', async () => {
     const harness = createAgentStatusExtensionHarness({ kind: 'omp' })
+    await harness.callHook('session_start')
     harness.emitPiEvent('task:subagent:lifecycle', { id: 'c1', agent: 'task', status: 'started' })
     await vi.advanceTimersByTimeAsync(0)
     harness.registerTaskChild()

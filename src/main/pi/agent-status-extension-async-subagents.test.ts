@@ -182,6 +182,7 @@ describe('Pi child rows', () => {
 
   it('posts an OMP task child with its description', async () => {
     const harness = createAgentStatusExtensionHarness({ kind: 'omp' })
+    await harness.callHook('session_start')
     harness.emitPiEvent('task:subagent:lifecycle', {
       id: '0-explore',
       agent: 'explore',
