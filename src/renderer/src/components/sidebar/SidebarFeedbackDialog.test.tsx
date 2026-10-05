@@ -2,6 +2,8 @@
 
 import React, { act, type ReactNode } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import type * as FeedbackImageAttachments from '@/lib/feedback-image-attachments'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -195,6 +197,100 @@ describe('SidebarFeedbackDialog environment prefill', () => {
 })
 
 describe('SidebarFeedbackDialog image submission', () => {
+  it.each(['refused', 'shrunk'] as const)(
+    'preserves text and its caret when an oversized image is %s after paste',
+    async (result) => {
+      const user = userEvent.setup()
+      const bytes = new Uint8Array(53)
+      bytes.set([137, 80, 78, 71, 13, 10, 26, 10])
+      const header = new DataView(bytes.buffer)
+      header.setUint32(8, 13)
+      bytes.set(new TextEncoder().encode('IHDR'), 12)
+      header.setUint32(16, 1)
+      header.setUint32(20, 1)
+      header.setUint32(33, 8)
+      bytes.set(new TextEncoder().encode(result === 'refused' ? 'acTL' : 'IDAT'), 37)
+      const file = new File([bytes], 'capture.png', { type: 'image/png' })
+      Object.defineProperty(file, 'size', { value: 6_000_000 })
+      let finishRead:
+        | ((
+            value: Awaited<ReturnType<typeof FeedbackImageAttachments.readFeedbackImageFiles>>
+          ) => void)
+        | undefined
+      mocks.readFeedbackImageFiles.mockReturnValue(
+        new Promise((resolve) => {
+          finishRead = resolve
+        })
+      )
+      render(<SidebarFeedbackDialog open onOpenChange={vi.fn()} />)
+      const textarea = screen.getByPlaceholderText<HTMLTextAreaElement>('What could we improve?')
+      await waitFor(() => expect(textarea.value).toContain('Orca:'))
+      fireEvent.change(textarea, { target: { value: 'before after' } })
+      textarea.focus()
+      textarea.setSelectionRange(7, 7)
+      const clipboard = new DataTransfer()
+      clipboard.setData('text/plain', 'report')
+      Object.defineProperty(clipboard, 'files', { value: [file] })
+
+      await user.paste(clipboard)
+      expect(textarea.value).toBe('before reportafter')
+      expect(textarea.selectionStart).toBe(13)
+      await user.keyboard('!')
+      expect(textarea.value).toBe('before report!after')
+      await waitFor(() => expect(mocks.readFeedbackImageFiles).toHaveBeenCalled())
+      const actual = await vi.importActual<typeof FeedbackImageAttachments>(
+        '@/lib/feedback-image-attachments'
+      )
+      const readResult =
+        result === 'refused'
+          ? await actual.readFeedbackImageFiles([file], 0)
+          : {
+              images: [
+                {
+                  id: 'shrunk',
+                  name: 'capture.png',
+                  contentType: 'image/png',
+                  bytes: 100,
+                  data: new Uint8Array([1]),
+                  previewUrl: 'blob:shrunk'
+                }
+              ],
+              errors: [],
+              notices: []
+            }
+      await act(async () => {
+        finishRead?.(readResult)
+      })
+      expect(textarea.value).toBe('before report!after')
+      expect(textarea.selectionStart).toBe(14)
+      if (result === 'refused') {
+        expect(mocks.toastWarning).toHaveBeenCalledWith('capture.png is larger than 4.0 MB.')
+        expect(screen.queryByRole('button', { name: 'Remove capture.png' })).toBeNull()
+      } else {
+        expect(screen.getByRole('button', { name: 'Remove capture.png' })).not.toBeNull()
+      }
+    }
+  )
+
+  it('still consumes mixed text when the image fits without shrinking', async () => {
+    const user = userEvent.setup()
+    mocks.readFeedbackImageFiles.mockResolvedValue({ images: [], errors: [], notices: [] })
+    render(<SidebarFeedbackDialog open onOpenChange={vi.fn()} />)
+    const textarea = screen.getByPlaceholderText<HTMLTextAreaElement>('What could we improve?')
+    await waitFor(() => expect(textarea.value).toContain('Orca:'))
+    fireEvent.change(textarea, { target: { value: 'report' } })
+    textarea.focus()
+    textarea.setSelectionRange(6, 6)
+    const clipboard = new DataTransfer()
+    clipboard.setData('text/plain', 'image metadata')
+    const file = new File(['image'], 'small.png', { type: 'image/png' })
+    Object.defineProperty(clipboard, 'files', { value: [file] })
+    await user.paste(clipboard)
+    expect(textarea.value).toBe('report')
+    expect(textarea.selectionStart).toBe(6)
+    await waitFor(() => expect(mocks.readFeedbackImageFiles).toHaveBeenCalledWith([file], 0, 0))
+  })
+
   it('keeps the dialog scrollable within short windows', () => {
     const { container } = render(<SidebarFeedbackDialog open onOpenChange={vi.fn()} />)
     const content = container.querySelector('.scrollbar-sleek')
@@ -445,7 +541,7 @@ describe('SidebarFeedbackDialog image submission', () => {
     Object.defineProperty(file, 'size', { value: 4 * 1024 * 1024 + 1 })
     const paste = new Event('paste', { bubbles: true, cancelable: true })
     Object.defineProperty(paste, 'clipboardData', {
-      value: { files: [file] }
+      value: { files: [file], getData: () => '' }
     })
 
     fireEvent(textarea, paste)
@@ -482,7 +578,7 @@ describe('SidebarFeedbackDialog image submission', () => {
     const small = new File(['x'], 'small.png', { type: 'image/png' })
     Object.defineProperty(small, 'size', { value: 1024 })
     const paste = new Event('paste', { bubbles: true, cancelable: true })
-    Object.defineProperty(paste, 'clipboardData', { value: { files: [small] } })
+    Object.defineProperty(paste, 'clipboardData', { value: { files: [small], getData: () => '' } })
     fireEvent(screen.getByPlaceholderText('What could we improve?'), paste)
 
     expect(paste.defaultPrevented).toBe(false)
@@ -519,7 +615,7 @@ describe('SidebarFeedbackDialog image submission', () => {
       const file = new File(['x'], `${name}.png`, { type: 'image/png' })
       Object.defineProperty(file, 'size', { value: 6 * 1024 * 1024 })
       const paste = new Event('paste', { bubbles: true, cancelable: true })
-      Object.defineProperty(paste, 'clipboardData', { value: { files: [file] } })
+      Object.defineProperty(paste, 'clipboardData', { value: { files: [file], getData: () => '' } })
       fireEvent(textarea, paste)
       return paste
     }

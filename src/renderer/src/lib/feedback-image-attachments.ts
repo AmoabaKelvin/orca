@@ -94,18 +94,23 @@ function canAttachWithin(file: File, fitBytes: number): boolean {
  * nothing is attachable would also discard any text riding along on the
  * clipboard. Every limit readFeedbackImageFiles checks from a file's type and
  * size is mirrored here. Checks that need its bytes (dimensions, APNG, whether a
- * shrink fits) cannot run synchronously, so a paste they refuse loses its text.
+ * shrink fits) cannot run synchronously; mixed text pastes require an as-is fit.
  */
 export function hasAttachableFeedbackImage(
   files: readonly File[],
   existingCount = 0,
-  existingBytes = 0
+  existingBytes = 0,
+  options: { allowShrinking?: boolean } = {}
 ): boolean {
   const fitBytes = feedbackImageFitBytes(MAX_FEEDBACK_IMAGE_TOTAL_BYTES - existingBytes)
   return (
     existingCount < MAX_FEEDBACK_IMAGE_COUNT &&
     files.some(
-      (file) => isSupportedType(file.type) && file.size > 0 && canAttachWithin(file, fitBytes)
+      (file) =>
+        isSupportedType(file.type) &&
+        file.size > 0 &&
+        (file.size <= fitBytes ||
+          (options.allowShrinking !== false && canAttachWithin(file, fitBytes)))
     )
   )
 }

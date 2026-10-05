@@ -38,8 +38,7 @@ export function useSidebarFeedbackImages(params: {
   const pendingImageReadsRef = useRef({ count: 0, bytes: 0 })
   // Why: a shrunk image's size is unknown until it is read, so batches read one
   // at a time, each sized against what the batches before it actually committed.
-  const readQueueRef = useRef<Promise<void>>(undefined!)
-  readQueueRef.current ??= Promise.resolve()
+  const readQueueRef = useRef<Promise<void> | null>(null)
 
   const clearImages = useCallback(() => {
     liveImageDraftsRef.current.forEach(releaseFeedbackImageDraft)
@@ -89,7 +88,7 @@ export function useSidebarFeedbackImages(params: {
       pendingReads.count += files.length
       pendingReads.bytes += batchBytes
       setPendingImageReadCount((current) => current + files.length)
-      const read = readQueueRef.current.then(() => {
+      const read = (readQueueRef.current ?? Promise.resolve()).then(() => {
         // Why: an unmounted dialog discards whatever this reads, so skip the decode and re-encodes.
         if (!params.mountedRef.current) {
           return { images: [], errors: [], notices: [] }
