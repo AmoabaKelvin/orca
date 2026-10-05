@@ -239,6 +239,10 @@ describe('OSC 8 hyperlinks', () => {
 
       await revealHovered('file:///repo/recordings')
 
+      expect(statMock).toHaveBeenCalledWith({
+        filePath: '/repo/recordings',
+        access: { kind: 'user-file' }
+      })
       expect(openFilePathMock).toHaveBeenCalledWith('/repo/recordings')
       expect(openInFileManager).not.toHaveBeenCalled()
     })

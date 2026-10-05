@@ -1,6 +1,7 @@
 import type { IBufferRange, Terminal } from '@xterm/xterm'
 import { isRevealInFileManagerBlocked, revealInFileManager } from '@/lib/reveal-in-file-manager'
 import { useAppStore } from '@/store'
+import { userNamedFileAccess } from '@/lib/local-file-access'
 import { rangeContainsBufferPosition } from './terminal-file-link-hit-testing'
 import { resolveTerminalHttpLinkSourceOwner } from './terminal-http-link-source-owner'
 import { getTerminalBufferPositionForMouseEvent } from './terminal-mouse-buffer-position'
@@ -70,8 +71,7 @@ export function terminalFileLinkRevealAtMouseEvent(
 
 async function isClientLocalDirectory(path: string): Promise<boolean> {
   try {
-    await window.api.fs.authorizeExternalPath({ targetPath: path })
-    return (await window.api.fs.stat({ filePath: path })).isDirectory
+    return (await window.api.fs.stat({ filePath: path, access: userNamedFileAccess() })).isDirectory
   } catch {
     return false
   }
