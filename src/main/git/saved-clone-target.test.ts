@@ -11,17 +11,7 @@ const url = 'https://github.com/stablyai/orca.git'
 const roots: string[] = []
 
 function git(cwd: string, ...args: string[]): void {
-  execFileSync('git', [
-    '-C',
-    cwd,
-    '-c',
-    'user.name=t',
-    '-c',
-    'user.email=t@t.invalid',
-    '-c',
-    'merge.conflictStyle=merge',
-    ...args
-  ])
+  execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@t.invalid', ...args])
 }
 
 // What `git clone url` leaves at <root>/orca. `finished: false` is a clone killed before checkout;
@@ -117,7 +107,7 @@ describe('reuseSavedCloneTarget', () => {
 
   it('reuses a finished clone left on a detached HEAD', async () => {
     const path = checkout(url)
-    git(path, 'checkout', '-q', '--detach')
+    git(path, 'update-ref', '--no-deref', 'HEAD', 'HEAD')
     const project = saved(path)
     await expect(decide(project)).resolves.toBe(project)
   })

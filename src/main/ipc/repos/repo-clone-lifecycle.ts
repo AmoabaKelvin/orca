@@ -18,7 +18,7 @@ import {
   deriveValidatedClonePath,
   getClonePathComparisonKey
 } from '../../git/repo-clone-path'
-import { getRepoSshConnectionId, LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
+import { getRepoExecutionHostId, LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
 import { detectRepoIconAndUpstream } from '../../repo-icon-autodetect'
 import { prepareLocalWorktreeRootForRepo } from '../../worktree-root-preparation'
 import { invalidateAuthorizedRootsCache } from '../registered-worktree-roots-cache'
@@ -120,12 +120,14 @@ export function registerRepoCloneHandlers(mainWindow: BrowserWindow, store: Stor
       // Why: derive the repo folder name from the URL's last segment, matching default git clone behavior.
       const clonePath = deriveValidatedClonePath(args)
       const clonePathKey = getClonePathComparisonKey(clonePath)
-      // Why: an SSH project can share this path string, but its folder is on another machine.
+      // Remote projects can share this path string without belonging to this clone host.
       const findSaved = (): Repo | undefined =>
         store
           .getRepos()
           .find(
-            (r) => getClonePathComparisonKey(r.path) === clonePathKey && !getRepoSshConnectionId(r)
+            (r) =>
+              getClonePathComparisonKey(r.path) === clonePathKey &&
+              getRepoExecutionHostId(r) === LOCAL_EXECUTION_HOST_ID
           )
       return runWithClonePathLock(clonePathKey, async () => {
         await pendingAbortCleanupByPath.get(clonePathKey)

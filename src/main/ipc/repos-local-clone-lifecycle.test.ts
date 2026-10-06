@@ -698,19 +698,26 @@ describe('repos:add + repos:clone', () => {
       expect(gitSpawnMock).not.toHaveBeenCalled()
     })
 
-    it('does not treat a saved SSH project at the same path as the local clone', async () => {
-      const destination = await createTempRoot()
-      const clonePath = join(destination, 'orca')
-      const sshProject = savedProject(clonePath, { connectionId: 'conn-1' })
-      mockStore.getRepos.mockReturnValue([sshProject])
-      gitExecFileAsyncMock.mockResolvedValue({ stdout: '', stderr: '' })
+    it.each([
+      { connectionId: 'conn-1' },
+      { executionHostId: 'runtime:env-1' },
+      { executionHostId: 'runtime:env-1', kind: 'folder' }
+    ])(
+      'does not treat a saved remote project at the same path as the local clone: %j',
+      async (host) => {
+        const destination = await createTempRoot()
+        const clonePath = join(destination, 'orca')
+        const remoteProject = savedProject(clonePath, host)
+        mockStore.getRepos.mockReturnValue([remoteProject])
+        gitExecFileAsyncMock.mockResolvedValue({ stdout: '', stderr: '' })
 
-      const result = await handlers.get('repos:clone')!(null, { url, destination })
+        const result = await handlers.get('repos:clone')!(null, { url, destination })
 
-      expect(gitSpawnMock).toHaveBeenCalledTimes(1)
-      expect(result).not.toBe(sshProject)
-      expect(mockStore.addRepo).toHaveBeenCalledWith(expect.objectContaining({ path: clonePath }))
-    })
+        expect(gitSpawnMock).toHaveBeenCalledTimes(1)
+        expect(result).not.toBe(remoteProject)
+        expect(mockStore.addRepo).toHaveBeenCalledWith(expect.objectContaining({ path: clonePath }))
+      }
+    )
 
     it('stops without cloning when cancelled while git checks the saved folder', async () => {
       const destination = await createTempRoot()
