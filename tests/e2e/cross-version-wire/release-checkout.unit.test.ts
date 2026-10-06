@@ -320,6 +320,10 @@ describe('release checkout materialization', () => {
     expect(callExport('parseRipgrepMatchJson', '{"type":"match"}', 1, limits)).toEqual({
       type: 'match'
     })
+    expect(callExport('parseDenseRipgrepMatchJson', '{"type":"match"}', 1, 8)).toEqual({
+      type: 'match',
+      data: { submatches: [] }
+    })
     const match = {
       type: 'match',
       data: {

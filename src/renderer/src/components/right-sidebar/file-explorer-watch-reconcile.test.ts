@@ -448,7 +448,7 @@ describe('processFileExplorerFsPayload update reconciliation', () => {
     expect(refreshDir).toHaveBeenCalledTimes(2)
   })
 
-  it('purges distinct cached directory renames with one bounded cache scan', () => {
+  it('purges distinct cached directory renames with bounded batch cache scans', () => {
     const root = '/repo'
     const worktreeId = 'watch-reconcile-perf'
     const entries: Record<string, DirCache> = { [root]: cacheWithChildren([]) }
