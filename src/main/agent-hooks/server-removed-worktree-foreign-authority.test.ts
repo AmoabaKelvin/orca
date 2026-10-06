@@ -48,6 +48,64 @@ describe('removed-worktree foreign authority', () => {
     server.stop()
   })
 
+  it('keeps foreign hydrated evidence when a removed commitment outlives its row', async () => {
+    const seed = new AgentHookServer()
+    await seed.start({ env: 'production', userDataPath })
+    seed.ingestRemote(
+      {
+        paneKey: PANE,
+        tabId: 'tab-foreign',
+        worktreeId: KEPT,
+        launchToken: TOKEN,
+        payload: working
+      },
+      'user@box'
+    )
+    seed.flushStatusPersistSync()
+    seed.stop()
+    const server = new AgentHookServer()
+    await server.start({ env: 'production', userDataPath })
+    try {
+      server.ingestRemote(
+        {
+          paneKey: PANE,
+          tabId: 'tab-foreign',
+          worktreeId: REMOVED,
+          launchToken: 'removed-launch',
+          payload: working
+        },
+        null
+      )
+      server.ingestTerminalStatus({
+        paneKey: PANE,
+        tabId: 'tab-foreign',
+        worktreeId: KEPT,
+        connectionId: 'user@box',
+        payload: working
+      })
+      server.dropStatusEntriesForRemovedWorktree(REMOVED, 'local')
+      expect(server.getStatusSnapshot()).toMatchObject([
+        { worktreeId: KEPT, connectionId: 'user@box' }
+      ])
+      expect(
+        server.attestCompatibilityAuthority({
+          paneKey: PANE,
+          launchTokenHash: HASH,
+          connectionId: 'user@box',
+          terminalProvenance: 'restored'
+        })
+      ).toEqual({ paneKey: PANE, source: 'hydrated_commitment' })
+      expect(server.getCurrentAuthorityObservations()).toEqual([])
+      server.flushStatusPersistSync()
+      const file = JSON.parse(
+        readFileSync(join(userDataPath, 'agent-hooks', 'last-status.json'), 'utf8')
+      )
+      expect(file.authorityCommitments[PANE]).toBeUndefined()
+    } finally {
+      server.stop()
+    }
+  })
+
   it.each([
     { owner: REMOVED, connectionId: null },
     { owner: KEPT, connectionId: 'user@box' },

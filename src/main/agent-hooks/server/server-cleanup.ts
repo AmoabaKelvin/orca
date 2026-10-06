@@ -233,7 +233,9 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
       const occupant = row ?? commitment
       if (occupant && !ownedByRemoved(occupant)) {
         // Another owner has the pane now; only our outlived commitment is left to clear.
-        if (this.revokeHydratedAuthorityForPaneKeys(new Set([paneKey]))) {
+        if (commitment && ownedByRemoved(commitment)) {
+          this.persistedAuthorityCommitmentsByPaneKey.delete(paneKey)
+          this.hydratedLaunchTokenHashByPaneKey.delete(paneKey)
           this.scheduleStatusPersist()
         }
         const observation = this.currentAuthorityObservations.get(paneKey)
