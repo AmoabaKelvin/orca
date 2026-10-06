@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { act, createElement } from 'react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
@@ -108,6 +109,43 @@ describe('NativeChatImageAttachments', () => {
 
     root.unmount()
   })
+
+  it.each([
+    'data:image/png;base64,AA==',
+    'blob:sent-original',
+    'http://example.test/original.png',
+    'https://example.test/original.svg'
+  ])(
+    'offers the original displayed source %s in the thumbnail and full-size preview',
+    async (src) => {
+      const container = document.body.appendChild(document.createElement('div'))
+      const root = createRoot(container)
+      try {
+        await act(async () => {
+          root.render(
+            createElement(NativeChatImageAttachments, {
+              blocks: [{ type: 'image-ref', url: src, alt: 'Sent image' }],
+              runtimeContext: runtimeContext('wt-1')
+            })
+          )
+          await flushPromises()
+        })
+        const thumbnail = within(container).getByRole('button', { name: 'View image: Sent image' })
+        expect(thumbnail.getAttribute('data-native-chat-copy-image-src')).toBe(src)
+        fireEvent.click(thumbnail)
+        const preview = screen.getByRole('dialog', { name: 'Sent image' })
+        expect(
+          within(preview).getByRole('img').getAttribute('data-native-chat-copy-image-src')
+        ).toBe(src)
+        expect(window.api.fs.readFile).not.toHaveBeenCalled()
+        fireEvent.click(within(preview).getByRole('button', { name: 'Close' }))
+        expect(screen.queryByRole('dialog')).toBeNull()
+      } finally {
+        await act(async () => root.unmount())
+        container.remove()
+      }
+    }
+  )
 
   it('preserves same-image errors but retries when the runtime owner changes', async () => {
     const container = document.createElement('div')

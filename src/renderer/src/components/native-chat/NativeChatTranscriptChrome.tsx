@@ -120,7 +120,7 @@ function TranscriptImagePreview({
     TRANSCRIPT_IMAGE_ACCESS
   )
   const displaySrc = external && leaseActive ? source : localSrc
-  const copySrc = copyableNativeChatImageSrc(localSrc, filePath)
+  const copySrc = copyableNativeChatImageSrc(displaySrc)
   const label =
     block.alt?.trim() ||
     (block.path && isNativeChatPastedImagePath(block.path)
@@ -188,7 +188,8 @@ function TranscriptImagePreview({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
           onInteractOutside={keepPreviewOpenForChatMenu}
-          className="flex max-h-[90vh] max-w-[90vw] flex-col sm:max-w-4xl"
+          // oxlint-disable-next-line shadcn/no-restyle -- Preserve the existing preview surface from main.
+          className="flex max-h-[90vh] max-w-[90vw] flex-col gap-3 border-border bg-background p-3 sm:max-w-4xl"
         >
           <DialogTitle className="truncate text-sm">{label}</DialogTitle>
           <DialogDescription className="sr-only">

@@ -143,7 +143,7 @@ function NativeChatImageThumbnail({ attachment, onRemove }: Props): React.JSX.El
   )
   const label = isPending ? pendingLabel : filename
   // The thumbnail may be the downscaled clipboard preview; copy only the file.
-  const copySrc = copyableNativeChatImageSrc(localSrc, attachment.path)
+  const copySrc = copyableNativeChatImageSrc(localSrc)
 
   return (
     <>
@@ -181,7 +181,8 @@ function NativeChatImageThumbnail({ attachment, onRemove }: Props): React.JSX.El
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent
           onInteractOutside={keepPreviewOpenForChatMenu}
-          className="flex max-h-[90vh] max-w-[90vw] flex-col sm:max-w-4xl"
+          // oxlint-disable-next-line shadcn/no-restyle -- Preserve the existing preview surface from main.
+          className="flex max-h-[90vh] max-w-[90vw] flex-col gap-3 border-border bg-background p-3 sm:max-w-4xl"
         >
           <DialogTitle className="truncate text-sm">{label}</DialogTitle>
           <DialogDescription className="sr-only">

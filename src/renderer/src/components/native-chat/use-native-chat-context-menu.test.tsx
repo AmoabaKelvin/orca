@@ -123,7 +123,13 @@ function Harness({
   return menu
 }
 
-function ImageHarness({ enabled = true }: { enabled?: boolean }) {
+function ImageHarness({
+  enabled = true,
+  src = 'blob:full-size'
+}: {
+  enabled?: boolean
+  src?: string
+}) {
   const rootRef = createRef<HTMLDivElement>()
   const { menu, onContextMenuCapture } = useNativeChatContextMenu({
     rootRef,
@@ -132,7 +138,7 @@ function ImageHarness({ enabled = true }: { enabled?: boolean }) {
   })
   return (
     <div ref={rootRef} onContextMenuCapture={onContextMenuCapture}>
-      <button type="button" data-native-chat-copy-image-src="blob:full-size">
+      <button type="button" data-native-chat-copy-image-src={src}>
         <img alt="shot" src="data:thumbnail" />
       </button>
       <p>text</p>
@@ -160,7 +166,7 @@ async function rightClickImageAndCopy({
   const writeClipboardImage = stubClipboardImageWrite()
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (src: string) => ({ blob: async () => blobFor(src) }))
+    vi.fn(async (src: string) => ({ ok: true, blob: async () => blobFor(src) }))
   )
   render(<ImageHarness />)
   fireEvent.contextMenu(screen.getByRole('img', { name: 'shot' }))
@@ -224,7 +230,7 @@ describe('useNativeChatContextMenu', () => {
   it('releases the read image when the pane hides with the menu open', () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({ blob: async () => new Blob(['image']) }))
+      vi.fn(async () => ({ ok: true, blob: async () => new Blob(['image']) }))
     )
     const { rerender } = render(<ImageHarness />)
     fireEvent.contextMenu(screen.getByRole('img', { name: 'shot' }))
@@ -236,6 +242,74 @@ describe('useNativeChatContextMenu', () => {
     rerender(<ImageHarness enabled={false} />)
 
     expect(copyImageItem()).toBeUndefined()
+  })
+
+  it.each(['http://example.test/original.png', 'https://example.test/original.svg'])(
+    'reads %s only after Copy image is selected',
+    async (src) => {
+      pngOfText()
+      const writeClipboardImage = stubClipboardImageWrite()
+      const fetchImage = vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob([src]) })
+      vi.stubGlobal('fetch', fetchImage)
+      render(<ImageHarness src={src} />)
+      fireEvent.contextMenu(screen.getByRole('img', { name: 'shot' }))
+      expect(copyImageItem()).toBeDefined()
+      expect(fetchImage).not.toHaveBeenCalled()
+
+      await act(async () => copyImageItem()?.onSelect?.())
+
+      await waitFor(() => expect(writeClipboardImage).toHaveBeenCalledOnce())
+      expect(fetchImage).toHaveBeenCalledOnce()
+      expect(fetchImage).toHaveBeenCalledWith(src)
+      expect(writeClipboardImage).toHaveBeenCalledOnce()
+      expect(toasts.success).toHaveBeenCalledWith('Image copied')
+    }
+  )
+
+  it.each([
+    ['HTTP failure', () => Promise.resolve({ ok: false, status: 404, blob: vi.fn() })],
+    ['network failure', () => Promise.reject(new TypeError('Failed to fetch'))],
+    [
+      'HTML response',
+      () =>
+        Promise.resolve({ ok: true, blob: async () => new Blob(['page'], { type: 'text/html' }) })
+    ]
+  ])(
+    'reports one error for %s with no clipboard write or file fallback',
+    async (_label, response) => {
+      const writeClipboardImage = stubClipboardImageWrite()
+      const fetchImage = vi.fn(response)
+      vi.stubGlobal('fetch', fetchImage)
+      render(<ImageHarness src="https://example.test/original.png" />)
+      fireEvent.contextMenu(screen.getByRole('img', { name: 'shot' }))
+
+      await act(async () => copyImageItem()?.onSelect?.())
+
+      await waitFor(() => expect(toasts.error).toHaveBeenCalledOnce())
+      expect(fetchImage).toHaveBeenCalledOnce()
+      expect(imageCopy.convertImageBlobToPng).not.toHaveBeenCalled()
+      expect(writeClipboardImage).not.toHaveBeenCalled()
+      expect(toasts.error).toHaveBeenCalledOnce()
+      expect(toasts.success).not.toHaveBeenCalled()
+    }
+  )
+
+  it('captures a data image before selection and keeps it when the source disappears', async () => {
+    pngOfText()
+    const writeClipboardImage = stubClipboardImageWrite()
+    const fetchImage = vi
+      .fn()
+      .mockResolvedValue({ ok: true, blob: async () => new Blob(['inline']) })
+    vi.stubGlobal('fetch', fetchImage)
+    render(<ImageHarness src="data:image/png;base64,aW5saW5l" />)
+    fireEvent.contextMenu(screen.getByRole('img', { name: 'shot' }))
+    expect(fetchImage).toHaveBeenCalledOnce()
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Source gone')))
+
+    await act(async () => copyImageItem()?.onSelect?.())
+
+    await waitFor(() => expect(writeClipboardImage).toHaveBeenCalledOnce())
+    expect(toasts.success).toHaveBeenCalledOnce()
   })
 
   it('reports an image too large to copy instead of copying nothing silently', async () => {

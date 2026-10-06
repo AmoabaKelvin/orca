@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import '@testing-library/jest-dom/vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as ImageBlobPng from '@/lib/image-blob-png'
 import { NativeChatImageAttachmentPreview } from './NativeChatImageAttachmentPreview'
@@ -90,8 +90,41 @@ afterEach(() => {
 })
 
 describe('NativeChatResolvedView image menu ownership', () => {
+  it('refuses image capture from a portaled preview while its retained owner is hidden', async () => {
+    mocks.fetch.mockResolvedValue({ ok: true, blob: async () => new Blob(['original image']) })
+    const view = render(<RetainedBridgeChat />)
+    fireEvent.click(screen.getByRole('button', { name: 'View image: original.png' }))
+    const preview = screen.getByRole('dialog')
+    expect(screen.getByTestId('retained-owner').contains(preview)).toBe(false)
+
+    view.rerender(<RetainedBridgeChat visible={false} />)
+    fireEvent.contextMenu(within(preview).getByRole('img'))
+
+    expect(mocks.fetch).not.toHaveBeenCalled()
+    view.rerender(<RetainedBridgeChat />)
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(mocks.writeClipboardImage).not.toHaveBeenCalled()
+  })
+
+  it('closes the image preview on the first Close click while its copy menu is open', async () => {
+    mocks.fetch.mockResolvedValue({ ok: true, blob: async () => new Blob(['original image']) })
+    render(<RetainedBridgeChat />)
+    fireEvent.click(screen.getByRole('button', { name: 'View image: original.png' }))
+    const preview = screen.getByRole('dialog', { name: 'original.png' })
+    fireEvent.contextMenu(within(preview).getByRole('img'))
+    await screen.findByRole('menuitem', { name: 'Copy image' })
+    const close = within(preview).getByRole('button', { name: 'Close' })
+
+    fireEvent.pointerDown(close, { button: 0 })
+    fireEvent.pointerUp(close, { button: 0 })
+    fireEvent.click(close)
+
+    await waitFor(() => expect(preview).not.toBeInTheDocument())
+    expect(mocks.writeClipboardImage).not.toHaveBeenCalled()
+  })
+
   it('copies the original image through the visible bridge chat menu', async () => {
-    mocks.fetch.mockResolvedValue({ blob: async () => new Blob(['original image']) })
+    mocks.fetch.mockResolvedValue({ ok: true, blob: async () => new Blob(['original image']) })
     render(<RetainedBridgeChat />)
 
     fireEvent.contextMenu(screen.getByRole('img', { name: 'original.png' }))
@@ -109,7 +142,7 @@ describe('NativeChatResolvedView image menu ownership', () => {
 
   it('removes the portaled menu and captured image when the retained bridge owner hides', async () => {
     const capturedImage = Promise.withResolvers<Blob>()
-    mocks.fetch.mockResolvedValue({ blob: () => capturedImage.promise })
+    mocks.fetch.mockResolvedValue({ ok: true, blob: () => capturedImage.promise })
     const view = render(<RetainedBridgeChat />)
     const owner = screen.getByTestId('retained-owner')
     const chatRoot = owner.querySelector('[data-native-chat-root]')

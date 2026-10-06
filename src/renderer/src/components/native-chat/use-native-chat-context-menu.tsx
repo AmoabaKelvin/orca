@@ -30,7 +30,11 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { translate } from '@/i18n/i18n'
-import { copyNativeChatImage, readNativeChatCopyImage } from './native-chat-image-copy'
+import {
+  copyNativeChatImage,
+  readNativeChatCopyImage,
+  type NativeChatCopyImage
+} from './native-chat-image-copy'
 import { isMacPlatform, nativeChatToggleShortcutLabel } from './native-chat-shortcut'
 import { TabWorkspaceLayoutMenuSection } from '@/components/tab-bar/TabWorkspaceLayoutMenuSection'
 import { NativeChatCopyOrcaSessionIdMenuItem } from './NativeChatCopyOrcaSessionIdMenuItem'
@@ -40,7 +44,7 @@ type NativeChatContextMenuState = {
   open: boolean
   point: { x: number; y: number }
   selectedText: string
-  image?: Promise<Blob>
+  image?: NativeChatCopyImage
 }
 
 type UseNativeChatContextMenuArgs = {
@@ -153,6 +157,9 @@ export function useNativeChatContextMenu({
     (event: React.MouseEvent<HTMLElement>) => {
       event.preventDefault()
       event.stopPropagation()
+      if (!enabled) {
+        return
+      }
       menuOpenedAtRef.current = Date.now()
       const selectedText = getNativeChatSelectedText(rootRef.current) || lastSelectedTextRef.current
       setState({
@@ -162,7 +169,7 @@ export function useNativeChatContextMenu({
         image: readNativeChatCopyImage(event.target)
       })
     },
-    [rootRef]
+    [enabled, rootRef]
   )
 
   const setOpen = useCallback((open: boolean) => {

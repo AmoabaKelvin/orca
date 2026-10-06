@@ -8,16 +8,29 @@ import { CLIPBOARD_IMAGE_TOO_LARGE_ERROR } from '../../../../shared/clipboard-im
 const COPY_IMAGE_SRC_SELECTOR = '[data-native-chat-copy-image-src]'
 
 /** Full-size source to copy for an image, or undefined when it has none. */
-export function copyableNativeChatImageSrc(
-  src: string | undefined,
-  path: string | undefined
-): string | undefined {
-  // Copy supports raster images; the web client's image clipboard write is a no-op.
-  return path?.toLowerCase().endsWith('.svg') || isWebClientLocation() ? undefined : src
+export function copyableNativeChatImageSrc(src: string | undefined): string | undefined {
+  // The web client's image clipboard write is a no-op.
+  return isWebClientLocation() ? undefined : src
 }
 
-/** Reads the right-clicked image, if any, before its blob URL can be revoked (e.g. scrolled away). */
-export function readNativeChatCopyImage(target: EventTarget | null): Promise<Blob> | undefined {
+export type NativeChatCopyImage = () => Promise<Blob>
+
+async function readImageBlob(src: string): Promise<Blob> {
+  const response = await fetch(src)
+  if (!response.ok) {
+    throw new Error(`Image request failed (HTTP ${response.status})`)
+  }
+  const blob = await response.blob()
+  if (blob.type.split(';', 1)[0] === 'text/html') {
+    throw new Error('The image URL returned a web page')
+  }
+  return blob
+}
+
+/** Captures revocable sources now; remote URLs are read only when copying is selected. */
+export function readNativeChatCopyImage(
+  target: EventTarget | null
+): NativeChatCopyImage | undefined {
   const src =
     target instanceof Element
       ? target.closest(COPY_IMAGE_SRC_SELECTOR)?.getAttribute('data-native-chat-copy-image-src')
@@ -25,10 +38,13 @@ export function readNativeChatCopyImage(target: EventTarget | null): Promise<Blo
   if (!src) {
     return undefined
   }
-  const image = fetch(src).then((response) => response.blob())
+  if (/^https?:/i.test(src)) {
+    return () => readImageBlob(src)
+  }
+  const image = readImageBlob(src)
   // Why: a read the user never copies must not surface as an unhandled rejection.
   image.catch(() => {})
-  return image
+  return () => image
 }
 
 /** Keeps an image preview open through clicks on the chat context menu. */
@@ -42,9 +58,9 @@ export function keepPreviewOpenForChatMenu(event: {
   }
 }
 
-export async function copyNativeChatImage(image: Promise<Blob>): Promise<void> {
+export async function copyNativeChatImage(image: NativeChatCopyImage): Promise<void> {
   try {
-    const png = await convertImageBlobToPng(await image)
+    const png = await convertImageBlobToPng(await image())
     await window.api.ui.writeClipboardImage(`data:image/png;base64,${await blobToBase64(png)}`)
     toast.success(translate('components.native-chat.composer.imageCopied', 'Image copied'))
   } catch (error) {

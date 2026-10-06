@@ -26,21 +26,26 @@ async function hasPngSignature(blob: Blob): Promise<boolean> {
 
 export async function convertImageBlobToPng(blob: Blob): Promise<Blob> {
   assertClipboardImageByteLengthWithinLimit(blob.size)
-  const bitmap = await createImageBitmap(blob)
+  const url = URL.createObjectURL(blob)
   try {
-    assertClipboardImageDimensionsWithinLimit(bitmap)
+    const image = new Image()
+    image.src = url
+    await image.decode()
+    const width = image.naturalWidth
+    const height = image.naturalHeight
+    assertClipboardImageDimensionsWithinLimit({ width, height })
     // Why: re-encoding a PNG costs time and can grow it past the clipboard size limit.
     if (await hasPngSignature(blob)) {
       return blob
     }
     const canvas = document.createElement('canvas')
-    canvas.width = bitmap.width
-    canvas.height = bitmap.height
+    canvas.width = width
+    canvas.height = height
     const context = canvas.getContext('2d')
     if (!context || canvas.width <= 0 || canvas.height <= 0) {
       throw new Error('Clipboard image could not be decoded')
     }
-    context.drawImage(bitmap, 0, 0)
+    context.drawImage(image, 0, 0)
     return await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob((png) => {
         if (!png) {
@@ -57,6 +62,6 @@ export async function convertImageBlobToPng(blob: Blob): Promise<Blob> {
       }, 'image/png')
     })
   } finally {
-    bitmap.close()
+    URL.revokeObjectURL(url)
   }
 }
