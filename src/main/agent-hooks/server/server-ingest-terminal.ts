@@ -48,7 +48,10 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
     }
     const tabId = paneKey !== physicalPaneKey ? parsedPaneKey?.tabId : reportedTabId
     const worktreeId = event.worktreeId?.trim() || undefined
-    const connectionId = event.connectionId?.trim() || null
+    const connectionId =
+      typeof event.connectionId === 'string' && event.connectionId.trim().length > 0
+        ? event.connectionId.trim()
+        : null
     const retainedLaunchTokenHash = this.retainedOwnerLaunchTokenHash(paneKey, {
       worktreeId,
       connectionId
