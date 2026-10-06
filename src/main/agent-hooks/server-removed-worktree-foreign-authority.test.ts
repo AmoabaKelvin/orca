@@ -48,6 +48,98 @@ describe('removed-worktree foreign authority', () => {
     server.stop()
   })
 
+  it.each([
+    { owner: REMOVED, connectionId: null },
+    { owner: KEPT, connectionId: 'user@box' },
+    { owner: REMOVED, connectionId: 'user@box' }
+  ])(
+    'revokes hydrated evidence only for removed $owner on $connectionId',
+    async ({ owner, connectionId }) => {
+      const token = connectionId === null ? 'removed-launch' : TOKEN
+      const hash = createHash('sha256').update(token).digest('hex')
+      const seed = new AgentHookServer()
+      await seed.start({ env: 'production', userDataPath })
+      seed.ingestRemote(
+        {
+          paneKey: PANE,
+          tabId: 'tab-foreign',
+          worktreeId: owner,
+          launchToken: token,
+          payload: working
+        },
+        connectionId
+      )
+      seed.flushStatusPersistSync()
+      seed.stop()
+
+      const server = new AgentHookServer()
+      await server.start({ env: 'production', userDataPath })
+      const attest = () =>
+        server.attestCompatibilityAuthority({
+          paneKey: PANE,
+          launchTokenHash: hash,
+          connectionId,
+          terminalProvenance: 'restored'
+        })
+      try {
+        expect(attest()).toEqual({ paneKey: PANE, source: 'hydrated_commitment' })
+        server.ingestRemote(
+          {
+            paneKey: PANE,
+            tabId: 'tab-foreign',
+            worktreeId: KEPT,
+            launchToken: TOKEN,
+            payload: working
+          },
+          'user@box'
+        )
+        server.clearStatusEntriesForConnection('user@box')
+        server.ingestTerminalStatus({
+          paneKey: PANE,
+          tabId: 'tab-foreign',
+          worktreeId: REMOVED,
+          connectionId: null,
+          payload: working
+        })
+        server.dropStatusEntriesForRemovedWorktree(REMOVED, 'local')
+        expect(attest()).toEqual(
+          owner === REMOVED && connectionId === null
+            ? null
+            : { paneKey: PANE, source: 'hydrated_commitment' }
+        )
+        server.flushStatusPersistSync()
+        const file = JSON.parse(
+          readFileSync(join(userDataPath, 'agent-hooks', 'last-status.json'), 'utf8')
+        )
+        expect(file.authorityCommitments[PANE]).toMatchObject({
+          worktreeId: KEPT,
+          connectionId: 'user@box',
+          launchTokenHash: HASH
+        })
+        server.ingestRemote(
+          {
+            paneKey: PANE,
+            tabId: 'tab-foreign',
+            worktreeId: KEPT,
+            launchToken: TOKEN,
+            payload: working
+          },
+          'user@box'
+        )
+        expect(
+          server.attestCompatibilityAuthority({
+            paneKey: PANE,
+            launchTokenHash: HASH,
+            connectionId: 'user@box',
+            terminalProvenance: 'current_runtime'
+          })
+        ).toEqual({ paneKey: PANE, source: 'current_hook' })
+      } finally {
+        server.stop()
+      }
+    }
+  )
+
   it.each([false, true])(
     'keeps a foreign claim after removed OSC with disconnect=%s',
     async (disconnect) => {

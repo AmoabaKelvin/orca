@@ -193,6 +193,12 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
           ? claim.connectionId === parsed.targetId
           : // Why: WSL panes are local; their relay only stamps transport provenance.
             claim.connectionId === null || isWslHookRelayConnectionId(claim.connectionId)))
+    // The startup snapshot may outlive its replaced map entry; revoke only the removed owner.
+    for (const commitment of this.hydratedAuthorityCommitments) {
+      if (ownedByRemoved(commitment)) {
+        this.revokedHydratedAuthorityCommitments.add(commitment)
+      }
+    }
     const paneKeys = new Set<string>()
     for (const claim of [
       ...this.state.lastStatusByPaneKey.values(),
