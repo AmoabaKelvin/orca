@@ -5,6 +5,7 @@ import { Goal, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
 import { NativeChatMarkdown } from './NativeChatMarkdown'
+import { NATIVE_CHAT_QUOTE_SOURCE_PROPS } from './native-chat-quote-selection'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import type {
@@ -305,6 +306,7 @@ export const MessageRow = memo(function MessageRow({
           onLinkClick={onLinkClick}
           allowFileUriLinks={allowFileUriLinks}
           linkifyFilePaths={onLinkClick !== undefined}
+          {...(isSystem ? {} : NATIVE_CHAT_QUOTE_SOURCE_PROPS)}
         />
       ) : null}
       {tools.length > 0 || subagentGroups.length > 0 || backgroundTasks.length > 0 ? (

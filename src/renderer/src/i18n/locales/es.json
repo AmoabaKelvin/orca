@@ -17933,6 +17933,7 @@
         "estimated": "Estimado a partir de la última respuesta."
       },
       "dismissDeliveryNotice": "Descartar",
+      "quoteSelection": "Citar",
       "messageNotSent": "Mensaje no enviado",
       "deliveryUnconfirmed": "Entrega sin confirmar — revisa el chat antes de reintentar",
       "messageSending": "Enviando…",

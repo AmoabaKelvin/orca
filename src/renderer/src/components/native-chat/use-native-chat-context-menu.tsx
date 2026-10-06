@@ -38,6 +38,8 @@ import {
 import { isMacPlatform, nativeChatToggleShortcutLabel } from './native-chat-shortcut'
 import { TabWorkspaceLayoutMenuSection } from '@/components/tab-bar/TabWorkspaceLayoutMenuSection'
 import { NativeChatCopyOrcaSessionIdMenuItem } from './NativeChatCopyOrcaSessionIdMenuItem'
+import { NativeChatSelectionQuote } from './NativeChatSelectionQuote'
+import type { NativeChatComposerHandle } from './native-chat-composer-types'
 import type { TabSplitDirection } from '@/store/slices/tabs'
 
 type NativeChatContextMenuState = {
@@ -49,6 +51,8 @@ type NativeChatContextMenuState = {
 
 type UseNativeChatContextMenuArgs = {
   rootRef: RefObject<HTMLElement | null>
+  /** Where a selection from an agent's reply is quoted. */
+  composerRef: RefObject<NativeChatComposerHandle | null>
   enabled?: boolean
   /** Bridge-only escape hatch; structured sessions have no terminal view. */
   onSwitchToTerminal?: () => void
@@ -108,6 +112,7 @@ export const emptyNativeChatContextMenuActions: Omit<NativeChatContextMenuAction
 
 export function useNativeChatContextMenu({
   rootRef,
+  composerRef,
   enabled = true,
   onSwitchToTerminal,
   actions,
@@ -184,6 +189,12 @@ export function useNativeChatContextMenu({
     onSelectionCapture: rememberCurrentSelection,
     menu: (
       <DropdownMenu open={enabled && state.open} onOpenChange={setOpen} modal={false}>
+        {/* Mounted here as the menu root adds no DOM; it steps aside while the menu is open. */}
+        <NativeChatSelectionQuote
+          rootRef={rootRef}
+          composerRef={composerRef}
+          enabled={enabled && !state.open}
+        />
         <DropdownMenuTrigger asChild>
           <button
             aria-hidden

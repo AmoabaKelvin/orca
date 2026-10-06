@@ -344,6 +344,8 @@ export function createStructuredSessionMocks() {
             return true
           },
           insertTypedText: () => true,
+          appendText: () => {},
+          acceptsText: () => true,
           handlePasteEvent: mocks.handlePasteEvent,
           pasteFromClipboard: mocks.pasteFromClipboard,
           contains: (node: Node | null) => fieldRef.current?.contains(node) === true
