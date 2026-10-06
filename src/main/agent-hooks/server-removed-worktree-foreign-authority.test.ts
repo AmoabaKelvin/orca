@@ -22,6 +22,32 @@ describe('removed-worktree foreign authority', () => {
   })
   afterEach(() => rmSync(userDataPath, { recursive: true, force: true }))
 
+  it('preserves ordinary tokenless OSC after a tokened new turn revives a pane', () => {
+    const server = new AgentHookServer()
+    server.retirePaneAuthority(PANE)
+    server.ingestRemote(
+      {
+        paneKey: PANE,
+        tabId: 'tab-foreign',
+        worktreeId: KEPT,
+        launchToken: TOKEN,
+        source: 'codex',
+        hookEventName: 'SessionStart',
+        payload: working
+      },
+      null
+    )
+    server.ingestTerminalStatus({
+      paneKey: PANE,
+      tabId: 'tab-foreign',
+      worktreeId: KEPT,
+      connectionId: null,
+      payload: { ...working, state: 'done' }
+    })
+    expect(server.getStatusSnapshot()).toMatchObject([{ worktreeId: KEPT, state: 'done' }])
+    server.stop()
+  })
+
   it.each([false, true])(
     'keeps a foreign claim after removed OSC with disconnect=%s',
     async (disconnect) => {

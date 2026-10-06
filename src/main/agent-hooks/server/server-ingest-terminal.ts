@@ -57,12 +57,14 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
       connectionId
     })
     // Why: a verified process-lifetime Working proves a new agent run, as a hook new-turn event does.
-    const disposition = this.getAgentStatusDisposition(paneKey, {
-      retainedLaunchTokenHash,
-      ...(event.origin === 'process' && event.payload.state === 'working'
+    const disposition = this.getAgentStatusDisposition(
+      paneKey,
+      event.origin === 'process' && event.payload.state === 'working'
         ? { processNewTurn: true }
-        : {})
-    })
+        : this.restartedStatusLaunchTokenHashByPaneKey.get(paneKey)?.allowRetainedOwner
+          ? { retainedLaunchTokenHash }
+          : undefined
+    )
     if (disposition === 'suppress') {
       return
     }
