@@ -5,6 +5,9 @@ import {
   CLAUDE_OWED_TASK_NOTIFICATION_LEASE_MS,
   oweClaudeAgentTaskNotification,
   recordClaudeBackgroundTaskLaunch,
+  recordClaudeUnconfirmedAgentEnd,
+  claudeOwedTaskNotificationDeadline,
+  claudeLiveOwedTaskNotificationKinds,
   type ClaudeLaunchedBackgroundTasks
 } from './claude-owed-task-notifications'
 
@@ -21,6 +24,30 @@ describe('Claude notification resource bounds', () => {
     expect(tasks.has('agent-0')).toBe(true)
     oweClaudeAgentTaskNotification(tasks, 'agent-0', Date.now())
     expect(tasks.get('agent-0')?.notificationOwedAt).toBe(Date.now())
+  })
+
+  it('evicts unmatched child ends before confirmed work and activates only a confirmed parent launch', () => {
+    const tasks: ClaudeLaunchedBackgroundTasks = new Map()
+    recordClaudeBackgroundTaskLaunch(tasks, { id: 'main-task', kind: 'agent' })
+    oweClaudeAgentTaskNotification(tasks, 'main-task', Date.now())
+    for (let index = 0; index < 4096; index += 1) {
+      recordClaudeUnconfirmedAgentEnd(tasks, `nested-${index}`, Date.now())
+    }
+    expect(tasks.size).toBe(256)
+    expect(tasks.get('main-task')?.notificationOwedAt).toBe(Date.now())
+    recordClaudeBackgroundTaskLaunch(tasks, { id: 'later-main-task', kind: 'agent' })
+    expect(tasks.has('later-main-task')).toBe(true)
+    expect(tasks.has('main-task')).toBe(true)
+    const provisional: ClaudeLaunchedBackgroundTasks = new Map()
+    recordClaudeUnconfirmedAgentEnd(provisional, 'late-launch', Date.now())
+    expect(claudeLiveOwedTaskNotificationKinds(provisional, true, Date.now())).toEqual({
+      agent: false,
+      shell: false
+    })
+    expect(claudeOwedTaskNotificationDeadline(provisional, Date.now())).toBeUndefined()
+    vi.advanceTimersByTime(100)
+    recordClaudeBackgroundTaskLaunch(provisional, { id: 'late-launch', kind: 'agent' })
+    expect(claudeLiveOwedTaskNotificationKinds(provisional, true, Date.now()).agent).toBe(true)
   })
 
   it('shares one timer across 512 panes and publishes nothing for closed owners', () => {

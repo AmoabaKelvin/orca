@@ -4,6 +4,7 @@ import {
   oweClaudeShellTaskNotifications,
   readClaudeBackgroundTaskLaunch,
   recordClaudeBackgroundTaskLaunch,
+  recordClaudeUnconfirmedAgentNotification,
   settleClaudeTaskNotification
 } from '../../claude-owed-task-notifications'
 import { readClaudeTaskNotification } from '../../claude-task-notification-text'
@@ -19,7 +20,7 @@ export function trackClaudeTaskNotificationDelivery(
   hookPayload: Record<string, unknown>,
   inventory: ReturnType<typeof readClaudeBackgroundAgentTasks>
 ): boolean {
-  const tasks = state.claudeLaunchedBackgroundTasksByPaneKey.get(paneKey)
+  let tasks = state.claudeLaunchedBackgroundTasksByPaneKey.get(paneKey)
   if (eventName === 'PostToolUse') {
     const toolName = readString(hookPayload, 'tool_name')
     const response = hookPayload['tool_response']
@@ -36,23 +37,28 @@ export function trackClaudeTaskNotificationDelivery(
     }
     return false
   }
-  if (!tasks) {
-    return false
-  }
   if (eventName === 'UserPromptSubmit') {
     const notification = readClaudeTaskNotification(readString(hookPayload, 'prompt') ?? '')
-    const task = notification ? tasks.get(notification.taskId) : undefined
+    const child = notification
+      ? state.claudeSubagentRosterByPaneKey.get(paneKey)?.get(notification.taskId)
+      : undefined
+    if (notification && child?.state === 'working' && child.restoredFromSnapshot !== true) {
+      tasks ??= new Map()
+      recordClaudeUnconfirmedAgentNotification(tasks, notification.taskId)
+      state.claudeLaunchedBackgroundTasksByPaneKey.set(paneKey, tasks)
+    }
+    const task = notification ? tasks?.get(notification.taskId) : undefined
     const knownTask = task !== undefined && task.notificationDelivered !== true
     const lead = state.claudeLeadStateByPaneKey.get(paneKey)
     const own = lead?.waitingAgentId !== undefined ? lead.stateBeforeWait : lead
     // Why: a repeated notification cannot end its still-unfinished foreground cycle.
     const continuesWakeupTurn =
       notification !== null && own?.state !== 'done' && own?.taskWakeupTurn === true
-    if (notification?.status) {
+    if (tasks && notification?.status) {
       settleClaudeTaskNotification(tasks, notification.taskId)
     }
     return knownTask || continuesWakeupTurn
-  } else if ((eventName === 'Stop' || eventName === 'StopFailure') && inventory.present) {
+  } else if (tasks && (eventName === 'Stop' || eventName === 'StopFailure') && inventory.present) {
     oweClaudeShellTaskNotifications(tasks, new Set(inventory.runningNonAgentTaskIds), Date.now())
   }
   return false

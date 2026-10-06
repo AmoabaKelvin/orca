@@ -9,6 +9,8 @@ export type ClaudeLaunchedBackgroundTasks = Map<string, ClaudeLaunchedBackground
 
 type ClaudeLaunchedBackgroundTask = {
   kind: 'agent' | 'shell'
+  /** A current child ended before its MAIN-agent launch identified the parent. */
+  launchUnconfirmed?: true
   /** When the task was seen to end; set while its notification has not reached the main agent. */
   notificationOwedAt?: number
   /** A sub-agent already announced (or given up on); kept only because it can be resumed. */
@@ -53,17 +55,58 @@ export function recordClaudeBackgroundTaskLaunch(
   tasks: ClaudeLaunchedBackgroundTasks,
   launch: { id: string; kind: ClaudeLaunchedBackgroundTask['kind'] }
 ): void {
-  if (tasks.has(launch.id)) {
+  const previous = tasks.get(launch.id)
+  if (previous) {
+    if (previous.kind === launch.kind) {
+      previous.launchUnconfirmed = undefined
+    }
     return
   }
-  if (tasks.size >= CLAUDE_LAUNCHED_BACKGROUND_TASK_LIMIT) {
-    const settledId = [...tasks].find(([, task]) => task.settled)?.[0]
-    if (settledId === undefined) {
-      return
-    }
-    tasks.delete(settledId)
+  if (makeClaudeTaskRecordRoom(tasks)) {
+    tasks.set(launch.id, { kind: launch.kind })
   }
-  tasks.set(launch.id, { kind: launch.kind })
+}
+
+function makeClaudeTaskRecordRoom(tasks: ClaudeLaunchedBackgroundTasks): boolean {
+  if (tasks.size < CLAUDE_LAUNCHED_BACKGROUND_TASK_LIMIT) {
+    return true
+  }
+  let settledId: string | undefined
+  for (const [id, task] of tasks) {
+    if (task.launchUnconfirmed) {
+      tasks.delete(id)
+      return true
+    }
+    if (settledId === undefined && task.settled) {
+      settledId = id
+    }
+  }
+  if (settledId === undefined) {
+    return false
+  }
+  tasks.delete(settledId)
+  return true
+}
+
+/** Child lifecycle posts may beat the parent's launch; only the later launch makes this debt. */
+export function recordClaudeUnconfirmedAgentEnd(
+  tasks: ClaudeLaunchedBackgroundTasks,
+  agentId: string,
+  now: number
+): void {
+  if (!tasks.has(agentId) && makeClaudeTaskRecordRoom(tasks)) {
+    tasks.set(agentId, { kind: 'agent', launchUnconfirmed: true, notificationOwedAt: now })
+  }
+}
+
+/** An own notification can arrive before both launch and end while the runtime child is known. */
+export function recordClaudeUnconfirmedAgentNotification(
+  tasks: ClaudeLaunchedBackgroundTasks,
+  agentId: string
+): void {
+  if (!tasks.has(agentId) && makeClaudeTaskRecordRoom(tasks)) {
+    tasks.set(agentId, { kind: 'agent', launchUnconfirmed: true })
+  }
 }
 
 /** A recorded sub-agent resumed under the same task id; its next end may notify again. */
@@ -73,6 +116,7 @@ export function markClaudeBackgroundAgentRunning(
 ): void {
   const task = tasks?.get(agentId)
   if (task?.kind === 'agent') {
+    task.notificationOwedAt = undefined
     task.settled = undefined
     task.notificationDelivered = undefined
   }
@@ -147,6 +191,7 @@ function dropExpiredClaudeOwedTaskNotifications(
 ): void {
   for (const [id, task] of tasks) {
     if (
+      task.launchUnconfirmed !== true &&
       task.notificationOwedAt !== undefined &&
       claudeOwedTaskNotificationExpiry(task.notificationOwedAt, mainAgentIdleSince) <= now
     ) {
@@ -162,7 +207,7 @@ export function claudeOwedTaskNotificationDeadline(
 ): number | undefined {
   let deadline: number | undefined
   for (const task of tasks?.values() ?? []) {
-    if (task.notificationOwedAt !== undefined) {
+    if (task.launchUnconfirmed !== true && task.notificationOwedAt !== undefined) {
       const expiry = claudeOwedTaskNotificationExpiry(task.notificationOwedAt, mainAgentIdleSince)
       deadline = deadline === undefined ? expiry : Math.max(deadline, expiry)
     }
@@ -187,7 +232,7 @@ function claudeOwedTaskNotificationKinds(tasks: ClaudeLaunchedBackgroundTasks | 
 } {
   const owed = { agent: false, shell: false }
   for (const task of tasks?.values() ?? []) {
-    if (task.notificationOwedAt !== undefined) {
+    if (task.launchUnconfirmed !== true && task.notificationOwedAt !== undefined) {
       owed[task.kind] = true
     }
   }

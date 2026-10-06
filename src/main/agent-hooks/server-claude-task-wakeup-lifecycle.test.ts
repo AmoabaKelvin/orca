@@ -312,7 +312,10 @@ describe.each([false, true])('real automation Claude wake-up oracle remote=%s', 
     'native-idle',
     'cancel',
     'duplicate',
-    'shell-duplicate'
+    'shell-duplicate',
+    'end-before-launch',
+    'notification-before-launch',
+    'notification-before-end'
   ])(
     'waits on captured ready bytes through task finishing or missing wake-up expiry: %s',
     async (ending) => {
@@ -347,29 +350,60 @@ describe.each([false, true])('real automation Claude wake-up oracle remote=%s', 
       })
       try {
         await server.post({ hook_event_name: 'UserPromptSubmit', prompt: 'delegate then finish' })
-        const watching = observer.observeCompletion(pane.handle, { signal: controller.signal })
-        void watching.then(settled, () => {})
-        await vi.advanceTimersByTimeAsync(300)
+        const earlyDelivery = ending.startsWith('notification-before-')
+        const watch = () => {
+          const watching = observer.observeCompletion(pane.handle, { signal: controller.signal })
+          void watching.then(settled, () => {})
+        }
+        if (!earlyDelivery) {
+          watch()
+          await vi.advanceTimersByTimeAsync(300)
+        } else {
+          pane.runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, ready, Date.now())
+          await vi.advanceTimersByTimeAsync(1)
+        }
         const shell = ending === 'shell-duplicate'
+        const notification = {
+          hook_event_name: 'UserPromptSubmit',
+          prompt: '<task-notification><task-id>a1</task-id><status>completed</status>'
+        }
+        const reordered = [
+          'end-before-launch',
+          'notification-before-launch',
+          'notification-before-end'
+        ].includes(ending)
         if (!shell) {
           await server.post({ hook_event_name: 'SubagentStart', agent_id: 'a1' })
+        }
+        if (ending === 'notification-before-end') {
+          await server.post(notification)
+        }
+        if (reordered) {
+          await server.post({ hook_event_name: 'SubagentStop', agent_id: 'a1' })
+        }
+        if (ending === 'notification-before-launch') {
+          await server.post(notification)
         }
         await server.post({
           hook_event_name: 'PostToolUse',
           tool_name: shell ? 'Bash' : 'Agent',
           tool_response: shell ? { backgroundTaskId: 'a1' } : { isAsync: true, agentId: 'a1' }
         })
-        if (ending !== 'cancel') {
+        if (ending !== 'cancel' && !ending.startsWith('notification-before-')) {
           await server.post({
             hook_event_name: 'Stop',
-            background_tasks: [{ id: 'a1', type: shell ? 'shell' : 'subagent', status: 'running' }]
+            background_tasks: reordered
+              ? []
+              : [{ id: 'a1', type: shell ? 'shell' : 'subagent', status: 'running' }]
           })
         }
-        await server.post(
-          shell
-            ? { hook_event_name: 'Stop', background_tasks: [] }
-            : { hook_event_name: 'SubagentStop', agent_id: 'a1' }
-        )
+        if (!reordered) {
+          await server.post(
+            shell
+              ? { hook_event_name: 'Stop', background_tasks: [] }
+              : { hook_event_name: 'SubagentStop', agent_id: 'a1' }
+          )
+        }
         if (ending === 'cancel') {
           const baseline = server.row()!
           expect(
@@ -383,8 +417,14 @@ describe.each([false, true])('real automation Claude wake-up oracle remote=%s', 
             })
           ).toBe(true)
         }
-        expect(server.row()?.mainAgent?.state).toBe('done')
-        pane.runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, ready, Date.now())
+        expect(server.row()?.mainAgent?.state).toBe(
+          ending.startsWith('notification-before-') ? 'working' : 'done'
+        )
+        if (earlyDelivery) {
+          watch()
+        } else {
+          pane.runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, ready, Date.now())
+        }
         await vi.advanceTimersByTimeAsync(100)
         expect(settled).not.toHaveBeenCalled()
         if (ending === 'missing-notification' || ending === 'cancel') {

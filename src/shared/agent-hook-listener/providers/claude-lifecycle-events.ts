@@ -1,7 +1,8 @@
 import type { ParsedAgentStatusPayload } from '../../agent-status-types'
 import {
   markClaudeBackgroundAgentRunning,
-  oweClaudeAgentTaskNotification
+  oweClaudeAgentTaskNotification,
+  recordClaudeUnconfirmedAgentEnd
 } from '../../claude-owed-task-notifications'
 import {
   claudeRosterHasRestoredSnapshotSubagent,
@@ -33,6 +34,10 @@ export function normalizeClaudeSubagentLifecycleEvent(
   if (!lifecycleId) {
     return null
   }
+  const sessionOwner = state.claudeSessionOwnerByPaneKey.get(paneKey)
+  const currentSession =
+    sessionOwner !== undefined && sessionOwner === readString(hookPayload, 'session_id')
+  const compatibleSession = sessionOwner === undefined || currentSession
   const cachedLead = state.claudeLeadStateByPaneKey.get(paneKey)
   const ownsUnbackedWait =
     cachedLead?.state === 'waiting' &&
@@ -65,10 +70,12 @@ export function normalizeClaudeSubagentLifecycleEvent(
   } else {
     const agentId = lifecycleId
     if (eventName === 'SubagentStart') {
-      markClaudeBackgroundAgentRunning(
-        state.claudeLaunchedBackgroundTasksByPaneKey.get(paneKey),
-        agentId
-      )
+      if (compatibleSession) {
+        markClaudeBackgroundAgentRunning(
+          state.claudeLaunchedBackgroundTasksByPaneKey.get(paneKey),
+          agentId
+        )
+      }
       roster = getOrCreateClaudeSubagentRoster(state, paneKey)
       upsertWorkingClaudeSubagent(
         roster,
@@ -86,12 +93,13 @@ export function normalizeClaudeSubagentLifecycleEvent(
         endedChildWork = wasWorking && roster.get(agentId)?.state !== 'working'
       }
       // Why the roster's verdict: it already tells a finish from a teammate's turn end (parked idle).
-      if (roster?.get(agentId)?.state !== 'idle') {
-        oweClaudeAgentTaskNotification(
-          state.claudeLaunchedBackgroundTasksByPaneKey.get(paneKey),
-          agentId,
-          Date.now()
-        )
+      if (compatibleSession && roster?.get(agentId)?.state !== 'idle') {
+        const tasks = state.claudeLaunchedBackgroundTasksByPaneKey.get(paneKey) ?? new Map()
+        if (currentSession && endedRuntimeChildWork) {
+          recordClaudeUnconfirmedAgentEnd(tasks, agentId, Date.now())
+          state.claudeLaunchedBackgroundTasksByPaneKey.set(paneKey, tasks)
+        }
+        oweClaudeAgentTaskNotification(tasks, agentId, Date.now())
       }
       // Why: a blocked child that dies without another tool event would pin its permission/question wait on the pane forever — nothing else references that agent again.
       clearClaudePendingWaitForAgent(state, paneKey, (waitingAgentId) => waitingAgentId === agentId)
