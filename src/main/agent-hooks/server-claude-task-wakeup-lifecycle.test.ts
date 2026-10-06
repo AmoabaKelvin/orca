@@ -75,6 +75,76 @@ async function host(remote: boolean, launchToken?: string) {
 }
 
 describe.each([false, true])('Claude wake-up production ingress remote=%s', (remote) => {
+  it.each(['Agent', 'Bash', 'Monitor'])(
+    'rejects a blank %s launch without phantom debt',
+    async (tool) => {
+      const server = await host(remote)
+      try {
+        await server.post({ hook_event_name: 'UserPromptSubmit', prompt: 'launch' })
+        await server.post({
+          hook_event_name: 'PostToolUse',
+          tool_name: tool,
+          tool_response:
+            tool === 'Agent'
+              ? { isAsync: true, agentId: ' \t ' }
+              : tool === 'Monitor'
+                ? { taskId: ' \t ' }
+                : { backgroundTaskId: ' \t ' }
+        })
+        if (tool === 'Agent') {
+          await server.post({ hook_event_name: 'SubagentStop', agent_id: ' \t ' })
+        }
+        await server.post({ hook_event_name: 'Stop', background_tasks: [] })
+        expect(server.row()?.state).toBe('done')
+        expect(server.row()?.claudeTaskWakeupPending).toBeUndefined()
+      } finally {
+        server.stop()
+      }
+    }
+  )
+
+  it.each(['Agent', 'Bash', 'Monitor'])(
+    'matches a padded %s launch to its canonical wake-up',
+    async (tool) => {
+      const server = await host(remote)
+      try {
+        await server.post({ hook_event_name: 'UserPromptSubmit', prompt: 'launch' })
+        await server.post({
+          hook_event_name: 'PostToolUse',
+          tool_name: tool,
+          tool_response:
+            tool === 'Agent'
+              ? { isAsync: true, agentId: ' a1 ' }
+              : tool === 'Monitor'
+                ? { taskId: ' a1 ' }
+                : { backgroundTaskId: ' a1 ' }
+        })
+        await server.post({
+          hook_event_name: 'Stop',
+          background_tasks: [
+            { id: 'a1', type: tool === 'Agent' ? 'subagent' : 'shell', status: 'running' }
+          ]
+        })
+        expect(server.row()?.claudeTaskWakeupPending).toBeUndefined()
+        await server.post(
+          tool === 'Agent'
+            ? { hook_event_name: 'SubagentStop', agent_id: 'a1' }
+            : { hook_event_name: 'Stop', background_tasks: [] }
+        )
+        expect(server.row()?.claudeTaskWakeupPending).toBe('notification')
+        await server.post({
+          hook_event_name: 'UserPromptSubmit',
+          prompt: '<task-notification><task-id>a1</task-id><status>completed</status>'
+        })
+        expect(server.row()?.claudeTaskWakeupPending).toBe('finishing-turn')
+        await server.post({ hook_event_name: 'Stop', background_tasks: [] })
+        expect(server.row()?.state).toBe('done')
+      } finally {
+        server.stop()
+      }
+    }
+  )
+
   it.each([
     'one-subagent',
     'two-subagents-together',

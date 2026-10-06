@@ -37,14 +37,16 @@ export function readClaudeBackgroundTaskLaunch(
     return null
   }
   const response: Record<string, unknown> = { ...toolResponse }
-  const agentId = response.isAsync === true ? response.agentId : undefined
-  if (typeof agentId === 'string' && agentId.length > 0) {
+  const agentId =
+    response.isAsync === true && typeof response.agentId === 'string' ? response.agentId.trim() : ''
+  if (agentId.length > 0) {
     return { id: agentId, kind: 'agent' }
   }
   // Why: a Monitor is launched as `taskId` but listed and notified exactly like a shell.
-  const shellId =
+  const rawShellId =
     response.backgroundTaskId ?? (toolName === 'Monitor' ? response.taskId : undefined)
-  return typeof shellId === 'string' && shellId.length > 0 ? { id: shellId, kind: 'shell' } : null
+  const shellId = typeof rawShellId === 'string' ? rawShellId.trim() : ''
+  return shellId.length > 0 ? { id: shellId, kind: 'shell' } : null
 }
 
 export function recordClaudeBackgroundTaskLaunch(
