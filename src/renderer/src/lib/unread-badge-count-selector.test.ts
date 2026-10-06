@@ -180,6 +180,31 @@ describe('Dock unread count against the sidebar (#23363)', () => {
     expect(selectCount(store.getState())).toBe(1)
   })
 
+  it('recounts device visibility when creator provenance or runtime ownership changes', () => {
+    const store = createStoreOnOtherWorktree()
+    const selectCount = createUnreadBadgeCountSelector()
+    const row = makeWorktree({
+      id: BELL_WORKTREE,
+      repoId: 'repo1',
+      isUnread: true,
+      creatorProvenance: { kind: 'paired-device', deviceId: 'phone' }
+    })
+    store.setState({ worktreesByRepo: { repo1: [row] } })
+    expect(selectCount(store.getState())).toBe(1)
+    store.setState({ hideWorkspacesFromOtherDevices: true })
+    expect(selectCount(store.getState())).toBe(0)
+    store.setState({
+      worktreesByRepo: { repo1: [{ ...row, creatorProvenance: { kind: 'host' } }] }
+    })
+    expect(selectCount(store.getState())).toBe(1)
+    store.setState({ worktreesByRepo: { repo1: [row] } })
+    expect(selectCount(store.getState())).toBe(0)
+    store.setState({
+      worktreesByRepo: { repo1: [{ ...row, runtimeOwnerEnvironmentId: 'unpaired-env' }] }
+    })
+    expect(selectCount(store.getState())).toBe(1)
+  })
+
   describe('under the sidebar host filter', () => {
     it('skips an unread SSH folder workspace until its host is shown', () => {
       const store = createStoreOnOtherWorktree()

@@ -27,7 +27,14 @@ type UnreadBadgeCountState = Pick<
 
 /** The worktree fields the count reads (`id` embeds `repoId`), so equality over them is a sound cache key. */
 function sameBadgeWorktree(previous: Worktree, next: Worktree): boolean {
+  const previousCreator = previous.creatorProvenance
+  const nextCreator = next.creatorProvenance
   return (
+    previous.runtimeOwnerEnvironmentId === next.runtimeOwnerEnvironmentId &&
+    previousCreator?.kind === nextCreator?.kind &&
+    (previousCreator?.kind !== 'paired-device' ||
+      (nextCreator?.kind === 'paired-device' &&
+        previousCreator.deviceId === nextCreator.deviceId)) &&
     previous.id === next.id &&
     previous.hostId === next.hostId &&
     previous.isUnread === next.isUnread &&

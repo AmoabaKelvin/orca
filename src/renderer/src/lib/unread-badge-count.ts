@@ -4,7 +4,10 @@ import {
 } from '@/components/sidebar/worktree-list/listing/host-filtering'
 import { getRenderableFolderWorkspaces } from '@/components/sidebar/worktree-list/grouping/folder-workspace-lanes'
 import { worktreeMatchesVisibleHost } from '@/components/sidebar/visible-worktree-host-scope'
-import { filterFolderWorkspacesFromOtherDevices } from '@/components/sidebar/workspace-creator-visibility'
+import {
+  filterFolderWorkspacesFromOtherDevices,
+  isWorkspaceFromOtherDevice
+} from '@/components/sidebar/workspace-creator-visibility'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { FolderWorkspace } from '../../../shared/folder-workspace-types'
 import type { ProjectGroup } from '../../../shared/project-group-types'
@@ -56,6 +59,8 @@ export function getUnreadBadgeCount(sources: UnreadBadgeCountSources): number {
       if (
         worktree.isUnread &&
         !worktree.isArchived &&
+        (!sources.hiddenOtherDevicePairings ||
+          !isWorkspaceFromOtherDevice(worktree, sources.hiddenOtherDevicePairings)) &&
         worktreeMatchesVisibleHost(worktree, visibleHostIds, sources.repoMap, defaultHostId)
       ) {
         unreadWorktrees.add(worktree.id)

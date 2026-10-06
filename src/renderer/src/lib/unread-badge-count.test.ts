@@ -97,6 +97,29 @@ describe('getUnreadBadgeCount', () => {
     ).toBe(2)
   })
 
+  it('uses the same other-device policy for git worktrees as for folder rows', () => {
+    const foreign = worktree('foreign', {
+      creatorProvenance: { kind: 'paired-device', deviceId: 'phone' }
+    })
+    expect(count({ worktreesByRepo: { repo1: [foreign] } })).toBe(1)
+    expect(
+      count({ worktreesByRepo: { repo1: [foreign] }, hiddenOtherDevicePairings: new Map() })
+    ).toBe(0)
+    const runtimeOwned = { ...foreign, runtimeOwnerEnvironmentId: 'env' }
+    expect(
+      count({
+        worktreesByRepo: { repo1: [runtimeOwned] },
+        hiddenOtherDevicePairings: new Map([['env', 'phone']])
+      })
+    ).toBe(1)
+    expect(
+      count({
+        worktreesByRepo: { repo1: [runtimeOwned] },
+        hiddenOtherDevicePairings: new Map([['env', 'other']])
+      })
+    ).toBe(0)
+  })
+
   it('adds no flag-only folder or orphan-marker counts', () => {
     const folderWorkspaces = [makeFolderWorkspace({ isUnread: true })]
     expect(count({ folderWorkspaces, unreadTerminalTabs: {} })).toBe(0)
