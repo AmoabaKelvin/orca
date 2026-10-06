@@ -399,21 +399,48 @@ describe('Pi /reload', () => {
     expect(posts(harness).at(-1)).toEqual({ hook_event_name: 'subagents_update' })
   })
 
-  it('settles through a runner exit whose grace timer the reload cleared', async () => {
-    const harness = createPi()
-    await harness.callHook('agent_start', {}, session('A'))
-    startChild(harness, 'child-a', 'tool-call-1')
-    await endTurn(harness)
-    exitRunner(harness, 'child-a')
-    await harness.reloadPi()
-    await vi.advanceTimersByTimeAsync(5_000)
-    expect(agentEndCount(harness)).toBe(0)
+  it.each(['reload', 'resume'] as const)(
+    'settles an exited runner after same-session %s without another turn',
+    async (reason) => {
+      const harness = createPi()
+      await harness.callHook('session_start', {}, session('A'))
+      await harness.callHook('agent_start', {}, session('A'))
+      startChild(harness, 'child-a', 'tool-call-1')
+      await endTurn(harness)
+      exitRunner(harness, 'child-a')
+      await vi.advanceTimersByTimeAsync(1_000)
+      await (reason === 'reload'
+        ? harness.reloadPi()
+        : harness.replacePiSession('resume', '/sessions/A.jsonl'))
+      await harness.callHook('session_start', { reason }, session('A'))
+      await vi.advanceTimersByTimeAsync(999)
+      expect(agentEndCount(harness)).toBe(0)
+      await vi.advanceTimersByTimeAsync(1)
 
-    // pi-subagents wakes the lead once the run's result is in.
-    await harness.callHook('agent_start', {}, session('A'))
-    await endTurn(harness)
-    expect(agentEndCount(harness)).toBe(1)
-  })
+      expect(agentEndCount(harness)).toBe(1)
+      expect(posts(harness).at(-1)).toMatchObject({ hook_event_name: 'agent_end', session_id: 'A' })
+      expect(posts(harness).at(-1)?.subagents).toBeUndefined()
+      expect(vi.getTimerCount()).toBe(0)
+    }
+  )
+
+  it.each(['new', 'quit'] as const)(
+    'clears runner grace when the session ends on %s',
+    async (reason) => {
+      const harness = createPi()
+      await holdRunOpen(harness)
+      exitRunner(harness, 'run-a')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(vi.getTimerCount()).toBe(1)
+      await harness.callHook('session_shutdown', { reason })
+      await vi.advanceTimersByTimeAsync(0)
+      const completionCount = agentEndCount(harness)
+      await vi.advanceTimersByTimeAsync(5_000)
+
+      expect(agentEndCount(harness)).toBe(completionCount)
+      expect(vi.getTimerCount()).toBe(0)
+    }
+  )
 })
 
 describe('children that start outside a turn', () => {

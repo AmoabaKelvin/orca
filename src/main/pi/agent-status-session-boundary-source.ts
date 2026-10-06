@@ -8,8 +8,8 @@ function getPiSessionShutdownHandlerSourceLines(): string[] {
   return [
     "  onStatus('session_shutdown', (event) => {",
     '    clearPendingAgentEndCheck()',
-    '    clearRunnerExitCheck()',
     '    if (isOmpRuntime()) {',
+    '      clearRunnerExitCheck()',
     '      resetPostQueue()',
     '      return',
     '    }',
@@ -19,6 +19,7 @@ function getPiSessionShutdownHandlerSourceLines(): string[] {
     '    const target = (event as { targetSessionFile?: unknown } | null)?.targetSessionFile',
     // Why: /reload and a resume of the file already open keep the session, and its children still report to it.
     "    const keepsSession = reason === 'reload' || (reason === 'resume' && typeof target === 'string' && target === sessionMetadata.session_file)",
+    '    if (!keepsSession) clearRunnerExitCheck()',
     // Why: on quit the PTY's exit clears the pane, and a done here would notify on every quit.
     "    if (keepsSession || reason === 'quit') {",
     // Why: this registration's queue outlives it and would deliver stale posts after the next one's.

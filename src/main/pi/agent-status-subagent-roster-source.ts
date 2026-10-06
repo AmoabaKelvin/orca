@@ -9,7 +9,7 @@ import { AGENT_STATUS_MAX_SUBAGENTS } from '../../shared/agent-status-types'
 export function getPiSubagentSnapshotSourceLines(): string[] {
   return [
     'type SubagentDetail = { agentType?: string; description?: string; startedAt: number; workflow?: boolean; parent?: string; registration?: object }',
-    'type SubagentRoster = { active: Set<string>; exited?: Set<string>; details?: Map<string, SubagentDetail>; waiting: boolean; ownsPane?: boolean; runGeneration?: number; endedRunGeneration?: number; completionPostedGeneration?: number; parked?: Map<string, Map<string, SubagentDetail>>; onEvent?: (event: unknown, forcedStatus?: string) => void; listener?: (event: unknown) => void; onRunnerExit?: (event: unknown) => void; runnerExitListener?: (event: unknown) => void }',
+    'type SubagentRoster = { active: Set<string>; exited?: Set<string>; details?: Map<string, SubagentDetail>; waiting: boolean; ownsPane?: boolean; runGeneration?: number; endedRunGeneration?: number; completionPostedGeneration?: number; parked?: Map<string, Map<string, SubagentDetail>>; onEvent?: (event: unknown, forcedStatus?: string) => void; listener?: (event: unknown) => void; onRunnerExit?: (event: unknown) => void; runnerExitListener?: (event: unknown) => void; runnerExitCheck?: ReturnType<typeof setTimeout> | null; onRunnerExitSettled?: () => void }',
     // Why: interpolated, not re-typed, so the extension cap cannot drift from the host's.
     `const MAX_SUBAGENT_SNAPSHOT = ${AGENT_STATUS_MAX_SUBAGENTS}`,
     'let subagentRoster: SubagentRoster | null = null',
@@ -64,6 +64,7 @@ export function getPiSubagentRosterSetupSourceLines(kind: PiAgentKind): string[]
     // Tells the children this registration saw start from the ones a /reload handed it.
     '  const registration = {}',
     '  function resetSubagentRoster(): void {',
+    '    clearRunnerExitCheck()',
     '    lifecycleState.active.clear()',
     '    lifecycleState.exited?.clear()',
     '    subagentDetails.clear()',
@@ -90,10 +91,9 @@ export function getPiSubagentRosterEventSourceLines(): string[] {
     // Why: a run that reports its own completion does so ~150ms after its runner exits;
     // the grace lets that path (and the wake turn it triggers) settle the pane first.
     '  const RUNNER_EXIT_GRACE_MS = 2000',
-    '  let runnerExitCheck: ReturnType<typeof setTimeout> | null = null',
     '  function clearRunnerExitCheck(): void {',
-    '    if (runnerExitCheck !== null) clearTimeout(runnerExitCheck)',
-    '    runnerExitCheck = null',
+    '    if (lifecycleState.runnerExitCheck != null) clearTimeout(lifecycleState.runnerExitCheck)',
+    '    lifecycleState.runnerExitCheck = null',
     '  }',
     '  function forgetSubagent(id: string): void {',
     '    lifecycleState.active.delete(id)',
@@ -139,6 +139,9 @@ export function getPiSubagentRosterEventSourceLines(): string[] {
     '  }',
     // Why: awaited workflow children never get subagent:async-complete; their runner
     // exiting is the only end signal pi-subagents publishes for them.
+    '  lifecycleState.onRunnerExitSettled = (): void => {',
+    '    if (lifecycleState.waiting) postAgentEndOnce()',
+    '  }',
     '  lifecycleState.onRunnerExit = (event: unknown): void => {',
     "    const runId = event && typeof event === 'object' ? (event as { runId?: unknown }).runId : undefined",
     "    if (typeof runId !== 'string' || !lifecycleState.active.has(runId)) return",
@@ -148,11 +151,11 @@ export function getPiSubagentRosterEventSourceLines(): string[] {
     '    if (wasVisible) postSubagentsUpdate()',
     '    if (!lifecycleState.waiting) return',
     '    clearRunnerExitCheck()',
-    '    runnerExitCheck = setTimeout(() => {',
-    '      runnerExitCheck = null',
-    '      if (lifecycleState.waiting) postAgentEndOnce()',
+    '    lifecycleState.runnerExitCheck = setTimeout(() => {',
+    '      lifecycleState.runnerExitCheck = null',
+    '      lifecycleState.onRunnerExitSettled?.()',
     '    }, RUNNER_EXIT_GRACE_MS)',
-    "    if (typeof runnerExitCheck.unref === 'function') runnerExitCheck.unref()",
+    "    if (typeof lifecycleState.runnerExitCheck.unref === 'function') lifecycleState.runnerExitCheck.unref()",
     '  }'
   ]
 }
