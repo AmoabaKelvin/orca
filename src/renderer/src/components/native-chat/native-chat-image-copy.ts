@@ -12,7 +12,7 @@ export function copyableNativeChatImageSrc(
   src: string | undefined,
   path: string | undefined
 ): string | undefined {
-  // Why: SVG has no pixels to copy (Codex offers none either); the web client's image clipboard write is a no-op.
+  // Copy supports raster images; the web client's image clipboard write is a no-op.
   return path?.toLowerCase().endsWith('.svg') || isWebClientLocation() ? undefined : src
 }
 
