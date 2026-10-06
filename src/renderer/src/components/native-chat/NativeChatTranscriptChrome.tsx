@@ -131,7 +131,7 @@ function TranscriptImagePreview({
   const viewImageLabel = translate('components.native-chat.composer.viewAttachment', 'View image')
   const fallback = (
     <div
-      className="flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground"
+      className="flex max-w-full items-center gap-1.5 rounded-md border border-border bg-chat-canvas px-2 py-1 text-xs text-muted-foreground"
       title={label}
     >
       <ImageIcon className="size-3.5 shrink-0" />
@@ -175,7 +175,7 @@ function TranscriptImagePreview({
         title={label}
         data-native-chat-copy-image-src={copySrc}
         onClick={() => setOpen(true)}
-        className="flex size-full items-center justify-center overflow-hidden rounded-md border border-border bg-background transition-colors hover:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex size-full items-center justify-center overflow-hidden rounded-md border border-border bg-chat-canvas transition-colors hover:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <img
           src={displaySrc}
@@ -246,7 +246,7 @@ export function NativeChatImageAttachments({
           return (
             <div
               key={`${imageKeyBase}-${occurrence}`}
-              className="flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground"
+              className="flex max-w-full items-center gap-1.5 rounded-md border border-border bg-chat-canvas px-2 py-1 text-xs text-muted-foreground"
               title={label}
             >
               <ImageIcon className="size-3.5 shrink-0" />
@@ -299,7 +299,7 @@ export function NativeChatAgentControls({
           'Scroll this message to top'
         )}
         title={translate('components.native-chat.scrollMessageToTop', 'Scroll this message to top')}
-        className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex size-6 shrink-0 items-center justify-center rounded-md text-chat-foreground-faint transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ArrowUp className="size-3.5" />
       </button>
