@@ -191,7 +191,8 @@ describe('terminal file link actions', () => {
       handleTerminalFileLink('/repo/src/main.ts', 12, 4, plainEvent(), deps, context(request))
 
       const row = revealRow(request)
-      expect(row).toBeDefined()
+      // Marked external so the popover draws the same icon as every other Reveal item.
+      expect(row).toMatchObject({ external: true })
       await row.run()
       expect(shellApi.openInFileManager).toHaveBeenCalledWith('/repo/src/main.ts')
       expect(mocks.openDetectedFilePath).not.toHaveBeenCalled()

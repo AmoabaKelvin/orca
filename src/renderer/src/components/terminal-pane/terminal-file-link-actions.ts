@@ -109,7 +109,11 @@ export function handleTerminalFileLink(
     })
   // Why the shared reveal: it selects a folder (or a macOS .app bundle) in its parent, never opens it.
   const revealRow = canReveal
-    ? { label: getRevealInFileManagerLabel(), run: () => revealInFileManager(mappedPath) }
+    ? {
+        external: true,
+        label: getRevealInFileManagerLabel(),
+        run: () => revealInFileManager(mappedPath)
+      }
     : null
   return requestTerminalLinkAction(event, actionContext, {
     destination: actionDestination ?? mappedPath,
