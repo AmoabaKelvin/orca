@@ -84,6 +84,8 @@ export type AgentHookRelayEnvelope = {
   agentPresence?: AgentProcessPresence
   /** Ephemeral Orca launch identity stamped into the PTY env for this process. */
   launchToken?: string
+  /** Optional support proof and exact host turn fence for explicit interrupt reconciliation. */
+  hostTurnRevision?: string
   tabId?: string
   worktreeId?: string
   /** Always `null` on the wire — relay does not know Orca's local connectionId. */

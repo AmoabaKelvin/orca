@@ -1,5 +1,8 @@
 import type { ParsedAgentStatusPayload } from '../../agent-status-types'
-import { oweClaudeAgentTaskNotification } from '../../claude-owed-task-notifications'
+import {
+  markClaudeBackgroundAgentRunning,
+  oweClaudeAgentTaskNotification
+} from '../../claude-owed-task-notifications'
 import {
   claudeRosterHasRestoredSnapshotSubagent,
   claudeRosterHasRuntimeWorkingSubagent,
@@ -62,6 +65,10 @@ export function normalizeClaudeSubagentLifecycleEvent(
   } else {
     const agentId = lifecycleId
     if (eventName === 'SubagentStart') {
+      markClaudeBackgroundAgentRunning(
+        state.claudeLaunchedBackgroundTasksByPaneKey.get(paneKey),
+        agentId
+      )
       roster = getOrCreateClaudeSubagentRoster(state, paneKey)
       upsertWorkingClaudeSubagent(
         roster,
@@ -143,7 +150,7 @@ export function buildClaudeCachedLeadStatusPayload(
   // Why: draining the last background child is this turn's all-clear; the builder repeats the
   // record's turn stamp so a consumer can pair it with the announcement already sent.
   return buildClaudeStatusPayload(state, eventName, '', paneKey, hookPayload, {
-    ...resolveClaudePaneStatus(state, paneKey, { state: leadState }),
+    ...resolveClaudePaneStatus(state, paneKey, { ...lead, state: leadState }),
     updateToolSnapshot: false
   })
 }

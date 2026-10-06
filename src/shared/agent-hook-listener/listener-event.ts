@@ -10,6 +10,8 @@ export type AgentHookEventPayload = {
   source?: AgentHookSource
   /** Ephemeral Orca launch identity stamped into the PTY env for this process. */
   launchToken?: string
+  /** Host-minted live turn revision for guarded interrupt commands; never persisted. */
+  hostTurnRevision?: string
   tabId?: string
   worktreeId?: string
   /** SSH connection the event arrived on, or null for local. Only `ingestRemote` can stamp it — the loopback HTTP path has no mux identity — and receivers key off it to drop

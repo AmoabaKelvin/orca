@@ -13,6 +13,8 @@ type ClaudeLaunchedBackgroundTask = {
   notificationOwedAt?: number
   /** A sub-agent already announced (or given up on); kept only because it can be resumed. */
   settled?: true
+  /** A delivered notification, distinct from a lease that merely gave up waiting. */
+  notificationDelivered?: true
 }
 
 /** How long an idle main agent is still expected to be woken. Claude's Stop is never final and no
@@ -62,6 +64,18 @@ export function recordClaudeBackgroundTaskLaunch(
   tasks.set(launch.id, { kind: launch.kind })
 }
 
+/** A recorded sub-agent resumed under the same task id; its next end may notify again. */
+export function markClaudeBackgroundAgentRunning(
+  tasks: ClaudeLaunchedBackgroundTasks | undefined,
+  agentId: string
+): void {
+  const task = tasks?.get(agentId)
+  if (task?.kind === 'agent') {
+    task.settled = undefined
+    task.notificationDelivered = undefined
+  }
+}
+
 /** A launched sub-agent finished: Claude now owes the main agent its notification. */
 export function oweClaudeAgentTaskNotification(
   tasks: ClaudeLaunchedBackgroundTasks | undefined,
@@ -69,8 +83,8 @@ export function oweClaudeAgentTaskNotification(
   now: number
 ): void {
   const task = tasks?.get(agentId)
-  if (task?.kind === 'agent') {
-    task.notificationOwedAt = now
+  if (task?.kind === 'agent' && task.settled !== true) {
+    task.notificationOwedAt ??= now
     task.settled = undefined
   }
 }
@@ -98,6 +112,9 @@ export function settleClaudeTaskNotification(
   const task = tasks.get(taskId)
   if (task) {
     stopOwingClaudeTaskNotification(tasks, taskId, task)
+    if (task.kind === 'agent') {
+      task.notificationDelivered = true
+    }
   }
 }
 

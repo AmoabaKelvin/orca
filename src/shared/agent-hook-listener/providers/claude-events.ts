@@ -98,9 +98,9 @@ export function normalizeClaudeEvent(
         ? ('failure' as const)
         : undefined
   const backgroundTasks = readClaudeBackgroundAgentTasks(hookPayload)
-  if (eventAgentId === undefined) {
+  const isTaskWakeup =
+    eventAgentId === undefined &&
     trackClaudeTaskNotificationDelivery(state, paneKey, eventName, hookPayload, backgroundTasks)
-  }
   const sessionCrons = hookPayload['session_crons']
   const sessionCronInventoryPresent = Array.isArray(sessionCrons)
   const hasActiveSessionCron = sessionCronInventoryPresent && sessionCrons.length > 0
@@ -245,6 +245,7 @@ export function normalizeClaudeEvent(
             // pause after a cancelled turn must not erase them when the wait clears.
             ...(previousLead.outcome ? { outcome: previousLead.outcome } : {}),
             stateStartedAt: previousLead.stateStartedAt,
+            ...(previousLead.taskWakeupTurn ? { taskWakeupTurn: true as const } : {}),
             // Why: a child's permission pause displaces an already-finished lead; keep the end time so the later drain is still that turn's tail.
             ...(previousLead.turnCompletedAt !== undefined
               ? { turnCompletedAt: previousLead.turnCompletedAt }
@@ -269,7 +270,14 @@ export function normalizeClaudeEvent(
     }
   }
 
-  const resolvedStatus = resolveClaudePaneStatus(state, paneKey, { state: reportedStateName })
+  const taskWakeupTurn =
+    eventName === 'UserPromptSubmit'
+      ? isTaskWakeup
+      : !isTurnBoundary && !isManualCompactCompletion && previousLead?.taskWakeupTurn === true
+  const resolvedStatus = resolveClaudePaneStatus(state, paneKey, {
+    state: reportedStateName,
+    ...(taskWakeupTurn ? { taskWakeupTurn: true as const } : {})
+  })
   // Why: #15202's compact-completion guard reads the resolved state; this branch replaced the
   // resolver with one that also reports workingMode, so bridge rather than resolve twice.
   const effectiveState = resolvedStatus.stateName
@@ -293,6 +301,7 @@ export function normalizeClaudeEvent(
 
   setClaudeMainAgentTurnState(state, paneKey, {
     state: reportedStateName,
+    ...(taskWakeupTurn ? { taskWakeupTurn: true as const } : {}),
     ...(outcome ? { outcome } : {}),
     ...(isWaitingInducing && eventAgentId ? { waitingAgentId: eventAgentId } : {}),
     ...(isAskUserQuestionWait && waitingToolUseId !== undefined ? { waitingToolUseId } : {}),

@@ -37,6 +37,7 @@ export type PersistedAgentHookEventPayload = Omit<
   EnrichedAgentHookEventPayload,
   | 'authorityRestartId'
   | 'launchToken'
+  | 'hostTurnRevision'
   | 'promptInteractionKey'
   | 'restoredUnconfirmed'
   // Why: revision counters are in-memory and the authority id is regenerated per process, so

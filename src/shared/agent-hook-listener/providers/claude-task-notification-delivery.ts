@@ -18,7 +18,7 @@ export function trackClaudeTaskNotificationDelivery(
   eventName: unknown,
   hookPayload: Record<string, unknown>,
   inventory: ReturnType<typeof readClaudeBackgroundAgentTasks>
-): void {
+): boolean {
   const tasks = state.claudeLaunchedBackgroundTasksByPaneKey.get(paneKey)
   if (eventName === 'PostToolUse') {
     const toolName = readString(hookPayload, 'tool_name')
@@ -34,17 +34,26 @@ export function trackClaudeTaskNotificationDelivery(
         forgetStoppedClaudeShellTask(tasks, stoppedId)
       }
     }
-    return
+    return false
   }
   if (!tasks) {
-    return
+    return false
   }
   if (eventName === 'UserPromptSubmit') {
     const notification = readClaudeTaskNotification(readString(hookPayload, 'prompt') ?? '')
+    const task = notification ? tasks.get(notification.taskId) : undefined
+    const knownTask = task !== undefined && task.notificationDelivered !== true
+    const lead = state.claudeLeadStateByPaneKey.get(paneKey)
+    const own = lead?.waitingAgentId !== undefined ? lead.stateBeforeWait : lead
+    // Why: a repeated notification cannot end its still-unfinished foreground cycle.
+    const continuesWakeupTurn =
+      notification !== null && own?.state !== 'done' && own?.taskWakeupTurn === true
     if (notification?.status) {
       settleClaudeTaskNotification(tasks, notification.taskId)
     }
+    return knownTask || continuesWakeupTurn
   } else if ((eventName === 'Stop' || eventName === 'StopFailure') && inventory.present) {
     oweClaudeShellTaskNotifications(tasks, new Set(inventory.runningNonAgentTaskIds), Date.now())
   }
+  return false
 }

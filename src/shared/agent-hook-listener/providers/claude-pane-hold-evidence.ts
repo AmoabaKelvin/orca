@@ -1,3 +1,5 @@
+import { foldAgentLeadStatus, type AgentLeadStatusResolution } from '../../agent-lead-status-fold'
+import { agentChildWorkLivenessFromEvidence } from '../../agent-status-child-work-liveness'
 import { claudeLiveOwedTaskNotificationKinds } from '../../claude-owed-task-notifications'
 import { claudeRosterHasWorkingSubagent } from '../../claude-subagent-roster'
 import type { ClaudeLeadTurnState, HookListenerState } from '../listener-state'
@@ -51,4 +53,36 @@ export function claudeRowHasUnlistedLiveWork(state: HookListenerState, paneKey: 
 export function claudePaneHasRunningChildWork(state: HookListenerState, paneKey: string): boolean {
   const held = claudePaneHoldEvidence(state, paneKey)
   return held.runningAgent || held.runningNonAgent
+}
+
+export type ClaudePaneStatusResolution = AgentLeadStatusResolution & {
+  claudeTaskWakeupPending?: 'notification' | 'finishing-turn'
+}
+
+export function resolveClaudePaneStatus(
+  state: HookListenerState,
+  paneKey: string,
+  lead: Pick<ClaudeLeadTurnState, 'state' | 'taskWakeupTurn' | 'waitingAgentId' | 'stateBeforeWait'>
+): ClaudePaneStatusResolution {
+  // Why: a task that stopped running is not over until Claude has told the main agent, which
+  // starts another main-agent turn; so an owed notification holds the pane like running work.
+  const held = claudePaneHoldEvidence(state, paneKey, lead)
+  const own = lead.waitingAgentId !== undefined ? lead.stateBeforeWait : lead
+  return {
+    ...foldAgentLeadStatus({
+      leadState: lead.state,
+      childWorkLiveness: agentChildWorkLivenessFromEvidence({
+        // A child's permission wait displaces the main agent record itself (`waitingAgentId`,
+        // `stateBeforeWait`) instead of living on the roster, so the roster never carries one.
+        hasWaitingChildWork: false,
+        hasLiveAgentWork: held.runningAgent || held.owedAgent,
+        hasLiveNonAgentWork: held.runningNonAgent || held.owedShell
+      })
+    }),
+    ...(held.owedAgent || held.owedShell
+      ? { claudeTaskWakeupPending: 'notification' as const }
+      : own?.state !== 'done' && own?.taskWakeupTurn
+        ? { claudeTaskWakeupPending: 'finishing-turn' as const }
+        : {})
+  }
 }
