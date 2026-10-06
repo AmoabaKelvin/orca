@@ -188,7 +188,7 @@ function TranscriptImagePreview({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
           onInteractOutside={keepPreviewOpenForChatMenu}
-          className="flex max-h-[90vh] max-w-[90vw] flex-col gap-3 sm:max-w-4xl"
+          className="flex max-h-[90vh] max-w-[90vw] flex-col sm:max-w-4xl"
         >
           <DialogTitle className="truncate text-sm">{label}</DialogTitle>
           <DialogDescription className="sr-only">
