@@ -3,6 +3,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as UnreadBadgeCountModule from '@/lib/unread-badge-count'
+import { makeFolderWorkspace } from '@/store/slices/worktrees-slice-test-fixtures'
 import { makeTab, makeWorktree } from '@/store/slices/store-test-helpers'
 import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../shared/constants'
 
@@ -155,6 +156,54 @@ describe('useUnreadDockBadge', () => {
     act(() => useAppStore.getState().clearWorktreeUnread('repo::worktree-0'))
     expect(renders).toBe(rendersAfterMount + 2)
     expect(setUnreadDockBadgeCount).toHaveBeenLastCalledWith(1)
+  })
+
+  it('keeps the root asleep through folder title frames and unrelated attention writes', () => {
+    const folder = makeFolderWorkspace({ id: 'bell-folder', isUnread: true })
+    const key = `folder:${folder.id}`
+    const tab = makeTab({ id: 'folder-bell', worktreeId: key })
+    useAppStore.setState({
+      projectGroups: [
+        {
+          id: folder.projectGroupId,
+          name: 'folder-group',
+          parentPath: '/work',
+          parentGroupId: null,
+          createdFrom: 'manual',
+          tabOrder: 0,
+          isCollapsed: false,
+          color: null,
+          createdAt: 0,
+          updatedAt: 0
+        }
+      ],
+      folderWorkspaces: [folder],
+      tabsByWorktree: { [key]: [tab] },
+      unreadTerminalTabs: { [tab.id]: 'terminal-bell' }
+    })
+    let renders = 0
+    renderHook(() => {
+      renders += 1
+      return useUnreadDockBadge(false)
+    })
+    const initialRenders = renders
+    expect(setUnreadDockBadgeCount).toHaveBeenLastCalledWith(1)
+    for (let index = 0; index < 20; index += 1) {
+      act(() => useAppStore.getState().updateTabTitle(tab.id, `folder frame ${index}`))
+    }
+    act(() =>
+      useAppStore.setState({
+        unreadTerminalTabs: {
+          ...useAppStore.getState().unreadTerminalTabs,
+          orphan: 'terminal-bell'
+        }
+      })
+    )
+    expect(renders).toBe(initialRenders)
+    expect(getUnreadBadgeCount).toHaveBeenCalledTimes(1)
+    act(() => useAppStore.getState().clearTerminalTabUnread(tab.id))
+    expect(renders).toBe(initialRenders + 1)
+    expect(setUnreadDockBadgeCount).toHaveBeenLastCalledWith(0)
   })
 
   it('adds the floating terminal only while its launcher shows the unread dot', () => {

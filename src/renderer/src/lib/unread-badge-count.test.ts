@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { makeWorktree, TEST_REPO } from '@/store/slices/store-test-helpers'
+import { makeTab, makeWorktree, TEST_REPO } from '@/store/slices/store-test-helpers'
 import { makeFolderWorkspace } from '@/store/slices/worktrees-slice-test-fixtures'
 import type { ProjectGroup } from '../../../shared/project-group-types'
 import type { Worktree } from '../../../shared/worktree/types'
@@ -34,7 +34,24 @@ function count(overrides: Partial<UnreadBadgeCountSources>): number {
     visibleHostIds: null,
     defaultHostId: 'local',
     hiddenOtherDevicePairings: null,
-    ...overrides
+    ...overrides,
+    // These visibility fixtures represent folder bells with live tab owners.
+    tabsByWorktree:
+      overrides.tabsByWorktree ??
+      Object.fromEntries(
+        (overrides.folderWorkspaces ?? []).map((folder) => [
+          `folder:${folder.id}`,
+          [makeTab({ id: `bell:${folder.id}`, worktreeId: `folder:${folder.id}` })]
+        ])
+      ),
+    unreadTerminalTabs:
+      overrides.unreadTerminalTabs ??
+      Object.fromEntries(
+        (overrides.folderWorkspaces ?? []).map((folder) => [
+          `bell:${folder.id}`,
+          'terminal-bell' as const
+        ])
+      )
   })
 }
 
@@ -51,9 +68,9 @@ describe('getUnreadBadgeCount', () => {
     expect(count({ worktreesByRepo: { repo1: [worktree('wt-1', { isArchived: true })] } })).toBe(0)
   })
 
-  it('counts one worktree id on two hosts as the two sidebar rows it is', () => {
+  it('preserves id-only deduplication across execution hosts', () => {
     const rows = [worktree('wt-1', { hostId: 'local' }), worktree('wt-1', { hostId: 'ssh:remote' })]
-    expect(count({ worktreesByRepo: { repo1: rows } })).toBe(2)
+    expect(count({ worktreesByRepo: { repo1: rows } })).toBe(1)
     expect(count({ worktreesByRepo: { repo1: rows }, visibleHostIds: new Set(['local']) })).toBe(1)
   })
 
@@ -78,6 +95,18 @@ describe('getUnreadBadgeCount', () => {
         ]
       })
     ).toBe(2)
+  })
+
+  it('adds no flag-only folder or orphan-marker counts', () => {
+    const folderWorkspaces = [makeFolderWorkspace({ isUnread: true })]
+    expect(count({ folderWorkspaces, unreadTerminalTabs: {} })).toBe(0)
+    expect(
+      count({
+        folderWorkspaces,
+        tabsByWorktree: {},
+        unreadTerminalTabs: { orphan: 'terminal-bell' }
+      })
+    ).toBe(0)
   })
 
   it('skips an unread folder workspace the sidebar has no row for', () => {

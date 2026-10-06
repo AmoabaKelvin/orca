@@ -9,7 +9,10 @@ import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { FolderWorkspace } from '../../../shared/folder-workspace-types'
 import type { ProjectGroup } from '../../../shared/project-group-types'
 import type { Repo } from '../../../shared/repo-types'
-import { getWorktreeHostIdentity } from '../../../shared/worktree/host-qualified-identity'
+import { folderWorkspaceKey } from '../../../shared/workspace-scope'
+import type { StoredAgentAttentionUnread } from '@/attention/agent-attention-contract'
+import type { TerminalTab } from '../../../shared/terminal-tab-types'
+import type { Tab } from '../../../shared/tab-types'
 import type { Worktree } from '../../../shared/worktree/types'
 
 export type UnreadBadgeCountSources = {
@@ -22,15 +25,30 @@ export type UnreadBadgeCountSources = {
   defaultHostId: ExecutionHostId
   /** null unless the sidebar hides workspaces created from other devices. */
   hiddenOtherDevicePairings: ReadonlyMap<string, string> | null
+  tabsByWorktree?: Readonly<Record<string, readonly Pick<TerminalTab, 'id'>[]>>
+  unifiedTabsByWorktree?: Readonly<Record<string, readonly Pick<Tab, 'id' | 'contentType'>[]>>
+  unreadTerminalTabs?: Readonly<Record<string, StoredAgentAttentionUnread>>
 }
 
-/**
- * Why workspace flags only: the flag is what the sidebar draws and what visiting a workspace
- * clears. Tab markers outlive both, so counting them left a number with nothing to find (#23363).
- */
+export function hasUnreadFolderTab(
+  sources: Pick<
+    UnreadBadgeCountSources,
+    'tabsByWorktree' | 'unifiedTabsByWorktree' | 'unreadTerminalTabs'
+  >,
+  key: string
+): boolean {
+  return Boolean(
+    sources.tabsByWorktree?.[key]?.some((tab) => sources.unreadTerminalTabs?.[tab.id]) ||
+    sources.unifiedTabsByWorktree?.[key]?.some(
+      (tab) => tab.contentType === 'agent-session' && sources.unreadTerminalTabs?.[tab.id]
+    )
+  )
+}
+
+/** Workspace flags clear on a visit; tab markers can outlive that visit or their owner. */
 export function getUnreadBadgeCount(sources: UnreadBadgeCountSources): number {
   const { visibleHostIds, defaultHostId } = sources
-  // Why host identity: a repo on two hosts publishes one id for two sidebar rows.
+  // Preserve the existing id-only count while narrowing it to visible hosts.
   const unreadWorktrees = new Set<string>()
   for (const worktrees of Object.values(sources.worktreesByRepo)) {
     for (const worktree of worktrees) {
@@ -40,7 +58,7 @@ export function getUnreadBadgeCount(sources: UnreadBadgeCountSources): number {
         !worktree.isArchived &&
         worktreeMatchesVisibleHost(worktree, visibleHostIds, sources.repoMap, defaultHostId)
       ) {
-        unreadWorktrees.add(getWorktreeHostIdentity(worktree))
+        unreadWorktrees.add(worktree.id)
       }
     }
   }
@@ -50,7 +68,9 @@ export function getUnreadBadgeCount(sources: UnreadBadgeCountSources): number {
 /** Folder workspaces through the same membership steps the sidebar runs before building rows. */
 function countUnreadFolderRows(sources: UnreadBadgeCountSources): number {
   const { projectGroups, visibleHostIds, defaultHostId, hiddenOtherDevicePairings } = sources
-  const unread = sources.folderWorkspaces.filter((folderWorkspace) => folderWorkspace.isUnread)
+  const unread = sources.folderWorkspaces.filter(
+    (folder) => folder.isUnread && hasUnreadFolderTab(sources, folderWorkspaceKey(folder.id))
+  )
   if (unread.length === 0) {
     return 0
   }
@@ -60,10 +80,11 @@ function countUnreadFolderRows(sources: UnreadBadgeCountSources): number {
     visibleHostIds,
     defaultHostId
   )
-  return getRenderableFolderWorkspaces(
+  const rows = getRenderableFolderWorkspaces(
     hiddenOtherDevicePairings
       ? filterFolderWorkspacesFromOtherDevices(onVisibleHosts, hiddenOtherDevicePairings)
       : onVisibleHosts,
     filterProjectGroupsForVisibleHosts(projectGroups, visibleHostIds, defaultHostId)
-  ).length
+  )
+  return new Set(rows.map(({ folderWorkspace }) => folderWorkspace.id)).size
 }

@@ -129,7 +129,7 @@ describe('Dock unread count against the sidebar (#23363)', () => {
   })
 
   // Why one selector across writes: the App root keeps a single instance, so its cache is under test.
-  it('follows a folder workspace flag, which no tab marker has to accompany', () => {
+  it('preserves a folder bell only while its workspace flag and live tab marker remain', () => {
     const store = createStoreOnOtherWorktree()
     const selectCount = createUnreadBadgeCountSelector()
     const folderWorkspace = makeFolderWorkspace()
@@ -137,7 +137,18 @@ describe('Dock unread count against the sidebar (#23363)', () => {
     expect(selectCount(store.getState())).toBe(0)
 
     store.setState({ folderWorkspaces: [{ ...folderWorkspace, isUnread: true }] })
+    expect(selectCount(store.getState())).toBe(0)
+    const key = folderWorkspaceKey(folderWorkspace.id)
+    const tabId = addTerminalTab(store, key)
+    store.getState().markTerminalTabUnread(tabId, 'terminal-bell')
     expect(selectCount(store.getState())).toBe(1)
+    store.setState({ tabsByWorktree: {} })
+    expect(selectCount(store.getState())).toBe(0)
+    const chat = store.getState().createUnifiedTab(key, 'agent-session', { id: 'folder-chat' })
+    store.getState().markTerminalTabUnread(chat.id, 'terminal-bell')
+    expect(selectCount(store.getState())).toBe(1)
+    store.setState({ folderWorkspaces: [{ ...folderWorkspace, isUnread: false }] })
+    expect(selectCount(store.getState())).toBe(0)
   })
 
   it('drops a flagged worktree when it is archived in place', () => {
@@ -158,7 +169,7 @@ describe('Dock unread count against the sidebar (#23363)', () => {
     expect(selectCount(store.getState())).toBe(0)
   })
 
-  it('counts a second row once a host stamp tells two same-id rows apart', () => {
+  it('preserves id-only deduplication when a second host publishes a row', () => {
     const store = createTestStore()
     const selectCount = createUnreadBadgeCountSelector()
     const row = makeWorktree({ id: BELL_WORKTREE, repoId: 'repo1', isUnread: true })
@@ -166,7 +177,7 @@ describe('Dock unread count against the sidebar (#23363)', () => {
     expect(selectCount(store.getState())).toBe(1)
 
     store.setState({ worktreesByRepo: { repo1: [row, { ...row, hostId: 'ssh:remote' }] } })
-    expect(selectCount(store.getState())).toBe(2)
+    expect(selectCount(store.getState())).toBe(1)
   })
 
   describe('under the sidebar host filter', () => {
@@ -178,6 +189,8 @@ describe('Dock unread count against the sidebar (#23363)', () => {
         projectGroups: [makeProjectGroup({ connectionId: 'ssh-1' })],
         folderWorkspaces: [folderWorkspace]
       })
+      const tabId = addTerminalTab(store, folderWorkspaceKey(folderWorkspace.id))
+      store.getState().markTerminalTabUnread(tabId, 'terminal-bell')
       store.getState().setVisibleWorkspaceHostIds(['local'])
 
       store.getState().markWorktreeUnread(folderWorkspaceKey(folderWorkspace.id))
@@ -195,6 +208,11 @@ describe('Dock unread count against the sidebar (#23363)', () => {
         projectGroups: [makeProjectGroup()],
         folderWorkspaces: [makeFolderWorkspace({ isUnread: true })]
       })
+      const tabId = addTerminalTab(
+        store,
+        folderWorkspaceKey(store.getState().folderWorkspaces[0].id)
+      )
+      store.getState().markTerminalTabUnread(tabId, 'terminal-bell')
       store.getState().markWorktreeUnread(BELL_WORKTREE)
       store.getState().setVisibleWorkspaceHostIds(['local'])
       expect(selectCount(store.getState())).toBe(2)
@@ -206,7 +224,7 @@ describe('Dock unread count against the sidebar (#23363)', () => {
       expect(selectCount(store.getState())).toBe(0)
     })
 
-    it('counts one worktree id on two hosts once per shown host', () => {
+    it('narrows host visibility without adding a same-id count', () => {
       const store = createTestStore()
       const selectCount = createUnreadBadgeCountSelector()
       store.setState({
@@ -219,7 +237,7 @@ describe('Dock unread count against the sidebar (#23363)', () => {
         }
       })
       store.getState().markWorktreeUnread(BELL_WORKTREE)
-      expect(selectCount(store.getState())).toBe(2)
+      expect(selectCount(store.getState())).toBe(1)
 
       store.getState().setVisibleWorkspaceHostIds(['local'])
       expect(selectCount(store.getState())).toBe(1)
