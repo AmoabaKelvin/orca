@@ -131,10 +131,12 @@ describe('unloaded plugin directive unused warning', () => {
   // Assembled so no line here is itself a directive the gate would scan.
   const directive = (rule) => `/* oxlint-disable ${rule} -- reason */`
 
-  const withFixture = (firstLine, assert) => {
-    const directory = mkdtempSync(path.join(root, 'config', 'anti-slop-directive-test-'))
+  const withFixture = (firstLine, assert, renderer = false) => {
+    const directory = mkdtempSync(
+      path.join(root, renderer ? 'src/renderer/src' : 'config', 'anti-slop-directive-test-')
+    )
     try {
-      const file = path.join(directory, 'fixture.ts')
+      const file = path.join(directory, renderer ? 'fixture.tsx' : 'fixture.ts')
       writeFileSync(file, [firstLine, 'export const value = 1', ''].join('\n'))
       assert({
         message: 'Unused oxlint-disable directive (no problems were reported).',
@@ -185,6 +187,79 @@ describe('unloaded plugin directive unused warning', () => {
     })
     return JSON.parse(result.stdout).diagnostics
   }
+
+  it('accepts a used inherited-style directive only through the loaded design-system scan', () => {
+    const source = [
+      "import { DialogContent } from '@/components/ui/dialog'",
+      directive('shadcn/no-restyle'),
+      'export const preview = <DialogContent className="p-3" />'
+    ].join('\n')
+    withFixture(
+      source,
+      ({ filename }) => {
+        const unused = scanFixture('code quality', filename).find((diagnostic) =>
+          diagnostic.message.startsWith('Unused ')
+        )
+        expect(unused).toBeDefined()
+        expect(isUnloadedPluginDirectiveUnusedWarning(unused, root, 'code quality')).toBe(true)
+        expect(scanFixture('design system', filename)).toEqual([])
+      },
+      true
+    )
+  })
+
+  it('keeps genuinely unused style directives failing in the loaded design-system scan', () => {
+    withFixture(
+      directive('shadcn/no-restyle'),
+      ({ filename }) => {
+        const diagnostics = scanFixture('design system', filename)
+        expect(diagnostics).toHaveLength(1)
+        expect(diagnostics[0].message).toMatch(/^Unused /)
+        expect(isUnloadedPluginDirectiveUnusedWarning(diagnostics[0], root, 'design system')).toBe(
+          false
+        )
+      },
+      true
+    )
+  })
+
+  it('does not hide an unknown style rule or an unused native rule in a mixed directive', () => {
+    for (const rule of ['shadcn/unknown-rule', 'shadcn/no-restyle, unicorn/no-array-reduce']) {
+      withFixture(directive(rule), (diagnostic) => {
+        expect(isUnloadedPluginDirectiveUnusedWarning(diagnostic, root, 'code quality')).toBe(false)
+      })
+    }
+  })
+
+  it('retains invalid style directives in the loaded design-system scan', () => {
+    withFixture(
+      directive('shadcn/unknown-rule'),
+      ({ filename }) => {
+        const diagnostics = scanFixture('design system', filename)
+        expect(diagnostics.length).toBeGreaterThan(0)
+        for (const diagnostic of diagnostics) {
+          expect(isUnloadedPluginDirectiveUnusedWarning(diagnostic, root, 'design system')).toBe(
+            false
+          )
+        }
+      },
+      true
+    )
+  })
+
+  it('keeps adjacent native directive warnings visible beside a style directive', () => {
+    const style = directive('shadcn/no-restyle')
+    const native = directive('unicorn/no-array-reduce')
+    for (const source of [`${style} ${native}`, `${native} ${style}`]) {
+      withFixture(source, ({ filename }) => {
+        const diagnostic = scanFixture('code quality', filename).find((candidate) =>
+          candidate.labels.some((label) => label.span.offset === source.indexOf(native))
+        )
+        expect(diagnostic).toBeDefined()
+        expect(isUnloadedPluginDirectiveUnusedWarning(diagnostic, root, 'code quality')).toBe(false)
+      })
+    }
+  })
 
   it('accepts a used Doctor directive only through its loaded scan', () => {
     const source = [

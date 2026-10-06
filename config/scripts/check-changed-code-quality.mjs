@@ -15,6 +15,8 @@ const ANTI_SLOP_DISABLE_PATTERN =
   /\/[/*]\s*(?:oxlint|eslint)-disable(?:-next-line|-line)?\s[^\n]*\banti-slop\//
 const REACT_DOCTOR_DISABLE_PATTERN =
   /^\s*\/[/*]\s*(?:oxlint|eslint)-disable(?:-next-line|-line)?\s+react-doctor\/[\w-]+(?:\s*,\s*react-doctor\/[\w-]+)*\s*(?:--(?:(?!\*\/).)*)?(?:\*\/)?\s*$/
+const DESIGN_SYSTEM_DISABLE_PATTERN =
+  /^\s*\/[/*]\s*(?:oxlint|eslint)-disable(?:-next-line|-line)?\s+shadcn\/no-restyle\s*(?:--(?:(?!\*\/).)*)?(?:\*\/)?\s*$/
 const EXPLICIT_DISABLE_RULE_PATTERN = /(?:-disable(?:-next-line|-line)?\s+|^)[\w-]+(?:\/[\w-]+)?/
 export const OXLINT_SCANS = [
   {
@@ -55,7 +57,12 @@ export const OXLINT_SCANS = [
     // Why changed-lines only: the renderer carries ~4.7k pre-existing restyle/raw-color
     // findings. Gating added lines holds the line without a repo-wide migration.
     label: 'design system',
-    args: ['--config', 'config/oxlint-design-system.json']
+    args: [
+      '--config',
+      'config/oxlint-design-system.json',
+      '--report-unused-disable-directives-severity',
+      'warn'
+    ]
   }
 ]
 
@@ -398,7 +405,10 @@ export function isUnloadedPluginDirectiveUnusedWarning(diagnostic, root, scanLab
   }
   return (diagnostic.labels ?? []).some((label) =>
     diagnosticHighlightedLines(root, diagnostic.filename, label.span).some(
-      (line) => ANTI_SLOP_DISABLE_PATTERN.test(line) || REACT_DOCTOR_DISABLE_PATTERN.test(line)
+      (line) =>
+        ANTI_SLOP_DISABLE_PATTERN.test(line) ||
+        REACT_DOCTOR_DISABLE_PATTERN.test(line) ||
+        (scanLabel !== 'design system' && DESIGN_SYSTEM_DISABLE_PATTERN.test(line))
     )
   )
 }
