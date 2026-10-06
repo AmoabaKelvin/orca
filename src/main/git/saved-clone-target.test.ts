@@ -11,7 +11,17 @@ const url = 'https://github.com/stablyai/orca.git'
 const roots: string[] = []
 
 function git(cwd: string, ...args: string[]): void {
-  execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@t.invalid', ...args])
+  execFileSync('git', [
+    '-C',
+    cwd,
+    '-c',
+    'user.name=t',
+    '-c',
+    'user.email=t@t.invalid',
+    '-c',
+    'merge.conflictStyle=merge',
+    ...args
+  ])
 }
 
 // What `git clone url` leaves at <root>/orca. `finished: false` is a clone killed before checkout;
@@ -20,8 +30,15 @@ function checkout(originUrl: string, { finished = true, commits = true } = {}): 
   const root = mkdtempSync(join(tmpdir(), 'orca-saved-clone-target-'))
   roots.push(root)
   const path = join(root, 'orca')
-  execFileSync('git', ['init', '-q', path])
-  git(path, 'remote', 'add', 'origin', originUrl)
+  if (finished && !commits) {
+    const source = join(root, 'empty-source')
+    execFileSync('git', ['init', '-q', source])
+    execFileSync('git', ['clone', '-q', source, path], { stdio: 'ignore' })
+    git(path, 'remote', 'set-url', 'origin', originUrl)
+  } else {
+    execFileSync('git', ['init', '-q', path])
+    git(path, 'remote', 'add', 'origin', originUrl)
+  }
   if (!finished) {
     writeFileSync(join(path, '.git', 'HEAD'), 'ref: refs/heads/.invalid\n')
   } else if (commits) {
@@ -68,6 +85,36 @@ describe('reuseSavedCloneTarget', () => {
     await expect(decide(project)).resolves.toBe(project)
   })
 
+  it('refuses an unborn clone without tracking metadata, as Git 2.25 leaves during fetch', async () => {
+    const path = checkout(url, { finished: false })
+    git(path, 'symbolic-ref', 'HEAD', 'refs/heads/master')
+    await expect(decide(saved(path))).rejects.toThrow('already an Orca project')
+  })
+
+  it('matches the exact unborn branch when its name contains regex metacharacters', async () => {
+    const path = checkout(url, { commits: false })
+    const branch = 'release/v1.2+probe'
+    git(path, 'symbolic-ref', 'HEAD', `refs/heads/${branch}`)
+    git(path, 'config', `branch.${branch}.remote`, 'origin')
+    git(path, 'config', `branch.${branch}.merge`, `refs/heads/${branch}`)
+    await expect(decide(saved(path))).resolves.toMatchObject({ path })
+    git(path, 'config', '--unset', `branch.${branch}.remote`)
+    git(path, 'config', 'branch.release/v1x222probe.remote', 'origin')
+    await expect(decide(saved(path))).rejects.toThrow('already an Orca project')
+  })
+
+  it('refuses an empty clone with duplicate origin URLs or incomplete tracking metadata', async () => {
+    const path = checkout(url, { commits: false })
+    git(path, 'remote', 'set-url', '--add', 'origin', url)
+    await expect(decide(saved(path))).rejects.toThrow('already an Orca project')
+    git(path, 'config', '--replace-all', 'remote.origin.url', url)
+    const head = execFileSync('git', ['-C', path, 'symbolic-ref', '--short', 'HEAD'], {
+      encoding: 'utf8'
+    }).trim()
+    git(path, 'config', '--unset', `branch.${head}.merge`)
+    await expect(decide(saved(path))).rejects.toThrow('already an Orca project')
+  })
+
   it('reuses a finished clone left on a detached HEAD', async () => {
     const path = checkout(url)
     git(path, 'checkout', '-q', '--detach')
@@ -87,15 +134,18 @@ describe('reuseSavedCloneTarget', () => {
   })
 
   // The two reasons a clone can be refused need different things from the user, so say which it is.
-  it('names the repository it has on record when the project was a different one', async () => {
+  it('says the recorded repository differs without disclosing its credential-bearing URL', async () => {
     const project = saved(join(tmpdir(), 'orca-saved-clone-target-absent'), {
       gitRemoteIdentity: {
         canonicalKey: 'github.com/someone/orca',
         remoteName: 'origin',
-        remoteUrl: 'https://github.com/someone/orca.git'
+        remoteUrl: 'https://synthetic-user:synthetic-secret@github.com/someone/orca.git'
       }
     })
-    await expect(decide(project)).rejects.toThrow('recorded as https://github.com/someone/orca.git')
+    const result = decide(project)
+    await expect(result).rejects.toThrow('recorded as a different repository')
+    await expect(result).rejects.not.toThrow('synthetic-secret')
+    await expect(result).rejects.not.toThrow(project.gitRemoteIdentity?.remoteUrl ?? '')
   })
 
   it('says it has no record of the repository when the project never stored an origin', async () => {
