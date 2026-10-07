@@ -229,9 +229,6 @@ importers:
       react-i18next:
         specifier: 17.0.15
         version: 17.0.15(i18next@26.4.2(typescript@7.0.2))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)
-      remend:
-        specifier: 1.4.0
-        version: 1.4.0
       serve-sim:
         specifier: 0.1.47
         version: 0.1.47(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)
@@ -578,6 +575,9 @@ importers:
       remark-rehype:
         specifier: 11.1.2
         version: 11.1.2
+      remend:
+        specifier: 1.4.0
+        version: 1.4.0
       shadcn:
         specifier: ^4.13.1
         version: 4.13.1(supports-color@7.2.0)(typescript@7.0.2)
