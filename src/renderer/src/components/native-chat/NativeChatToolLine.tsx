@@ -17,6 +17,7 @@ import {
 } from './NativeChatToolAnnotations'
 import { NativeChatToolIcon } from './NativeChatToolIcon'
 import { NativeChatDiffView } from './NativeChatDiffView'
+import { NativeChatHighlightedCode } from './NativeChatHighlightedCode'
 import { nativeChatToolLineLabel } from './native-chat-tool-line-label'
 import { diffFromText, diffFromToolCall } from './native-chat-diff'
 import { NativeChatExpandable } from './NativeChatExpandable'
@@ -30,12 +31,14 @@ function ToolLineDetail({
   block,
   body,
   fullCommand,
+  commandLanguage,
   results,
   onLinkClick
 }: {
   block: NativeChatBlock
   body: NativeChatToolResultBlock | undefined
   fullCommand: string | null
+  commandLanguage: string | null
   results: NonNullable<NativeChatToolCallBlock['webSearchResults']>
   onLinkClick?: CommentMarkdownLinkClickHandler
 }): React.JSX.Element {
@@ -55,7 +58,11 @@ function ToolLineDetail({
           data-native-chat-code-content
           className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-chat-code-border bg-chat-code-surface p-2 font-mono text-xs text-chat-foreground scrollbar-sleek"
         >
-          {fullCommand}
+          {commandLanguage ? (
+            <NativeChatHighlightedCode code={fullCommand} language={commandLanguage} />
+          ) : (
+            fullCommand
+          )}
         </pre>
       ) : null}
       {body ? (
@@ -162,7 +169,11 @@ export function NativeChatToolLine({
             title={label?.title ?? resultPreview}
             aria-hidden={label?.filePath ? true : undefined}
           >
-            {label?.target ?? resultPreview}
+            {label?.commandLanguage ? (
+              <NativeChatHighlightedCode code={label.target} language={label.commandLanguage} />
+            ) : (
+              (label?.target ?? resultPreview)
+            )}
           </span>
         ) : null}
         {label?.filePath ? <span className="sr-only">{label.filePath}</span> : null}
@@ -185,6 +196,7 @@ export function NativeChatToolLine({
             block={block}
             body={body}
             fullCommand={fullCommand}
+            commandLanguage={label?.commandLanguage ?? null}
             results={results}
             onLinkClick={onLinkClick}
           />

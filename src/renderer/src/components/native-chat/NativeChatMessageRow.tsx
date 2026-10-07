@@ -16,7 +16,7 @@ import { deriveNativeChatRowContent } from '../../../../shared/native-chat-row-c
 import { NativeChatToolRun } from './NativeChatToolRun'
 import { NativeChatReasoningRow } from './NativeChatReasoningRow'
 import { NativeChatUserMessageFold } from './NativeChatUserMessageFold'
-import { NativeChatCodeBlock } from './NativeChatCodeBlock'
+import { NativeChatCodeBlock, NativeChatPlainCodeBlock } from './NativeChatCodeBlock'
 import { NativeChatNoticeRow } from './NativeChatNoticeRow'
 import { nativeChatBlocksInOwnWords } from './native-chat-stopped-before-start-row'
 import { NativeChatCopyButton } from './NativeChatCopyButton'
@@ -325,7 +325,7 @@ export const MessageRow = memo(function MessageRow({
           content={words}
           variant="document"
           className="text-sm native-chat-message-text"
-          renderCodeBlock={NativeChatCodeBlock}
+          renderCodeBlock={isSystem ? NativeChatPlainCodeBlock : NativeChatCodeBlock}
           onLinkClick={onLinkClick}
           allowFileUriLinks={allowFileUriLinks}
           linkifyFilePaths={onLinkClick !== undefined}
