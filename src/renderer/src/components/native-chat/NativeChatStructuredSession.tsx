@@ -65,6 +65,8 @@ export function NativeChatStructuredSession(
   // Chat-wide: absent means on; only an explicit off keeps mid-turn sends immediate.
   const queueFollowUps = useAppStore((store) => store.settings?.nativeChatQueueFollowUps !== false)
   const composerRef = useRef<NativeChatComposerHandle>(null)
+  // Paste target while a question card replaces the composer.
+  const questionAnswerInputRef = useRef<HTMLInputElement>(null)
   const { rewindHost, focusComposer } = useNativeChatRewindHost(props, composerRef)
   const controller = useStructuredAgentSession({
     ...props,
@@ -95,6 +97,7 @@ export function NativeChatStructuredSession(
     isVisible: props.isVisible,
     rootRef,
     composerRef,
+    questionAnswerInputRef,
     terminalPaneActions: props.contextMenuActions,
     sessionId: props.sessionId,
     target: props.target
@@ -211,13 +214,7 @@ export function NativeChatStructuredSession(
       data-native-chat-root="true"
       data-native-chat-working={controller.isWorking ? 'true' : 'false'}
       tabIndex={-1}
-      onPointerDownCapture={(event) => {
-        if (event.button === 2) {
-          paneCommands.onSelectionCapture()
-        }
-      }}
-      onMouseUpCapture={paneCommands.onSelectionCapture}
-      onKeyUpCapture={paneCommands.onSelectionCapture}
+      onPointerDownCapture={paneCommands.onPointerDownCapture}
       onKeyDownCapture={paneCommands.onKeyDownCapture}
       onContextMenuCapture={paneCommands.onContextMenuCapture}
       className={cn(
@@ -344,6 +341,7 @@ export function NativeChatStructuredSession(
               isSubmitting={promptResponse.holds(prompt)}
               onCancel={cancelPrompt}
               shouldFocus={!promptsUnanswerable && props.isVisible && props.isFocusedGroup}
+              answerInputRef={questionAnswerInputRef}
             />
           ) : null}
           {composerShown ? (
@@ -359,6 +357,7 @@ export function NativeChatStructuredSession(
               structuredTransport={structuredTransport}
               launchSeed={{ ...launchDraftSignal, ownsTabWideLaunchDraft: true }}
               notices={notices}
+              recallSource={{ messages: session.messages }}
             />
           ) : null}
         </>
