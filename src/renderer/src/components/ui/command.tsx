@@ -10,14 +10,29 @@ import { cn } from '@/lib/utils'
 import { handleImeOverlayEscape } from '@/lib/ime-overlay-escape'
 import { useImeTextFieldProps } from '@/lib/ime-text-field'
 
-function Command({ className, ...props }: React.ComponentProps<typeof CommandPrimitive>) {
+const commandVariants = cva(
+  'flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground',
+  {
+    variants: {
+      density: {
+        default: '',
+        // Why: matches DropdownMenuItem type so a searchable picker reads like its sibling menus.
+        menu: '[&_[cmdk-empty]]:text-[12px] [&_[cmdk-input-wrapper]_svg]:size-3.5 [&_[cmdk-input]]:h-8 [&_[cmdk-input]]:text-[12px] [&_[cmdk-item]]:rounded-md [&_[cmdk-item]]:py-[4px] [&_[cmdk-item]]:text-[12px] [&_[cmdk-item]]:leading-[17px] [&_[cmdk-item]]:font-[450]'
+      }
+    },
+    defaultVariants: { density: 'default' }
+  }
+)
+
+function Command({
+  className,
+  density,
+  ...props
+}: React.ComponentProps<typeof CommandPrimitive> & VariantProps<typeof commandVariants>) {
   return (
     <CommandPrimitive
       data-slot="command"
-      className={cn(
-        'flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground',
-        className
-      )}
+      className={cn(commandVariants({ density }), className)}
       {...props}
     />
   )
