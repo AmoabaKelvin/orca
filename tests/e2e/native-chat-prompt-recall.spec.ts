@@ -98,12 +98,18 @@ test('Up and Down walk the prompts already in the chat', async ({ orcaPage }) =>
     await expect
       .poll(() =>
         composer.evaluate((element) => {
+          type Mounted = Element & {
+            editor: {
+              state: { selection: { from: number } }
+              view: { posAtDOM: (node: Node, offset: number) => number }
+            }
+          }
           // Tiptap hangs its editor on the element it mounts.
-          const editor = Reflect.get(element, 'editor')
+          const isMounted = (candidate: Element): candidate is Mounted => 'editor' in candidate
           const selection = window.getSelection()
-          return selection?.anchorNode
-            ? editor.view.posAtDOM(selection.anchorNode, selection.anchorOffset) ===
-                editor.state.selection.from
+          return isMounted(element) && selection?.anchorNode
+            ? element.editor.view.posAtDOM(selection.anchorNode, selection.anchorOffset) ===
+                element.editor.state.selection.from
             : false
         })
       )
