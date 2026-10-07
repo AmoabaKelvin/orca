@@ -24,6 +24,9 @@ export type NativeChatComposerRecall = {
   setPosition: (position: NativeChatRecallPosition | null) => void
   /** False keeps an arrow key moving the caret inside a recalled multi-line prompt. */
   isCaretOnVisualEdge: (edge: 'start' | 'end') => boolean
+  /** Puts a recalled prompt in the editor with the caret at its end, as a shell does. Done at
+   *  the keypress: left to the draft sync, the caret stays wherever the last prompt had it. */
+  show: (prompt: string) => void
 }
 
 /** `id` survives new messages landing mid-recall; `recalled` is the text put in the

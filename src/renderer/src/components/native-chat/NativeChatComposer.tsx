@@ -6,8 +6,7 @@ import { useNativeChatContextUsageSummary } from './use-native-chat-context-usag
 import { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
 import { useNativeChatMentionFiles } from './use-native-chat-mention-files'
 import { useNativeChatDraft } from './use-native-chat-draft'
-import { isNativeChatRecallActive } from './native-chat-sent-prompt-history'
-import { useNativeChatRecallPosition } from './use-native-chat-recall-position'
+import { useNativeChatComposerRecall } from './use-native-chat-composer-recall'
 import { useNativeChatLaunchDraftAdoption } from './use-native-chat-launch-draft-adoption'
 import { NativeChatComposerField } from './NativeChatComposerField'
 import type { NativeChatResolvedTarget } from './native-chat-composer-target'
@@ -99,9 +98,13 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       setCaret
     })
     const [activeSuggestion, setActiveSuggestion] = useState(0)
-    const [recallPosition, setRecallPosition] = useNativeChatRecallPosition(draft)
     const { notices, setNotice } = useNativeChatComposerNotice(chatNotices)
     const { textareaRef } = useNativeChatComposerAppMenuSelection(imeEnterGesture.isComposing)
+    const recall = useNativeChatComposerRecall({
+      draft,
+      source: recallSource,
+      inputRef: textareaRef
+    })
     const { cancelPendingSends, trackPendingSend } = useNativeChatSendLifecycle(
       terminalTabId,
       targetPtyId,
@@ -120,7 +123,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       draft,
       caret,
       agentCommands,
-      recalledFromHistory: isNativeChatRecallActive(recallPosition, draft),
+      recalledFromHistory: recall.active,
       sessionSkillNames,
       textareaRef,
       setDraft,
@@ -325,22 +328,13 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       [dispatchPtyPickerCommand, sendStructured, structuredTransport]
     )
 
-    const isCaretOnVisualEdge = useCallback(
-      (edge: 'start' | 'end') => textareaRef.current?.isCaretOnVisualEdge?.(edge) ?? true,
-      [textareaRef]
-    )
     const handleKeyDown = useNativeChatComposerKeyDown({
       autocomplete,
       mentionFiles,
       completeMention,
       activeSuggestion,
       draft,
-      recall: recallSource && {
-        source: recallSource,
-        position: recallPosition,
-        setPosition: setRecallPosition,
-        isCaretOnVisualEdge
-      },
+      recall: recall.recall,
       isComposing: imeEnterGesture.isComposing,
       completePickerItem: goalMode.interceptPick(completeItem),
       dispatchPickerCommand: goalMode.interceptPick(dispatchPickerCommand),

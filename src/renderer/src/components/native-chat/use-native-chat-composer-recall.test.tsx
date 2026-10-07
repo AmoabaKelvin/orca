@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { useNativeChatRecallPosition } from './use-native-chat-recall-position'
+import { useNativeChatRecallPosition } from './use-native-chat-composer-recall'
 
 describe('useNativeChatRecallPosition', () => {
   it('ends recall once the composer stops holding the recalled prompt', () => {

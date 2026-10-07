@@ -162,6 +162,7 @@ export function useNativeChatComposerKeyDown({
         recall.setPosition(step.position)
         setDraft(step.draft)
         setCaret(step.draft.length)
+        recall.show(step.draft)
       }
     },
     [

@@ -9,7 +9,7 @@ import {
   type ComposerAutocomplete
 } from './native-chat-composer-state'
 import { getNativeChatAgentProfile } from '../../../../shared/native-chat-agent-profiles'
-import { useNativeChatRecallPosition } from './use-native-chat-recall-position'
+import { useNativeChatRecallPosition } from './use-native-chat-composer-recall'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import { useNativeChatComposerKeyDown } from './use-native-chat-composer-keydown'
 
@@ -233,7 +233,8 @@ describe('useNativeChatComposerKeyDown', () => {
           source: { messages: prompts.map((text, index) => userMessage(String(index), text)) },
           position: recallPosition,
           setPosition: setRecallPosition,
-          isCaretOnVisualEdge
+          isCaretOnVisualEdge,
+          show: vi.fn()
         },
         isComposing: () => false,
         completePickerItem: vi.fn(),
