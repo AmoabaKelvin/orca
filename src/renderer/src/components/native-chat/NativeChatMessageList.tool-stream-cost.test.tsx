@@ -21,6 +21,11 @@ vi.mock('../../../../shared/native-chat-edit-normalize', async (importOriginal) 
     }
   }
 })
+// Pacing is not this test's subject.
+vi.mock('./use-native-chat-paced-text', async (importOriginal) =>
+  (await import('./native-chat-unpaced-text-fixture')).unpacedTextModule(importOriginal)
+)
+
 const { NativeChatMessageList } = await import('./NativeChatMessageList')
 let restoreViewport = (): void => {}
 beforeAll(() => {

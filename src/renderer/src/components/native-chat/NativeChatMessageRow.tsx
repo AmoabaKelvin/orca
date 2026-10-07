@@ -5,6 +5,7 @@ import { Goal, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
 import { NativeChatMarkdown } from './NativeChatMarkdown'
+import { NativeChatPacedMarkdown } from './NativeChatPacedMarkdown'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import type {
@@ -311,8 +312,15 @@ export const MessageRow = memo(function MessageRow({
         enablePreview={runtimeContext !== undefined}
       />
       {words ? (
-        <NativeChatMarkdown
+        <NativeChatPacedMarkdown
+          rowKey={message.id}
           content={words}
+          // Only the agent's own prose is paced; everything else is drawn as it arrives.
+          streaming={
+            message.role === 'assistant' &&
+            activeTurnIsWorking === true &&
+            message.state !== 'completed'
+          }
           variant="document"
           className="text-sm native-chat-message-text"
           renderCodeBlock={NativeChatCodeBlock}

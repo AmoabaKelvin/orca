@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import rehypeRaw from 'rehype-raw'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
+import remend from 'remend'
 import { cn } from '@/lib/utils'
 import {
   compactCommentMarkdownComponents,
@@ -15,6 +16,12 @@ import {
   type DocumentCodeBlockRenderer
 } from './comment-markdown-element-renderers'
 import { remarkNativeChatFileLinks } from './comment-markdown-native-chat-file-links'
+import { rehypeWordFade } from './comment-markdown-word-fade'
+import {
+  splitMarkdownTopLevelBlocks,
+  type MarkdownBlock,
+  type MarkdownBlockSplit
+} from './markdown-top-level-blocks'
 
 export type { CommentMarkdownLinkClickHandler } from './comment-markdown-element-renderers'
 
@@ -180,6 +187,8 @@ const commentMarkdownSanitizeSchema = {
 // Why: GitHub comments often include safe raw HTML (`<sub>`, `<details>`,
 // `<br />`). Parse it, then sanitize immediately before React renders it.
 const rehypePlugins: MarkdownPlugins = [rehypeRaw, [rehypeSanitize, commentMarkdownSanitizeSchema]]
+// After sanitize, which would otherwise have to admit the wrappers.
+const wordFadeRehypePlugins: MarkdownPlugins = [...rehypePlugins, rehypeWordFade]
 
 type CommentMarkdownProps = React.ComponentPropsWithoutRef<'div'> & {
   content: string
@@ -190,6 +199,28 @@ type CommentMarkdownProps = React.ComponentPropsWithoutRef<'div'> & {
   linkifyFilePaths?: boolean
   expandImages?: boolean
   renderCodeBlock?: DocumentCodeBlockRenderer
+  /** The content is still being appended to: render it block by block, so each
+   *  append re-renders only the last block, and close markup its end leaves open.
+   *  The block-by-block render stays on once seen. */
+  growing?: boolean
+  /** Give each word its own `data-word` element, for a stylesheet to animate as words arrive. */
+  fadeWords?: boolean
+}
+
+/** One render of the pipeline; memoized so an unchanged block is not parsed again. */
+const MemoizedMarkdown = React.memo(Markdown)
+
+/** The content as the blocks to render. Cut into blocks from the first time it is growing, and
+ *  from then on, so the stream ending does not redraw what is already there. */
+function useMarkdownBlocks(content: string, growing: boolean): readonly MarkdownBlock[] {
+  const previousSplit = React.useRef<MarkdownBlockSplit | null>(null)
+  return React.useMemo(() => {
+    if (!growing && previousSplit.current === null) {
+      return [{ start: 0, text: content }]
+    }
+    previousSplit.current = splitMarkdownTopLevelBlocks(content, previousSplit.current)
+    return previousSplit.current.blocks
+  }, [content, growing])
 }
 
 // Why forwardRef + rest props: Radix's HoverCardTrigger asChild merges a ref
@@ -207,6 +238,8 @@ const CommentMarkdown = React.memo(
       linkifyFilePaths = false,
       expandImages = false,
       renderCodeBlock,
+      growing = false,
+      fadeWords = false,
       ...rest
     },
     ref
@@ -231,6 +264,7 @@ const CommentMarkdown = React.memo(
         : remarkPlugins
       return githubRepo ? [...plugins, remarkGitHubReferences(githubRepo)] : plugins
     }, [githubRepo, linkifyFilePaths])
+    const blocks = useMarkdownBlocks(content, growing)
 
     return (
       <div
@@ -245,16 +279,21 @@ const CommentMarkdown = React.memo(
         )}
         {...rest}
       >
-        <Markdown
-          remarkPlugins={activeRemarkPlugins}
-          rehypePlugins={rehypePlugins}
-          components={components}
-          urlTransform={
-            allowFileUriLinks ? commentMarkdownFileUriUrlTransform : commentMarkdownUrlTransform
-          }
-        >
-          {content}
-        </Markdown>
+        {blocks.map((block, index) => (
+          <MemoizedMarkdown
+            key={block.start}
+            remarkPlugins={activeRemarkPlugins}
+            rehypePlugins={fadeWords ? wordFadeRehypePlugins : rehypePlugins}
+            components={components}
+            urlTransform={
+              allowFileUriLinks ? commentMarkdownFileUriUrlTransform : commentMarkdownUrlTransform
+            }
+          >
+            {growing && index === blocks.length - 1
+              ? remend(block.text, { linkMode: 'text-only' })
+              : block.text}
+          </MemoizedMarkdown>
+        ))}
       </div>
     )
   })

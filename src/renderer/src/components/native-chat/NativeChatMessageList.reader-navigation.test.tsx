@@ -23,6 +23,11 @@ import {
   TRANSCRIPT_LENGTH
 } from './native-chat-windowing-test-harness'
 
+// Pacing is not this test's subject.
+vi.mock('./use-native-chat-paced-text', async (importOriginal) =>
+  (await import('./native-chat-unpaced-text-fixture')).unpacedTextModule(importOriginal)
+)
+
 afterEach(cleanup)
 
 function scrollRoot(container: HTMLElement): HTMLElement {
