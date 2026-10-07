@@ -28,6 +28,10 @@ import {
   shouldShowJumpToLatest,
   type ScrollGeometry
 } from './native-chat-autoscroll'
+import {
+  useNativeChatFollowGlide,
+  type NativeChatFollowRelease
+} from './use-native-chat-follow-glide'
 
 function geometryOf(element: HTMLElement): ScrollGeometry {
   return {
@@ -62,7 +66,8 @@ export function useNativeChatTranscriptScroll({
   scrollToEnd,
   restoreScrollOffset,
   consumeProgrammaticScroll,
-  reconcileReaderScroll
+  reconcileReaderScroll,
+  afterScrollWriteRef
 }: {
   scrollRef: React.RefObject<HTMLDivElement | null>
   contentRef: React.RefObject<HTMLDivElement | null>
@@ -76,11 +81,30 @@ export function useNativeChatTranscriptScroll({
   restoreScrollOffset: (offset: number) => void
   consumeProgrammaticScroll: (event: Event) => boolean
   reconcileReaderScroll: (isTakingOver: boolean) => void
+  /** Where the scroll owner finds what to call after each write it makes. */
+  afterScrollWriteRef?: React.RefObject<(() => void) | null>
 }): NativeChatTranscriptScroll {
   const [showJump, setShowJump] = useState(false)
-  const followingRef = useRef(true)
-  const detachedScrollTopRef = useRef<number | null>(null)
   const isVisibleRef = useRef(isVisible)
+  const scrollToEndWhenMeasurable = useCallback(() => {
+    if (isVisibleRef.current && hasMeasurableViewport(scrollRef.current)) {
+      scrollToEnd()
+    }
+  }, [scrollRef, scrollToEnd])
+
+  const followingRef = useRef(true)
+  const followGlide = useNativeChatFollowGlide({
+    scrollRef,
+    contentRef,
+    followingRef,
+    pinToEnd: scrollToEndWhenMeasurable
+  })
+  useLayoutEffect(() => {
+    if (afterScrollWriteRef) {
+      afterScrollWriteRef.current = followGlide.afterScrollWrite
+    }
+  }, [afterScrollWriteRef, followGlide])
+  const detachedScrollTopRef = useRef<number | null>(null)
   const previousIsVisibleRef = useRef(isVisible)
   const previousDistanceFromEndRef = useRef(Number.POSITIVE_INFINITY)
 
@@ -95,8 +119,21 @@ export function useNativeChatTranscriptScroll({
     return geometry
   }, [scrollRef])
 
+  /** Stops following from where the transcript is drawn, not from where it was heading. */
+  const stopFollowing = useCallback(
+    (to: NativeChatFollowRelease) => {
+      followingRef.current = false
+      const element = scrollRef.current
+      const gliding = followGlide.release(to)
+      if (element && gliding > 0) {
+        restoreScrollOffset(element.scrollTop - gliding)
+      }
+    },
+    [followGlide, restoreScrollOffset, scrollRef]
+  )
+
   const readerLeavesEnd = useCallback(() => {
-    followingRef.current = false
+    stopFollowing('reader-gesture')
     const element = scrollRef.current
     if (element) {
       previousDistanceFromEndRef.current = distanceFromBottom(geometryOf(element))
@@ -104,7 +141,7 @@ export function useNativeChatTranscriptScroll({
     // Replace a pending virtualizer target before the browser applies the gesture.
     reconcileReaderScroll(true)
     syncScrollState()
-  }, [reconcileReaderScroll, scrollRef, syncScrollState])
+  }, [reconcileReaderScroll, scrollRef, stopFollowing, syncScrollState])
 
   const onScroll = useCallback<UIEventHandler<HTMLDivElement>>(
     (event) => {
@@ -126,28 +163,26 @@ export function useNativeChatTranscriptScroll({
     [consumeProgrammaticScroll, reconcileReaderScroll, scrollRef, syncScrollState]
   )
 
-  const scrollToEndWhenMeasurable = useCallback(() => {
-    if (isVisibleRef.current && hasMeasurableViewport(scrollRef.current)) {
-      scrollToEnd()
-    }
-  }, [scrollRef, scrollToEnd])
-
   const scrollToBottom = useCallback(() => {
     // A hidden pane is not where the reader is; it keeps its position for their return.
     if (!isVisibleRef.current) {
       return
     }
+    const element = scrollRef.current
+    const from = element?.scrollTop ?? 0
+    followGlide.release('transcript-move')
     followingRef.current = true
     scrollToEndWhenMeasurable()
+    followGlide.slideFrom((element?.scrollTop ?? 0) - from)
     setShowJump(false)
-  }, [scrollToEndWhenMeasurable])
+  }, [followGlide, scrollRef, scrollToEndWhenMeasurable])
 
   const scrollMessageToTop = useCallback(
     (element: HTMLElement) => {
-      followingRef.current = false
+      stopFollowing('transcript-move')
       alignToViewportTop(element)
     },
-    [alignToViewportTop]
+    [alignToViewportTop, stopFollowing]
   )
 
   useLayoutEffect(() => {

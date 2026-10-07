@@ -80,13 +80,16 @@ export function useNativeChatTranscriptWindow({
   scrollRef,
   slots,
   isVisible,
-  revealIndex
+  revealIndex,
+  afterScrollWriteRef
 }: {
   scrollRef: React.RefObject<HTMLDivElement | null>
   slots: readonly NativeChatTranscriptSlot[]
   isVisible: boolean
   /** Slot the transcript was asked to reveal, or -1. */
   revealIndex: number
+  /** Called after each scroll the virtualizer writes, and after an end pin written without it. */
+  afterScrollWriteRef?: React.RefObject<(() => void) | null>
 }): NativeChatTranscriptWindow {
   const sizerElementRef = useRef<HTMLDivElement | null>(null)
   const [scrollMargin, setScrollMargin] = useState(0)
@@ -146,6 +149,7 @@ export function useNativeChatTranscriptWindow({
           }
         }
         elementScroll(offset, options, instance)
+        afterScrollWriteRef?.current?.()
         return
       }
       const previous = element?.scrollTop
@@ -156,6 +160,7 @@ export function useNativeChatTranscriptWindow({
       if (previous !== undefined && landing !== undefined && landing !== previous) {
         programmaticScrollMarks.mark(landing)
       }
+      afterScrollWriteRef?.current?.()
     }
   })
   // Preserve rows above the reader, never compensate growth within the visible
@@ -290,7 +295,9 @@ export function useNativeChatTranscriptWindow({
     if (container.scrollTop !== previous) {
       programmaticScrollMarks.mark(container.scrollTop)
     }
+    afterScrollWriteRef?.current?.()
   }, [
+    afterScrollWriteRef,
     finishReaderTakeover,
     isVisible,
     programmaticScrollMarks,

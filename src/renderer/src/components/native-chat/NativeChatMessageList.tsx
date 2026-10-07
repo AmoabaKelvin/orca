@@ -224,10 +224,13 @@ export function NativeChatMessageList({
       ),
     [allSlots, journalItems, stopping, journalSubmissions]
   )
+  // The window writes the scroll offset; the scroll hook, created after it, glides what a write moved.
+  const afterScrollWriteRef = useRef<(() => void) | null>(null)
   const transcriptWindow = useNativeChatTranscriptWindow({
     scrollRef,
     slots,
     isVisible,
+    afterScrollWriteRef,
     // One pin serves both: revealing a diff and jumping from the rail are
     // mutually exclusive things to be doing.
     revealIndex: nativeChatSlotIndexOf(slots, railJump?.messageId ?? revealedDiff?.messageId)
@@ -244,7 +247,8 @@ export function NativeChatMessageList({
       scrollToEnd: transcriptWindow.scrollToEnd,
       restoreScrollOffset: transcriptWindow.restoreScrollOffset,
       consumeProgrammaticScroll: transcriptWindow.consumeProgrammaticScroll,
-      reconcileReaderScroll: transcriptWindow.reconcileReaderScroll
+      reconcileReaderScroll: transcriptWindow.reconcileReaderScroll,
+      afterScrollWriteRef
     })
   const olderHistory = useNativeChatOlderHistoryAutoload({
     scrollRef,
