@@ -32,7 +32,7 @@ const HOSTNAME_TLDS = new Set([
 ])
 const DOTTED_NUMERIC_PATTERN = /^\d+(?:\.\d+)+$/
 
-export function isHostnameShapedSegment(segment: string): boolean {
+export function looksLikeHostname(segment: string): boolean {
   if (segment.startsWith('.')) {
     return false
   }

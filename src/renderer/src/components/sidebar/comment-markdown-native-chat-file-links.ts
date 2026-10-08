@@ -8,7 +8,7 @@ import {
 } from '../../../../shared/file-link-location'
 import { extractTerminalFileLinks, type ParsedTerminalFileLink } from '@/lib/terminal-links'
 import { EXTENSIONLESS_FILENAMES } from '@/lib/extensionless-filenames'
-import { isHostnameShapedSegment } from '@/lib/hostname-shaped-segment'
+import { looksLikeHostname } from '@/lib/hostname-segment'
 
 type MarkdownNode = {
   type: string
@@ -93,7 +93,7 @@ function isLinkifiableFile(link: ParsedTerminalFileLink): boolean {
   const [firstSegment = ''] = link.pathText.split(/[\\/]/, 1)
   // Why: unrooted, a space reads as a command (`git log origin/main`) and a leading host as a
   // URL missing its scheme. Rooted keeps both: `C:\Program Files\...` is a real path.
-  if (!isRooted && (/\s/.test(link.pathText) || isHostnameShapedSegment(firstSegment))) {
+  if (!isRooted && (/\s/.test(link.pathText) || looksLikeHostname(firstSegment))) {
     return false
   }
   const hasLineSuffix = link.line !== null || link.column !== null
