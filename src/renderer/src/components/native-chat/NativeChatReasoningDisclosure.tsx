@@ -23,7 +23,7 @@ export function NativeChatReasoningBody({
       <NativeChatMarkdown
         content={markdown}
         variant="document"
-        className="text-sm native-chat-message-text"
+        className="text-sm"
         renderCodeBlock={NativeChatCodeBlock}
         onLinkClick={onLinkClick}
         allowFileUriLinks={allowFileUriLinks}

@@ -20,7 +20,7 @@ export function NativeChatAgentMessageSenders({
 }): React.JSX.Element {
   const { shown, more } = agentMessageSendersShown(from)
   return (
-    <div className="flex min-w-0 max-w-full flex-wrap items-center text-xs text-muted-foreground">
+    <div className="flex min-w-0 max-w-full flex-wrap items-center text-xs text-chat-foreground-faint">
       <span>{translate('components.native-chat.agentMessage.messageFrom', 'Message from')}</span>
       {shown.length === 0 ? (
         <span className="px-2">

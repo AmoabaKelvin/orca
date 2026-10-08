@@ -56,7 +56,7 @@ function ToolLineDetail({
       {!diff && fullCommand ? (
         <pre
           data-native-chat-code-content
-          className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-chat-code-border bg-chat-code-surface p-2 font-mono text-xs text-chat-foreground scrollbar-sleek"
+          className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-chat-code-border bg-chat-code-surface p-2 font-mono text-chat-code text-chat-foreground scrollbar-sleek"
         >
           {fullCommand}
         </pre>
@@ -65,7 +65,7 @@ function ToolLineDetail({
         <pre
           data-native-chat-code-content
           className={cn(
-            'max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-chat-code-border bg-chat-code-surface p-2 font-mono text-xs scrollbar-sleek',
+            'max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-chat-code-border bg-chat-code-surface p-2 font-mono text-chat-code scrollbar-sleek',
             body.isError ? 'text-destructive' : 'text-chat-foreground'
           )}
         >
@@ -127,7 +127,7 @@ export function NativeChatToolLine({
         type="button"
         onClick={() => hasDetail && setExpanded(!expanded)}
         className={cn(
-          'group/tool-line flex min-h-[26px] w-full items-center gap-2 text-left font-sans text-[13px]',
+          'group/tool-line flex min-h-[26px] w-full items-center gap-2 rounded-md text-left font-sans text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
           hasDetail ? 'cursor-pointer' : 'cursor-default'
         )}
         aria-expanded={hasDetail ? expanded : undefined}

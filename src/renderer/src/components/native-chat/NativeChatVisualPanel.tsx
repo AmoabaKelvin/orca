@@ -45,7 +45,7 @@ export default function NativeChatVisualPanel({
   return (
     <div ref={panelRef} className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-9 min-h-9 items-center justify-between gap-2 border-b border-border pr-1 pl-3">
-        <span className="min-w-0 truncate text-[13px] text-foreground">{label}</span>
+        <span className="min-w-0 truncate text-sm text-foreground">{label}</span>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
