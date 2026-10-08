@@ -4,7 +4,6 @@ import {
 } from './native-chat-composer-input'
 import { useCallback, type Dispatch, type RefObject, type SetStateAction } from 'react'
 import { appendReturnedDraftText } from '../../../../shared/returned-draft-text'
-import type { HistoryState } from './native-chat-composer-state'
 
 /** Imperative text insertion and focus for the composer textarea, used by the
  *  paste pipeline and the composer's imperative handle. */
@@ -14,7 +13,6 @@ export function useNativeChatTypedInsertion(args: {
   draft: string
   setDraft: (value: string) => void
   setCaret: Dispatch<SetStateAction<number>>
-  setHistory: Dispatch<SetStateAction<HistoryState>>
   setActiveSuggestion: Dispatch<SetStateAction<number>>
 }): {
   insertTypedText: (text: string) => boolean
@@ -24,7 +22,7 @@ export function useNativeChatTypedInsertion(args: {
   focus: () => boolean
   contains: (node: Node | null) => boolean
 } {
-  const { textareaRef, caret, draft, setDraft, setCaret, setHistory, setActiveSuggestion } = args
+  const { textareaRef, caret, draft, setDraft, setCaret, setActiveSuggestion } = args
 
   const usableInput = useCallback((): NativeChatComposerInput | null => {
     const textarea = textareaRef.current
@@ -36,13 +34,12 @@ export function useNativeChatTypedInsertion(args: {
       textarea.focus()
       setDraft(next)
       setCaret(nextCaret)
-      setHistory((prev) => ({ entries: prev.entries, index: null }))
       setActiveSuggestion(0)
       requestAnimationFrame(() => {
         textarea.setSelectionRange(nextCaret, nextCaret)
       })
     },
-    [setActiveSuggestion, setCaret, setDraft, setHistory]
+    [setActiveSuggestion, setCaret, setDraft]
   )
 
   const insertTypedText = useCallback(
