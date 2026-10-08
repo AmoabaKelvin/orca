@@ -8,6 +8,10 @@
 
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
+import {
+  readNativeChatFollowGrowth,
+  type NativeChatFollowGrowth
+} from './native-chat-follow-growth'
 
 /** How quickly a line that pushed the transcript up comes to rest. */
 const FOLLOW_GLIDE_MS = 100
@@ -33,6 +37,7 @@ type GlideState = {
   frame: number
   /** The last row and where its top was drawn, glide aside, at the previous write. */
   tail: { element: Element; top: number } | null
+  growth: NativeChatFollowGrowth
 }
 
 /** What ends the following: the reader's own scroll, or a move the transcript makes itself. */
@@ -71,7 +76,13 @@ export function useNativeChatFollowGlide({
   useEffect(() => {
     pinToEndRef.current = pinToEnd
   }, [pinToEnd])
-  const glide = useRef<GlideState>({ offset: 0, glideMs: FOLLOW_GLIDE_MS, frame: 0, tail: null })
+  const glide = useRef<GlideState>({
+    offset: 0,
+    glideMs: FOLLOW_GLIDE_MS,
+    frame: 0,
+    tail: null,
+    growth: new Map()
+  })
 
   const draw = useCallback(() => {
     const content = contentRef.current
@@ -159,22 +170,43 @@ export function useNativeChatFollowGlide({
         : null
     if (!tail) {
       state.tail = null
+      state.growth = new Map()
       return
     }
     const topOf = (element: Element): number => element.getBoundingClientRect().top - state.offset
     const previous = state.tail
     state.tail = { element: tail, top: topOf(tail) }
+    const growth = readNativeChatFollowGrowth(contentRef.current, state.growth)
     if (!previous?.element.isConnected) {
+      state.growth = growth.current
       return
     }
     // A change at the end moves the row that was last: up as the reply grows, down when the
     // turn's own chrome leaves. A change above the viewport moves nothing the reader sees.
     const now = previous.element === tail ? state.tail.top : topOf(previous.element)
     const moved = previous.top - now
+    // Measurement may precede the spacer commit. Retain only height actually added by new text.
+    if (
+      Math.abs(moved) > SETTLED_PX ||
+      growth.appendedHeight === 0 ||
+      growth.settled ||
+      (scrollRef.current?.scrollHeight ?? 0) <= (scrollRef.current?.clientHeight ?? 0)
+    ) {
+      state.growth = growth.current
+    }
+    if (
+      growth.settled ||
+      (Math.abs(moved) > SETTLED_PX && (moved < 0 || moved > growth.appendedHeight + SETTLED_PX))
+    ) {
+      stop()
+      state.tail = null
+      pinToEndRef.current()
+      return
+    }
     if (Math.abs(moved) > SETTLED_PX) {
       start(state.offset + moved, FOLLOW_GLIDE_MS)
     }
-  }, [contentRef, followingRef, start])
+  }, [contentRef, followingRef, scrollRef, start, stop])
 
   const slideFrom = useCallback(
     (distance: number) => {
@@ -189,6 +221,7 @@ export function useNativeChatFollowGlide({
     (to: NativeChatFollowRelease) => {
       const { offset } = glide.current
       glide.current.tail = null
+      glide.current.growth = new Map()
       if (offset < 0 && to === 'reader-gesture') {
         return 0
       }

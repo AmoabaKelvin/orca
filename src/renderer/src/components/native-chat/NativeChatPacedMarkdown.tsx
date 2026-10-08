@@ -21,6 +21,7 @@ export function NativeChatPacedMarkdown({
       streaming={streaming || paced.revealing}
       growing={paced.revealing}
       fadeWords={paced.fading}
+      data-native-chat-reveal-length={streaming || paced.revealing ? paced.text.length : undefined}
     />
   )
 }

@@ -1,4 +1,5 @@
 import React from 'react'
+import { CommentMarkdownMermaidContext } from './comment-markdown-code-renderers'
 import Markdown, { defaultUrlTransform, type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
@@ -282,10 +283,9 @@ const CommentMarkdown = React.memo(
           variant,
           onLinkClick,
           renderCodeBlock,
-          renderMermaid,
           expandImages
         }),
-      [expandImages, renderCodeBlock, renderMermaid, variant, onLinkClick]
+      [expandImages, renderCodeBlock, variant, onLinkClick]
     )
     const components = React.useMemo(
       () => (extension ? { ...baseComponents, ...extension.components } : baseComponents),
@@ -318,34 +318,36 @@ const CommentMarkdown = React.memo(
     )
 
     return (
-      <div
-        ref={ref}
-        className={cn(
-          // Reset inline-code pill styles when <code> is inside a <pre> block.
-          // The descendant selector (pre code) has higher specificity than the
-          // direct utility classes on <code>, so these overrides win reliably.
-          '[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:rounded-none',
-          'min-w-0 max-w-full [overflow-wrap:anywhere]',
-          className
-        )}
-        {...rest}
-      >
-        {blocks.map((block, index) => (
-          <MemoizedMarkdown
-            key={block.start}
-            remarkPlugins={activeRemarkPlugins}
-            rehypePlugins={wrapsWords ? fadingRehypePlugins : activeRehypePlugins}
-            components={wrapsWords ? fadingComponents : components}
-            urlTransform={
-              allowFileUriLinks ? commentMarkdownFileUriUrlTransform : commentMarkdownUrlTransform
-            }
-          >
-            {growing && index === blocks.length - 1
-              ? remend(block.text, { linkMode: 'text-only' })
-              : block.text}
-          </MemoizedMarkdown>
-        ))}
-      </div>
+      <CommentMarkdownMermaidContext.Provider value={renderMermaid}>
+        <div
+          ref={ref}
+          className={cn(
+            // Reset inline-code pill styles when <code> is inside a <pre> block.
+            // The descendant selector (pre code) has higher specificity than the
+            // direct utility classes on <code>, so these overrides win reliably.
+            '[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:rounded-none',
+            'min-w-0 max-w-full [overflow-wrap:anywhere]',
+            className
+          )}
+          {...rest}
+        >
+          {blocks.map((block, index) => (
+            <MemoizedMarkdown
+              key={block.start}
+              remarkPlugins={activeRemarkPlugins}
+              rehypePlugins={wrapsWords ? fadingRehypePlugins : activeRehypePlugins}
+              components={wrapsWords ? fadingComponents : components}
+              urlTransform={
+                allowFileUriLinks ? commentMarkdownFileUriUrlTransform : commentMarkdownUrlTransform
+              }
+            >
+              {growing && index === blocks.length - 1
+                ? remend(block.text, { linkMode: 'text-only' })
+                : block.text}
+            </MemoizedMarkdown>
+          ))}
+        </div>
+      </CommentMarkdownMermaidContext.Provider>
     )
   })
 )

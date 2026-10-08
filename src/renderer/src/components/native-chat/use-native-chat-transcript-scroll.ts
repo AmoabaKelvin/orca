@@ -155,7 +155,12 @@ export function useNativeChatTranscriptScroll({
       if (!isVisibleRef.current) {
         return
       }
-      stopFollowing('transcript-move')
+      const gliding = followGlide.release('transcript-move')
+      const element = scrollRef.current
+      if (element && gliding > 0) {
+        followingRef.current = false
+        restoreScrollOffset(element.scrollTop - gliding)
+      }
       reconcileReaderScroll(true)
       syncScrollState()
     }
@@ -191,17 +196,18 @@ export function useNativeChatTranscriptScroll({
     }
     document.addEventListener('pointerdown', onPress, true)
     document.addEventListener('contextmenu', onPress, true)
-    root.addEventListener('pointerover', onHover)
+    // Layout can move a control under a stationary pointer; only movement claims the hover.
+    root.addEventListener('pointermove', onHover)
     document.addEventListener('selectionchange', onSelection)
     document.addEventListener('keydown', onKey, true)
     return () => {
       document.removeEventListener('pointerdown', onPress, true)
       document.removeEventListener('contextmenu', onPress, true)
-      root.removeEventListener('pointerover', onHover)
+      root.removeEventListener('pointermove', onHover)
       document.removeEventListener('selectionchange', onSelection)
       document.removeEventListener('keydown', onKey, true)
     }
-  }, [reconcileReaderScroll, scrollRef, stopFollowing, syncScrollState])
+  }, [followGlide, reconcileReaderScroll, restoreScrollOffset, scrollRef, syncScrollState])
 
   const onScroll = useCallback<UIEventHandler<HTMLDivElement>>(
     (event) => {

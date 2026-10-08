@@ -35,7 +35,7 @@ function Transcript({
       <div>
         <div data-testid="column" ref={contentRef}>
           <div data-native-chat-window>
-            <p data-testid="tail">
+            <p data-testid="tail" data-native-chat-reveal-length="5">
               Reply <button>Copy</button>
             </p>
           </div>
@@ -68,9 +68,14 @@ describe('glide interaction takeover', () => {
       })
       scroll.scrollTop = 900
       let top = 200
-      vi.spyOn(tail, 'getBoundingClientRect').mockImplementation(() => new DOMRect(0, top, 300, 40))
+      let height = 40
+      vi.spyOn(tail, 'getBoundingClientRect').mockImplementation(
+        () => new DOMRect(0, top, 300, height)
+      )
       act(() => afterWrite.current?.())
       top = 100
+      height = 140
+      tail.dataset.nativeChatRevealLength = '100'
       act(() => afterWrite.current?.())
       expect(column.style.transform).toBe('translateY(100px)')
       if (interaction === 'pointer') {
@@ -81,6 +86,9 @@ describe('glide interaction takeover', () => {
       }
       if (interaction === 'hover') {
         fireEvent.pointerOver(view.getByRole('button'))
+        expect(column.style.transform).toBe('translateY(100px)')
+        expect(restore).not.toHaveBeenCalled()
+        fireEvent.pointerMove(view.getByRole('button'))
       }
       if (interaction === 'selection') {
         const range = document.createRange()
