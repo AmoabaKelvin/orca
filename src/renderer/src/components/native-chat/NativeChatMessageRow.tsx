@@ -30,6 +30,7 @@ export type NativeChatDeliveryNotice =
 
 export type MessageRowProps = {
   message: NativeChatMessage
+  agentName?: string
   previousTodoWrite?: NativeChatToolCallBlock
   previousUpdatePlan?: NativeChatToolCallBlock
   revealedDiff?: NativeChatDiffReveal
@@ -77,6 +78,7 @@ export const MessageRow = memo(function MessageRow(
 ): React.JSX.Element | null {
   const {
     message,
+    agentName,
     activeTurnIsWorking,
     onScrollMessageToTop,
     onLinkClick,
@@ -123,6 +125,7 @@ export const MessageRow = memo(function MessageRow(
       <div ref={rowRef}>
         <NativeChatNoticeRow
           block={notice}
+          agentName={agentName}
           onLinkClick={onLinkClick}
           allowFileUriLinks={allowFileUriLinks}
         />

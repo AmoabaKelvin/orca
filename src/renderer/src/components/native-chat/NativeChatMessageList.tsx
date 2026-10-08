@@ -61,6 +61,7 @@ import type { NativeChatSettledTurns } from '../../../../shared/native-chat-turn
 import type { NativeChatDiffReveal, NativeChatDiffTarget } from './native-chat-turn-diffs'
 import { useNativeChatTurnDiffs } from './use-native-chat-turn-diffs'
 import { transcriptTailRow } from './native-chat-transcript-tail-row'
+import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 
 /** The turn is blocked on the reader. `shown`: the pane draws the prompt itself, as a card;
  *  `unshown`: it cannot (the prompt is only in the agent's terminal). */
@@ -326,6 +327,7 @@ export function NativeChatMessageList({
 
   const rowContext = useMemo<NativeChatTranscriptRowContext>(
     () => ({
+      agentName: structuredAgentLabel(session.agent),
       expandSignal,
       revealedDiff,
       taskListPredecessors,
@@ -340,6 +342,7 @@ export function NativeChatMessageList({
       onRevealDiff: revealDiff
     }),
     [
+      session.agent,
       allowFileUriLinks,
       expandSignal,
       expandedTurnIds,
