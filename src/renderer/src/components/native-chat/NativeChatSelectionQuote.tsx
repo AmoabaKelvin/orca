@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { Quote } from 'lucide-react'
+import { MessageSquarePlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { addViewportSizeChangeListener } from '@/hooks/viewport-size-change-listener'
@@ -19,7 +19,7 @@ type QuoteRequest = {
   anchor: { getBoundingClientRect: () => DOMRect; contextElement?: Element }
 }
 
-/** Offers "Quote" beside a selection made in an agent's reply. */
+/** Offers "Add to chat" beside a selection made in an agent's reply. */
 export function NativeChatSelectionQuote({
   rootRef,
   composerRef,
@@ -60,7 +60,7 @@ export function NativeChatSelectionQuote({
       selectionChanged = false
       window.clearTimeout(timer)
       timer = window.setTimeout(() => {
-        // Quote is only offered where it would land.
+        // Only offered where the text would land.
         const quotable = composerRef.current?.acceptsText()
           ? readNativeChatQuotableSelection(root)
           : null
@@ -144,8 +144,8 @@ export function NativeChatSelectionQuote({
                 setRequest(null)
               }}
             >
-              <Quote />
-              {translate('components.native-chat.quoteSelection', 'Quote')}
+              <MessageSquarePlus />
+              {translate('components.native-chat.addSelectionToChat', 'Add to chat')}
             </Button>
           </div>
         </PopoverContent>

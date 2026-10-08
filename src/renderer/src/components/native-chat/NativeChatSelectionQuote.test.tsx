@@ -77,34 +77,34 @@ describe('NativeChatSelectionQuote', () => {
     render(<Chat />)
     releaseSelection(screen.getByTestId('first'))
 
-    const quote = screen.getByRole('button', { name: 'Quote' })
+    const quote = screen.getByRole('button', { name: 'Add to chat' })
     fireEvent.pointerDown(quote, { button: 0 })
     fireEvent.click(quote)
 
     expect(appendText).toHaveBeenCalledWith('> Use the draft store.\n>\n> It already appends.\n\n')
-    expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add to chat' })).toBeNull()
   })
 
   it('offers nothing for a selection outside an agent reply', () => {
     render(<Chat />)
     releaseSelection(screen.getByTestId('user'))
-    expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add to chat' })).toBeNull()
 
     releaseSelection(screen.getByTestId('user'), screen.getByTestId('first'))
-    expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add to chat' })).toBeNull()
   })
 
   it('takes a selection that runs on over text that cannot be selected', () => {
     render(<Chat />)
     releaseSelection(screen.getByTestId('first'), screen.getByTestId('time'))
-    expect(screen.getByRole('button', { name: 'Quote' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Add to chat' })).toBeTruthy()
 
     // A triple-click's range: it ends at the very start of the next block.
     releaseSelection(screen.getByTestId('first'), screen.getByTestId('next'), 0)
-    expect(screen.getByRole('button', { name: 'Quote' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Add to chat' })).toBeTruthy()
 
     releaseSelection(screen.getByTestId('first'), screen.getByTestId('next'))
-    expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add to chat' })).toBeNull()
   })
 
   it('offers nothing when a press leaves the selection as it was', () => {
@@ -114,7 +114,7 @@ describe('NativeChatSelectionQuote', () => {
     fireEvent.mouseUp(screen.getByTestId('time'), { button: 0 })
     settle()
 
-    expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add to chat' })).toBeNull()
   })
 
   it('offers a selection made with the keyboard', () => {
@@ -123,7 +123,7 @@ describe('NativeChatSelectionQuote', () => {
     fireEvent.keyUp(screen.getByTestId('first'), { key: 'ArrowRight', shiftKey: true })
     settle()
 
-    expect(screen.getByRole('button', { name: 'Quote' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Add to chat' })).toBeTruthy()
   })
 
   it('offers nothing while the composer cannot take text', () => {
@@ -131,18 +131,18 @@ describe('NativeChatSelectionQuote', () => {
     render(<Chat />)
     releaseSelection(screen.getByTestId('first'))
 
-    expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add to chat' })).toBeNull()
   })
 
   it('withdraws the offer once the selection is gone', () => {
     render(<Chat />)
     releaseSelection(screen.getByTestId('first'))
-    expect(screen.getByRole('button', { name: 'Quote' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Add to chat' })).toBeTruthy()
 
     act(() => {
       window.getSelection()!.removeAllRanges()
       document.dispatchEvent(new Event('selectionchange'))
     })
-    expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add to chat' })).toBeNull()
   })
 })

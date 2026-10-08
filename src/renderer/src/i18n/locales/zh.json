@@ -18291,7 +18291,7 @@
         "estimated": "根据上一次响应的估算值。"
       },
       "dismissDeliveryNotice": "关闭",
-      "quoteSelection": "引用",
+      "addSelectionToChat": "添加到聊天",
       "messageNotSent": "消息未发送",
       "deliveryUnconfirmed": "无法确认送达 — 重试前请检查聊天",
       "messageSending": "正在发送…",
