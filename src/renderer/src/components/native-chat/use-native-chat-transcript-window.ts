@@ -60,16 +60,13 @@ export function useNativeChatTranscriptWindow({
   scrollRef,
   slots,
   isVisible,
-  revealIndex,
-  afterScrollWriteRef
+  revealIndex
 }: {
   scrollRef: React.RefObject<HTMLDivElement | null>
   slots: readonly NativeChatTranscriptSlot[]
   isVisible: boolean
   /** Slot the transcript was asked to reveal, or -1. */
   revealIndex: number
-  /** Called after each scroll the virtualizer writes, and after an end pin written without it. */
-  afterScrollWriteRef?: React.RefObject<(() => void) | null>
 }): NativeChatTranscriptWindow {
   const sizerElementRef = useRef<HTMLDivElement | null>(null)
   const [scrollMargin, setScrollMargin] = useState(0)
@@ -110,6 +107,8 @@ export function useNativeChatTranscriptWindow({
     overscan: NATIVE_CHAT_WINDOW_OVERSCAN,
     gap: NATIVE_CHAT_ROW_GAP_PX,
     scrollMargin,
+    // A hidden pane has no boxes to measure; retain its last visible row sizes.
+    useCachedMeasurements: !isVisible,
     anchorTo: 'end',
     followOnAppend: false,
     // Distances are nonnegative: disable geometry-only resize pinning, retaining prepend anchoring.
@@ -128,7 +127,6 @@ export function useNativeChatTranscriptWindow({
           }
         }
         elementScroll(offset, options, instance)
-        afterScrollWriteRef?.current?.()
         return
       }
       const previous = element?.scrollTop
@@ -139,7 +137,6 @@ export function useNativeChatTranscriptWindow({
       if (previous !== undefined && landing !== undefined && landing !== previous) {
         programmaticScrollMarks.mark(landing)
       }
-      afterScrollWriteRef?.current?.()
     }
   })
   const finishReaderTakeover = useCallback(() => {
@@ -273,9 +270,7 @@ export function useNativeChatTranscriptWindow({
     if (container.scrollTop !== previous) {
       programmaticScrollMarks.mark(container.scrollTop)
     }
-    afterScrollWriteRef?.current?.()
   }, [
-    afterScrollWriteRef,
     endAlign,
     finishReaderTakeover,
     isVisible,

@@ -146,6 +146,24 @@ describe('transcript follow ownership across growth and appends', () => {
     vi.restoreAllMocks()
   })
 
+  it('pins a mounted row before the virtualizer receives its resized height', () => {
+    setMeasuredTail(4)
+    const { container } = render(streamingList(4))
+    paint(container)
+    const scroller = scrollRoot(container)
+    const before = scroller.scrollHeight
+
+    setMeasuredTail(8)
+    expect(scroller.scrollHeight - before).toBe(tailHeightAt(8) - tailHeightAt(4))
+    act(() => deliverResizes((target) => target.hasAttribute('data-native-chat-transcript-column')))
+    expect(distanceFromBottom(container)).toBe(0)
+    const pinned = scroller.scrollTop
+
+    paint(container)
+    expect(scroller.scrollTop).toBe(pinned)
+    expect(distanceFromBottom(container)).toBe(0)
+  })
+
   it('holds the pin, the mount and the reserved total at every frame of the growth', () => {
     setMeasuredTail(0)
     const { container, rerender } = render(streamingList(0))

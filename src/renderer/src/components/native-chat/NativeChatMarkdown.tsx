@@ -43,6 +43,7 @@ export function NativeChatMarkdown({
       extension={extension}
       fadeWords={fadeWords}
       renderMermaid={!streaming}
+      keepMermaidSourceWhilePending
       data-word-fade={wordFadeArmed ? '' : undefined}
       data-block-fade={wordFadeArmed && streaming ? '' : undefined}
       className={cn('native-chat-markdown', className)}

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { Fragment, useMemo } from 'react'
 import {
   NativeChatTranscriptRow,
   type NativeChatTranscriptRowContext
@@ -10,7 +10,7 @@ import {
   useNativeChatReplyReveals
 } from './native-chat-reply-reveals'
 
-/** Windowed transcript rows, absolutely positioned inside a full-height spacer. */
+/** Mounted rows own their height; only unloaded gaps use cached measurements. */
 export function NativeChatTranscriptItems({
   slots,
   context,
@@ -24,35 +24,32 @@ export function NativeChatTranscriptItems({
   const replyReveals = useNativeChatReplyReveals(rowKeys)
   return (
     <NativeChatReplyRevealsContext.Provider value={replyReveals}>
-      <div
-        ref={window.sizerRef}
-        data-native-chat-window
-        className="relative w-full"
-        style={{ height: `${window.totalSize}px` }}
-      >
-        {window.virtualItems.map((item) => {
+      <div ref={window.sizerRef} data-native-chat-window className="relative w-full">
+        {window.virtualItems.map((item, position) => {
           const slot = slots[item.index]
           if (!slot) {
             return null
           }
+          const previousEnd = window.virtualItems[position - 1]?.end ?? window.scrollMargin
           return (
-            <div
-              key={item.key}
-              data-index={item.index}
-              ref={window.measureRow}
-              // `top`, not a transform: the reveal path walks `offsetTop` to find
-              // where a card sits, and a transform is invisible to it.
-              style={{
-                position: 'absolute',
-                top: `${item.start - window.scrollMargin}px`,
-                left: 0,
-                width: '100%'
-              }}
-            >
-              <NativeChatTranscriptRow slot={slot} context={context} />
-            </div>
+            <Fragment key={item.key}>
+              <div aria-hidden style={{ height: Math.max(0, item.start - previousEnd) }} />
+              <div data-index={item.index} ref={window.measureRow} className="flow-root w-full">
+                <NativeChatTranscriptRow slot={slot} context={context} />
+              </div>
+            </Fragment>
           )
         })}
+        <div
+          aria-hidden
+          style={{
+            height: Math.max(
+              0,
+              window.totalSize -
+                ((window.virtualItems.at(-1)?.end ?? window.scrollMargin) - window.scrollMargin)
+            )
+          }}
+        />
       </div>
     </NativeChatReplyRevealsContext.Provider>
   )
