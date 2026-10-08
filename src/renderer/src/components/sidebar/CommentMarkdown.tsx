@@ -1,9 +1,9 @@
 import React from 'react'
-import Markdown, { defaultUrlTransform } from 'react-markdown'
+import Markdown, { defaultUrlTransform, type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import rehypeRaw from 'rehype-raw'
-import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
+import rehypeSanitize, { defaultSchema, type Options as SanitizeSchema } from 'rehype-sanitize'
 import remend from 'remend'
 import { cn } from '@/lib/utils'
 import {
@@ -22,10 +22,15 @@ import {
   type MarkdownBlock,
   type MarkdownBlockSplit
 } from './markdown-top-level-blocks'
+import {
+  GITHUB_CALLOUT_SANITIZE_ATTRIBUTE,
+  remarkGitHubCallouts
+} from '@/lib/remark-github-callouts'
 
 export type { CommentMarkdownLinkClickHandler } from './comment-markdown-element-renderers'
 
 type MarkdownPlugins = NonNullable<React.ComponentProps<typeof Markdown>['rehypePlugins']>
+type RemarkPlugins = NonNullable<React.ComponentProps<typeof Markdown>['remarkPlugins']>
 type UrlTransform = NonNullable<React.ComponentProps<typeof Markdown>['urlTransform']>
 
 type GitHubRepoReference = {
@@ -69,7 +74,7 @@ const commentMarkdownFileUriUrlTransform: UrlTransform = (value, key, node) => {
 // plain-text renderer used whitespace-pre-wrap which preserved them. Adding
 // remark-breaks converts single newlines to <br>, keeping backward compat
 // with existing plain-text comments that rely on newline formatting.
-const remarkPlugins = [remarkGfm, remarkBreaks]
+const remarkPlugins = [remarkGfm, remarkGitHubCallouts, remarkBreaks]
 
 const GITHUB_REFERENCE_PATTERN = /(?:\b([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+))?#([1-9][0-9]*)\b/g
 
@@ -169,6 +174,10 @@ const commentMarkdownSanitizeSchema = {
   attributes: {
     ...defaultSchema.attributes,
     a: [...(defaultSchema.attributes?.a ?? []), 'href', 'title'],
+    blockquote: [
+      ...(defaultSchema.attributes?.blockquote ?? []),
+      GITHUB_CALLOUT_SANITIZE_ATTRIBUTE
+    ],
     details: [...(defaultSchema.attributes?.details ?? []), 'open'],
     img: [...(defaultSchema.attributes?.img ?? []), 'src', 'alt', 'title', 'width', 'height'],
     input: [...(defaultSchema.attributes?.input ?? []), 'type', 'checked', 'disabled'],
@@ -187,8 +196,27 @@ const commentMarkdownSanitizeSchema = {
 // Why: GitHub comments often include safe raw HTML (`<sub>`, `<details>`,
 // `<br />`). Parse it, then sanitize immediately before React renders it.
 const rehypePlugins: MarkdownPlugins = [rehypeRaw, [rehypeSanitize, commentMarkdownSanitizeSchema]]
-// After sanitize, which would otherwise have to admit the wrappers.
-const wordFadeRehypePlugins: MarkdownPlugins = [...rehypePlugins, rehypeWordFade]
+
+/**
+ * A surface-specific markdown addition: its own remark plugins, the element attributes those
+ * plugins need to survive sanitize, and the components that render them. Keep the object stable
+ * per surface; a new one rebuilds the components and remounts what they rendered.
+ */
+export type CommentMarkdownExtension = {
+  remarkPlugins: RemarkPlugins
+  sanitizeAttributes: Record<string, readonly string[]>
+  components: Components
+}
+
+function extensionRehypePlugins(extension: CommentMarkdownExtension): MarkdownPlugins {
+  const attributes: NonNullable<SanitizeSchema['attributes']> = {
+    ...commentMarkdownSanitizeSchema.attributes
+  }
+  for (const [tagName, names] of Object.entries(extension.sanitizeAttributes)) {
+    attributes[tagName] = [...(attributes[tagName] ?? []), ...names]
+  }
+  return [rehypeRaw, [rehypeSanitize, { ...commentMarkdownSanitizeSchema, attributes }]]
+}
 
 type CommentMarkdownProps = React.ComponentPropsWithoutRef<'div'> & {
   content: string
@@ -205,6 +233,7 @@ type CommentMarkdownProps = React.ComponentPropsWithoutRef<'div'> & {
   growing?: boolean
   /** Give each word its own `data-word` element, for a stylesheet to animate as words arrive. */
   fadeWords?: boolean
+  extension?: CommentMarkdownExtension
 }
 
 /** One render of the pipeline; memoized so an unchanged block is not parsed again. */
@@ -213,14 +242,16 @@ const MemoizedMarkdown = React.memo(Markdown)
 /** The content as the blocks to render. Cut into blocks from the first time it is growing, and
  *  from then on, so the stream ending does not redraw what is already there. */
 function useMarkdownBlocks(content: string, growing: boolean): readonly MarkdownBlock[] {
-  const previousSplit = React.useRef<MarkdownBlockSplit | null>(null)
-  return React.useMemo(() => {
-    if (!growing && previousSplit.current === null) {
-      return [{ start: 0, text: content }]
-    }
-    previousSplit.current = splitMarkdownTopLevelBlocks(content, previousSplit.current)
-    return previousSplit.current.blocks
-  }, [content, growing])
+  const [previous, setPrevious] = React.useState<MarkdownBlockSplit | null>(null)
+  if (!growing && previous === null) {
+    return [{ start: 0, text: content }]
+  }
+  if (previous?.source === content) {
+    return previous.blocks
+  }
+  const next = splitMarkdownTopLevelBlocks(content, previous)
+  setPrevious(next)
+  return next.blocks
 }
 
 // Why forwardRef + rest props: Radix's HoverCardTrigger asChild merges a ref
@@ -240,11 +271,12 @@ const CommentMarkdown = React.memo(
       renderCodeBlock,
       growing = false,
       fadeWords = false,
+      extension,
       ...rest
     },
     ref
   ) {
-    const components = React.useMemo(() => {
+    const baseComponents = React.useMemo(() => {
       if (!onLinkClick) {
         return variant === 'document'
           ? renderCodeBlock
@@ -258,13 +290,26 @@ const CommentMarkdown = React.memo(
         ? createDocumentCommentMarkdownComponents(onLinkClick, renderCodeBlock)
         : createCompactCommentMarkdownComponents(onLinkClick, expandImages)
     }, [expandImages, renderCodeBlock, variant, onLinkClick])
+    const components = React.useMemo(
+      () => (extension ? { ...baseComponents, ...extension.components } : baseComponents),
+      [baseComponents, extension]
+    )
+    const activeRehypePlugins = React.useMemo(
+      () => (extension ? extensionRehypePlugins(extension) : rehypePlugins),
+      [extension]
+    )
     const activeRemarkPlugins = React.useMemo(() => {
       const plugins = linkifyFilePaths
         ? [...remarkPlugins, remarkNativeChatFileLinks]
         : remarkPlugins
-      return githubRepo ? [...plugins, remarkGitHubReferences(githubRepo)] : plugins
-    }, [githubRepo, linkifyFilePaths])
+      const withExtension = extension ? [...plugins, ...extension.remarkPlugins] : plugins
+      return githubRepo ? [...withExtension, remarkGitHubReferences(githubRepo)] : withExtension
+    }, [extension, githubRepo, linkifyFilePaths])
     const blocks = useMarkdownBlocks(content, growing)
+    const fadingRehypePlugins = React.useMemo(
+      () => [...activeRehypePlugins, rehypeWordFade],
+      [activeRehypePlugins]
+    )
 
     return (
       <div
@@ -283,7 +328,7 @@ const CommentMarkdown = React.memo(
           <MemoizedMarkdown
             key={block.start}
             remarkPlugins={activeRemarkPlugins}
-            rehypePlugins={fadeWords ? wordFadeRehypePlugins : rehypePlugins}
+            rehypePlugins={fadeWords ? fadingRehypePlugins : activeRehypePlugins}
             components={components}
             urlTransform={
               allowFileUriLinks ? commentMarkdownFileUriUrlTransform : commentMarkdownUrlTransform
