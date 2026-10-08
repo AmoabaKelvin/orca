@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, cleanup, renderHook } from '@testing-library/react'
+import { act, cleanup, fireEvent, renderHook } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { useNativeChatFollowGlide } from './use-native-chat-follow-glide'
 
@@ -62,6 +62,7 @@ function followingTranscript() {
     column,
     prose,
     pin,
+    followingRef,
     resize: (delta: number, appended = false, proseDelta = delta) => {
       scrollHeight += delta
       proseHeight += proseDelta
@@ -136,4 +137,33 @@ it('does not keep an animation obligation for characters that added no height', 
   rig.resize(0, true)
   rig.resize(100)
   expect(rig.column.style.transform).toBe('')
+})
+
+it.each(['load', 'loadedmetadata'])(
+  'pins a media %s that overlaps new text without a glide',
+  (event) => {
+    const rig = followingTranscript()
+    rig.resize(100, true)
+    expect(rig.column.style.transform).toBe('translateY(100px)')
+    const image = document.createElement('img')
+    rig.prose.append(image)
+    const measure = rig.appendBeforeMeasurement(250)
+    act(() => fireEvent(image, new Event(event)))
+    measure()
+    expect(rig.column.style.transform).toBe('')
+    expect(rig.scroll.scrollTop).toBe(1250)
+    const pins = rig.pin.mock.calls.length
+    act(() => vi.advanceTimersByTime(1000))
+    expect(rig.pin).toHaveBeenCalledTimes(pins)
+  }
+)
+
+it('leaves a detached reader in place when media loads', () => {
+  const rig = followingTranscript()
+  rig.followingRef.current = false
+  const image = document.createElement('img')
+  rig.prose.append(image)
+  const pins = rig.pin.mock.calls.length
+  act(() => fireEvent.load(image))
+  expect(rig.pin).toHaveBeenCalledTimes(pins)
 })

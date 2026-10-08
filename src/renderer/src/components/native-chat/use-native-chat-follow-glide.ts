@@ -232,6 +232,28 @@ export function useNativeChatFollowGlide({
   )
 
   useEffect(() => {
+    const content = contentRef.current
+    if (!content) {
+      return
+    }
+    const onMediaLoad = (): void => {
+      if (!followingRef.current) {
+        return
+      }
+      stop()
+      glide.current.tail = null
+      glide.current.growth = new Map()
+      pinToEndRef.current()
+    }
+    content.addEventListener('load', onMediaLoad, true)
+    content.addEventListener('loadedmetadata', onMediaLoad, true)
+    return () => {
+      content.removeEventListener('load', onMediaLoad, true)
+      content.removeEventListener('loadedmetadata', onMediaLoad, true)
+    }
+  }, [contentRef, followingRef, stop])
+
+  useEffect(() => {
     reducedMotionRef.current = reducedMotion
     if (reducedMotion) {
       stop()
