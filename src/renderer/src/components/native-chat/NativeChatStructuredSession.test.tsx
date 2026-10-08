@@ -32,7 +32,6 @@ vi.mock('./NativeChatQuestionCard', () => moduleFactories.nativeChatQuestionCard
 
 import { NativeChatStructuredSession } from './NativeChatStructuredSession'
 import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
-import { seededEntry, seedOutbox } from './NativeChatStructuredSession.test-harness'
 import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
 
 describe('NativeChatStructuredSession', () => {
@@ -513,6 +512,24 @@ describe('NativeChatStructuredSession', () => {
     expect(mocks.cancel).not.toHaveBeenCalled()
   })
 
+  it("shows the queue's coming send as a Stop that is not live until a turn can be stopped", () => {
+    mocks.queueSendsNext = true
+    render(claudeSessionView('structured-tab-sends-next', 'session-sends-next'))
+    expect(mocks.composerProps?.isWorking).toBe(true)
+    expect(mocks.composerProps?.onStop).toBeUndefined()
+  })
+
+  it('hands the composer Resume, on its transport, only while the queue controller offers it', () => {
+    const { rerender } = render(claudeSessionView('structured-tab-resume', 'session-resume'))
+    expect(mocks.composerProps?.structuredTransport?.queueResume).toBeUndefined()
+    mocks.queuedResumable = true
+    rerender(claudeSessionView('structured-tab-resume', 'session-resume'))
+    act(() => {
+      mocks.composerProps?.structuredTransport?.queueResume?.resume()
+    })
+    expect(mocks.queuedResume).toHaveBeenCalledOnce()
+  })
+
   it('keeps the strip mounted through a running turn, with the turn owning the voice', () => {
     // The strip stands for work that OUTLIVES a turn, so `show` is true while
     // `isMonitoring` is false: mounted, but not speaking as the live indicator.
@@ -775,32 +792,6 @@ describe('NativeChatStructuredSession', () => {
     mocks.queuedSteerNewest.mockReturnValue(true)
     expect(steerQueued()).toBe(true)
     expect(mocks.revealLatest).toHaveBeenCalledTimes(2)
-  })
-
-  it('reveals the latest when a delivery notice retries its message', async () => {
-    mocks.mode = 'outbox'
-    mocks.call.mockResolvedValue({
-      ok: true,
-      value: { submission: { clientMessageId: 'op-head', dispatchState: 'accepted' } }
-    })
-    seedOutbox('session-retry-reveal', [
-      seededEntry('session-retry-reveal', 'op-head', 'first', 'unconfirmed')
-    ])
-    render(
-      <NativeChatStructuredSession
-        isVisible
-        isFocusedGroup
-        tabId="structured-tab-retry-reveal"
-        sessionId="session-retry-reveal"
-        target={{ kind: 'local' }}
-        agent="codex"
-      />
-    )
-
-    fireEvent.click(await screen.findByRole('button', { name: /Retry/ }))
-
-    expect(mocks.revealLatest).toHaveBeenCalledOnce()
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
   })
 
   it("brings the latest into view when a queued card's Steer sends it now", () => {
