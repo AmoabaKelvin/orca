@@ -128,6 +128,7 @@ export function nativeChatWorkRunContentMetrics(
   return {
     role: 'assistant',
     textLines: headIsLead ? head.textLines : 0,
+    userFolds: false,
     imageCount: headIsLead ? head.imageCount : 0,
     toolCount: 1,
     subagentGroupCount: 0
