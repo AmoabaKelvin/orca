@@ -1,5 +1,6 @@
 import type { AgentJournalRenderItem } from './agent-session-journal-types'
 import { agentJournalTurnForkPoint, readAgentJournalTurn } from './agent-session-turn-record'
+import { nativeChatProseToMarkdown } from './native-chat-prose'
 
 /** The rows that offer "fork from this turn": in each turn the host would fork (it shares
  *  `agentJournalTurnForkPoint`), the last words the session's own agent wrote. */
@@ -17,8 +18,8 @@ export function selectStructuredAgentForkRows(
       item.agentId === undefined &&
       item.body.kind === 'message' &&
       item.body.role === 'assistant' &&
-      // Words are what a row's controls hang under; a run of tools alone draws none.
-      item.body.blocks.some((block) => block.type === 'text')
+      // Words are what a row's controls hang under; tools alone, or empty text, draw none.
+      nativeChatProseToMarkdown(item.body.blocks).length > 0
     ) {
       lastAnswerByTurn.set(item.turnScope.turnItemId, item.itemId)
     }

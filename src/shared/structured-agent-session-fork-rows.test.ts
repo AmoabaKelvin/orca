@@ -35,6 +35,16 @@ describe('the rows that offer a fork', () => {
     expect([...selectStructuredAgentForkRows('codex', items)]).toEqual(['a-last', 'b-last'])
   })
 
+  it('skips a row whose text is empty, which draws no controls to hang the action under', () => {
+    const items = [
+      row('turn-a', turn('a', FINISHED)),
+      row('a-answer', said('done'), inTurn('turn-a')),
+      row('a-empty', said(''), inTurn('turn-a'))
+    ]
+
+    expect([...selectStructuredAgentForkRows('codex', items)]).toEqual(['a-answer'])
+  })
+
   it('offers nothing on a turn that has not finished', () => {
     const items = [
       row('turn-a', turn('a', { state: 'running' })),
