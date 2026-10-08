@@ -171,9 +171,9 @@ describe('useNativeChatFileLinkClick', () => {
   })
 
   it('keeps # in a linked path instead of treating it as a fragment', () => {
-    render(<Transcript markdown="Edit `My C# App/Program.cs` next." />)
+    render(<Transcript markdown="Edit `/repo/My C# App/Program.cs` next." />)
 
-    clickLink('My C# App/Program.cs')
+    clickLink('/repo/My C# App/Program.cs')
 
     expect(mocks.openDetectedFilePath).toHaveBeenCalledWith(
       '/repo/My C# App/Program.cs',

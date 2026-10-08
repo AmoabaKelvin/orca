@@ -7,6 +7,8 @@ import {
   parseFileLinkLocation
 } from '../../../../shared/file-link-location'
 import { extractTerminalFileLinks, type ParsedTerminalFileLink } from '@/lib/terminal-links'
+import { EXTENSIONLESS_FILENAMES } from '@/lib/extensionless-filenames'
+import { isHostnameShapedSegment } from '@/lib/hostname-shaped-segment'
 
 type MarkdownNode = {
   type: string
@@ -17,16 +19,90 @@ type MarkdownNode = {
 
 const ROOTED_PATH_PREFIX_PATTERN = /^(?:~[\\/]|\.{1,2}[\\/]|[\\/]|[A-Za-z]:[\\/])/
 
+// Why: `.7z` is an extension, but a dot between two digits marks a version or model id, so
+// `HTTP/1.1` and `1.5/2.0` are prose while `ls.1` and `libfoo.so.1` stay files.
+const VERSION_SUFFIX_PATTERN = /\d\.\d[^.]*$/
+// Why: a lone root segment is a slash command (`/code-review`) or a bare root, never a file.
+const POSIX_ROOT_SEGMENT_ONLY_PATTERN = /^\/[^/\s]*$/
+const FILE_URI_PATTERN = /^file:\/\//i
+const FILE_EXTENSION_PATTERN = /\.[\p{L}\p{N}][\p{L}\p{N}\p{M}_+-]*$/u
+// Why: a leading `/` is as often an app route (`/api/v1`) as a path. Container and remote
+// roots are listed because a workspace can live on SSH or WSL.
+const POSIX_FILE_ROOT_PREFIXES = [
+  '/Users/',
+  '/home/',
+  '/root/',
+  '/tmp/',
+  '/var/',
+  '/etc/',
+  '/opt/',
+  '/mnt/',
+  '/media/',
+  '/Volumes/',
+  '/Applications/',
+  '/private/',
+  '/usr/',
+  '/bin/',
+  '/sbin/',
+  '/lib/',
+  '/lib64/',
+  '/srv/',
+  '/dev/',
+  '/proc/',
+  '/sys/',
+  '/run/',
+  '/boot/',
+  '/workspace/',
+  '/workspaces/'
+] as const
+
+// Why: `Makefile` and `CODEOWNERS` name a file as plainly as an extension does.
+function namesFileBasename(pathText: string): boolean {
+  const basename =
+    pathText
+      .replace(/[\\/]+$/, '')
+      .split(/[\\/]/)
+      .at(-1) ?? ''
+  return (
+    EXTENSIONLESS_FILENAMES.has(basename) ||
+    (FILE_EXTENSION_PATTERN.test(basename) && !VERSION_SUFFIX_PATTERN.test(basename))
+  )
+}
+
+// Why: read the evidence from the first word. `/code-review src/foo.ts` borrows its only file
+// shape from the command's argument, and `/clear and /compact` from prose after the command.
+function namesPosixFilesystemPath(pathText: string, hasLineSuffix: boolean): boolean {
+  const [head = ''] = pathText.split(/\s/, 1)
+  if (POSIX_FILE_ROOT_PREFIXES.some((prefix) => head.startsWith(prefix))) {
+    return true
+  }
+  if (POSIX_ROOT_SEGMENT_ONLY_PATTERN.test(head)) {
+    return false
+  }
+  return hasLineSuffix || namesFileBasename(pathText)
+}
+
 // Why: a link is underlined only when it names a path; a bare `name.md` resolves nowhere
 // reliable, so underlining it promises a click that cannot open anything.
-function isLinkifiableFile(link: ParsedTerminalFileLink, isProse: boolean): boolean {
-  const hasRootedPrefix = ROOTED_PATH_PREFIX_PATTERN.test(link.pathText)
+function isLinkifiableFile(link: ParsedTerminalFileLink): boolean {
+  // Why: `file://` is the author naming a file outright, so it needs no shape evidence.
+  if (FILE_URI_PATTERN.test(link.displayText)) {
+    return routeNativeChatHref(link.displayText).kind === 'file'
+  }
+  const isRooted = ROOTED_PATH_PREFIX_PATTERN.test(link.pathText)
+  const [firstSegment = ''] = link.pathText.split(/[\\/]/, 1)
+  // Why: unrooted, a space reads as a command (`git log origin/main`) and a leading host as a
+  // URL missing its scheme. Rooted keeps both: `C:\Program Files\...` is a real path.
+  if (!isRooted && (/\s/.test(link.pathText) || isHostnameShapedSegment(firstSegment))) {
+    return false
+  }
   const hasLineSuffix = link.line !== null || link.column !== null
-  const hasAlphabeticExtension = /\.[\p{L}][\p{L}\p{N}\p{M}_+-]*$/u.test(link.pathText)
-  const hasPathExtension = /\.[\p{L}\p{N}][\p{L}\p{N}\p{M}_+-]*$/u.test(link.pathText)
+  const namesFile = link.pathText.startsWith('/')
+    ? namesPosixFilesystemPath(link.pathText, hasLineSuffix)
+    : isRooted || hasLineSuffix || namesFileBasename(link.pathText)
   return (
     /[\\/]/.test(link.pathText) &&
-    (hasRootedPrefix || hasLineSuffix || (isProse ? hasPathExtension : hasAlphabeticExtension)) &&
+    namesFile &&
     routeNativeChatHref(link.displayText).kind === 'file'
   )
 }
@@ -99,7 +175,7 @@ function splitProseJoinedLinks(link: ParsedTerminalFileLink): ParsedTerminalFile
     const exactLink = extractTerminalFileLinks(token).find(
       (candidate) => candidate.startIndex === 0 && candidate.endIndex === token.length
     )
-    if (exactLink && isLinkifiableFile(exactLink, true)) {
+    if (exactLink && isLinkifiableFile(exactLink)) {
       const startIndex = link.startIndex + (match.index ?? 0)
       tokenLinks.push({ ...exactLink, startIndex, endIndex: startIndex + token.length })
     }
@@ -111,8 +187,8 @@ function splitProseJoinedLinks(link: ParsedTerminalFileLink): ParsedTerminalFile
 function splitTextSegment(value: string): MarkdownNode[] {
   const links = extractTerminalFileLinks(value)
     .filter((link) => !hasPartialPathBoundary(value, link))
-    .filter((link) => isLinkifiableFile(link, true))
     .flatMap(splitProseJoinedLinks)
+    .filter((link) => isLinkifiableFile(link))
   if (links.length === 0) {
     return [{ type: 'text', value }]
   }
@@ -158,7 +234,7 @@ function exactFileLink(value: string, allowSpacedRelative: boolean): ParsedTermi
   const exactLink = extractTerminalFileLinks(value).find(
     (link) => link.startIndex === 0 && link.endIndex === value.length
   )
-  if (exactLink && isLinkifiableFile(exactLink, false)) {
+  if (exactLink && isLinkifiableFile(exactLink)) {
     return exactLink
   }
   if (!allowSpacedRelative || !/\s/.test(value)) {
@@ -168,20 +244,13 @@ function exactFileLink(value: string, allowSpacedRelative: boolean): ParsedTermi
   if (!parsed) {
     return null
   }
-  const looksLikePath =
-    ROOTED_PATH_PREFIX_PATTERN.test(parsed.pathText) ||
-    /[\\/]/.test(parsed.pathText) ||
-    /\.[\p{L}][\p{L}\p{N}\p{M}_+-]*$/u.test(parsed.pathText)
-  if (!looksLikePath) {
-    return null
-  }
   const explicitLink = {
     ...parsed,
     startIndex: 0,
     endIndex: value.length,
     displayText: value
   }
-  return isLinkifiableFile(explicitLink, false) ? explicitLink : null
+  return isLinkifiableFile(explicitLink) ? explicitLink : null
 }
 
 function splitTextNode(value: string): MarkdownNode[] {
@@ -189,15 +258,24 @@ function splitTextNode(value: string): MarkdownNode[] {
   let cursor = 0
   for (const match of value.matchAll(QUOTED_TEXT_PATTERN)) {
     const content = match[1] ?? match[2]
-    const link = content ? exactFileLink(content, true) : null
-    if (!content || !link) {
+    if (!content) {
+      continue
+    }
+    const link = exactFileLink(content, true)
+    // Why: quoting a spaced string claims the whole of it. Rescanning a rejected one
+    // underlines `Folder/notes.md` out of "Brennan's Folder/notes.md" — half a path.
+    if (!link && !/\s/.test(content)) {
       continue
     }
     const matchIndex = match.index ?? 0
     const quote = match[0][0]
     children.push(...splitUnquotedText(value.slice(cursor, matchIndex)))
     children.push({ type: 'text', value: quote })
-    children.push(createFileLinkNode(link, { type: 'text', value: content }))
+    children.push(
+      link
+        ? createFileLinkNode(link, { type: 'text', value: content })
+        : { type: 'text', value: content }
+    )
     children.push({ type: 'text', value: quote })
     cursor = matchIndex + match[0].length
   }

@@ -4,24 +4,11 @@ import {
   toParsedTerminalFileLink
 } from './terminal-file-link-detection-ranges'
 import type { ParsedTerminalFileLink } from './terminal-links'
+import { EXTENSIONLESS_FILENAMES } from './extensionless-filenames'
 
 // Mirrors VSCode's terminal word separators, with `:` handled by the existing
 // line/column suffix parser instead of acting as a raw separator.
 const WORD_TOKEN_REGEX = /[^\s()[\]{}'",;<>|`]+/g
-
-const EXTENSIONLESS_FILENAMES = new Set([
-  'Makefile',
-  'Dockerfile',
-  'Rakefile',
-  'Gemfile',
-  'Procfile',
-  'LICENSE',
-  'README',
-  'CHANGELOG',
-  'AUTHORS',
-  'NOTICE',
-  'CONTRIBUTING'
-])
 
 const BARE_FILENAME_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9._+-]*$/
 const MAX_BARE_FILENAME_TOKEN_LENGTH = 120

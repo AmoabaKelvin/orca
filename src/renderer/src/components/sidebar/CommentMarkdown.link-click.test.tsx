@@ -245,6 +245,28 @@ describe('CommentMarkdown link click handler', () => {
     ])
   })
 
+  it('leaves slash commands, app routes and versions unlinked while linking real paths', () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+
+    act(() => {
+      root?.render(
+        <CommentMarkdown
+          variant="document"
+          content="Type /orca-native-chat:orca-chat-visuals, run `/code-review`, strip `/api/v1`, use /clear and /compact, try HTTP/1.1, check /tmp, then open /tmp/report.html."
+          onLinkClick={vi.fn()}
+          linkifyFilePaths
+        />
+      )
+    })
+
+    const routes = Array.from(container.querySelectorAll<HTMLAnchorElement>('a')).map((anchor) =>
+      routeNativeChatHref(anchor.getAttribute('href'))
+    )
+    expect(routes).toEqual([{ kind: 'file', pathText: '/tmp/report.html', line: null }])
+  })
+
   it('makes an inline-code file path clickable while preserving code styling', () => {
     const onLinkClick = vi.fn((event: React.MouseEvent<HTMLElement>) => event.preventDefault())
     container = document.createElement('div')
@@ -317,7 +339,7 @@ describe('CommentMarkdown link click handler', () => {
       root?.render(
         <CommentMarkdown
           variant="document"
-          content="Updated src/foo.ts and src/bar.ts, then docs/My Folder/notes.md."
+          content="Updated src/foo.ts and src/bar.ts, then ~/docs/My Folder/notes.md."
           onLinkClick={vi.fn()}
           linkifyFilePaths
         />
@@ -325,11 +347,11 @@ describe('CommentMarkdown link click handler', () => {
     })
 
     expect(Array.from(container.querySelectorAll('a')).map((anchor) => anchor.textContent)).toEqual(
-      ['src/foo.ts', 'src/bar.ts', 'docs/My Folder/notes.md']
+      ['src/foo.ts', 'src/bar.ts', '~/docs/My Folder/notes.md']
     )
   })
 
-  it('links quoted spaced-first-segment paths around apostrophes', () => {
+  it('leaves scheme-less URLs unlinked while linking dotted directories', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -338,30 +360,20 @@ describe('CommentMarkdown link click handler', () => {
       root?.render(
         <CommentMarkdown
           variant="document"
-          content={"Don't skip \"Brennan's Folder/notes.md\"; open 'My Folder/guide.md'."}
+          content="See example.com/docs/guide.html and 127.0.0.1/api/data.json, then open conf.d/nginx.conf."
           onLinkClick={vi.fn()}
           linkifyFilePaths
         />
       )
     })
 
-    const anchors = container.querySelectorAll<HTMLAnchorElement>('a')
-    expect(Array.from(anchors).map((anchor) => anchor.textContent)).toEqual([
-      "Brennan's Folder/notes.md",
-      'My Folder/guide.md'
-    ])
-    expect(container.textContent).toBe(
-      "Don't skip \"Brennan's Folder/notes.md\"; open 'My Folder/guide.md'."
+    const routes = Array.from(container.querySelectorAll<HTMLAnchorElement>('a')).map((anchor) =>
+      routeNativeChatHref(anchor.getAttribute('href'))
     )
-    expect(
-      Array.from(anchors).map((anchor) => routeNativeChatHref(anchor.getAttribute('href')))
-    ).toEqual([
-      { kind: 'file', pathText: "Brennan's Folder/notes.md", line: null },
-      { kind: 'file', pathText: 'My Folder/guide.md', line: null }
-    ])
+    expect(routes).toEqual([{ kind: 'file', pathText: 'conf.d/nginx.conf', line: null }])
   })
 
-  it('links a spaced-first-segment relative path when inline code disambiguates it', () => {
+  it('links extensionless project filenames', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -370,23 +382,23 @@ describe('CommentMarkdown link click handler', () => {
       root?.render(
         <CommentMarkdown
           variant="document"
-          content="Open `My Folder/notes.md`."
+          content="Edit docs/Makefile and .github/CODEOWNERS, not the BUILD SUCCESSFUL line."
           onLinkClick={vi.fn()}
           linkifyFilePaths
         />
       )
     })
 
-    const anchor = container.querySelector<HTMLAnchorElement>('a')
-    expect(anchor?.textContent).toBe('My Folder/notes.md')
-    expect(routeNativeChatHref(anchor?.getAttribute('href'))).toEqual({
-      kind: 'file',
-      pathText: 'My Folder/notes.md',
-      line: null
-    })
+    const routes = Array.from(container.querySelectorAll<HTMLAnchorElement>('a')).map((anchor) =>
+      routeNativeChatHref(anchor.getAttribute('href'))
+    )
+    expect(routes).toEqual([
+      { kind: 'file', pathText: 'docs/Makefile', line: null },
+      { kind: 'file', pathText: '.github/CODEOWNERS', line: null }
+    ])
   })
 
-  it('requires path shape before a spaced line suffix can make a link', () => {
+  it('keeps unanchored spaced text plain in quotes and inline code', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -395,7 +407,9 @@ describe('CommentMarkdown link click handler', () => {
       root?.render(
         <CommentMarkdown
           variant="document"
-          content='Keep `aspect 16:9` and "John 3:16" as references.'
+          content={
+            'Don\'t skip "Brennan\'s Folder/notes.md"; run `git log origin/main..HEAD` and `My Folder/notes.md`.'
+          }
           onLinkClick={vi.fn()}
           linkifyFilePaths
         />
@@ -403,11 +417,36 @@ describe('CommentMarkdown link click handler', () => {
     })
 
     expect(container.querySelectorAll('a')).toHaveLength(0)
-    expect(container.querySelector('code')?.textContent).toBe('aspect 16:9')
-    expect(container.textContent).toContain('"John 3:16"')
+    expect(container.textContent).toBe(
+      'Don\'t skip "Brennan\'s Folder/notes.md"; run git log origin/main..HEAD and My Folder/notes.md.'
+    )
   })
 
-  it('preserves line suffixes on valid spaced path shapes, but not on bare file names', () => {
+  it('links a spaced path anchored at a root', () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+
+    act(() => {
+      root?.render(
+        <CommentMarkdown
+          variant="document"
+          content="Open `~/Library/Application Support/orca/log.json`."
+          onLinkClick={vi.fn()}
+          linkifyFilePaths
+        />
+      )
+    })
+
+    const anchor = container.querySelector<HTMLAnchorElement>('a')
+    expect(routeNativeChatHref(anchor?.getAttribute('href'))).toEqual({
+      kind: 'file',
+      pathText: '~/Library/Application Support/orca/log.json',
+      line: null
+    })
+  })
+
+  it('preserves line suffixes on anchored spaced paths, but not on unanchored text', () => {
     const content =
       'Open "My Folder/notes:12", `My Notes.md:7`, and "C:\\My Folder\\notes.txt:12:3".'
     container = document.createElement('div')
@@ -427,11 +466,9 @@ describe('CommentMarkdown link click handler', () => {
 
     const anchors = Array.from(container.querySelectorAll<HTMLAnchorElement>('a'))
     expect(anchors.map((anchor) => anchor.textContent)).toEqual([
-      'My Folder/notes:12',
       String.raw`C:\My Folder\notes.txt:12:3`
     ])
     expect(anchors.map((anchor) => routeNativeChatHref(anchor.getAttribute('href')))).toEqual([
-      { kind: 'file', pathText: 'My Folder/notes:12', line: null },
       { kind: 'file', pathText: String.raw`C:\My Folder\notes.txt:12:3`, line: null }
     ])
   })
