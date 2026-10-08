@@ -31,6 +31,17 @@ describe('arrival deadlines', () => {
     expect(state.shown).toBeGreaterThanOrEqual(2000)
     expect(advanceNativeChatText(state, 340 + NATIVE_CHAT_TEXT_REVEAL_DELAY_MS).shown).toBe(5000)
   })
+  it('overlaps chunk contributions without jumping over the unrevealed prefix', () => {
+    let state: NativeChatTextReveal = { source: '', shown: 0, arrivals: [] }
+    state = arriveNativeChatText(state, 'a '.repeat(50), 0)
+    state = advanceNativeChatText(state, 100)
+    const before = state.shown
+    state = arriveNativeChatText(state, 'a '.repeat(100), 100)
+    state = advanceNativeChatText(state, 101)
+    expect(state.shown - before).toBeLessThanOrEqual(2)
+    expect(state.shown).toBeLessThan(100)
+  })
+
   it('catches up after a hidden window without clamping elapsed time', () => {
     const state = arriveNativeChatText(
       { source: '', shown: 0, arrivals: [] },

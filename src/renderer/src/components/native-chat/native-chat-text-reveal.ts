@@ -56,13 +56,11 @@ export function advanceNativeChatText(
   previous: NativeChatTextReveal,
   now: number
 ): NativeChatTextReveal {
-  let position = previous.shown
+  let position = previous.arrivals[0]?.from ?? previous.shown
   let due = previous.shown
   for (const arrival of previous.arrivals) {
     const fraction = Math.min(1, Math.max(0, (now - arrival.at) / NATIVE_CHAT_TEXT_REVEAL_DELAY_MS))
-    if (fraction > 0) {
-      position = Math.max(position, arrival.from + (arrival.to - arrival.from) * fraction)
-    }
+    position += (arrival.to - arrival.from) * fraction
     if (fraction === 1) {
       due = Math.max(due, arrival.to)
     }
@@ -71,6 +69,8 @@ export function advanceNativeChatText(
   return {
     ...previous,
     shown: Math.max(previous.shown, shown),
-    arrivals: previous.arrivals.filter((arrival) => arrival.to > shown)
+    arrivals: previous.arrivals.filter(
+      (arrival) => arrival.at + NATIVE_CHAT_TEXT_REVEAL_DELAY_MS > now
+    )
   }
 }
