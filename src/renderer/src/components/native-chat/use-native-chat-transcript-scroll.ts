@@ -146,6 +146,63 @@ export function useNativeChatTranscriptScroll({
     syncScrollState()
   }, [reconcileReaderScroll, scrollRef, stopFollowing, syncScrollState])
 
+  useEffect(() => {
+    const root = scrollRef.current
+    if (!root) {
+      return
+    }
+    const takeOver = (): void => {
+      if (!isVisibleRef.current) {
+        return
+      }
+      stopFollowing('transcript-move')
+      reconcileReaderScroll(true)
+      syncScrollState()
+    }
+    const onPress = (event: Event): void => {
+      if (event.target instanceof Node && root.contains(event.target)) {
+        takeOver()
+      }
+    }
+    const onHover = (event: Event): void => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest('button, a, input, [role="button"]') &&
+        root.contains(event.target)
+      ) {
+        takeOver()
+      }
+    }
+    const onSelection = (): void => {
+      const selection = document.getSelection()
+      if (
+        selection &&
+        !selection.isCollapsed &&
+        selection.anchorNode &&
+        root.contains(selection.anchorNode)
+      ) {
+        takeOver()
+      }
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.shiftKey && root.contains(document.activeElement)) {
+        takeOver()
+      }
+    }
+    document.addEventListener('pointerdown', onPress, true)
+    document.addEventListener('contextmenu', onPress, true)
+    root.addEventListener('pointerover', onHover)
+    document.addEventListener('selectionchange', onSelection)
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('pointerdown', onPress, true)
+      document.removeEventListener('contextmenu', onPress, true)
+      root.removeEventListener('pointerover', onHover)
+      document.removeEventListener('selectionchange', onSelection)
+      document.removeEventListener('keydown', onKey, true)
+    }
+  }, [reconcileReaderScroll, scrollRef, stopFollowing, syncScrollState])
+
   const onScroll = useCallback<UIEventHandler<HTMLDivElement>>(
     (event) => {
       const element = scrollRef.current

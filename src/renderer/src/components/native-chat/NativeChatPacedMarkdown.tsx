@@ -18,6 +18,7 @@ export function NativeChatPacedMarkdown({
     <NativeChatMarkdown
       {...props}
       content={paced.text}
+      streaming={streaming || paced.revealing}
       growing={paced.revealing}
       fadeWords={paced.fading}
     />

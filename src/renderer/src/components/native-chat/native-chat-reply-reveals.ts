@@ -1,6 +1,7 @@
 // Which replies an open transcript is still drawing, and how far each has got.
 
 import { createContext, useState } from 'react'
+import type { NativeChatTextReveal } from './native-chat-text-reveal'
 
 /** What one open transcript knows about its replies being drawn. Per transcript, because row
  *  keys are only unique within one: a legacy preview's live row has the same key in every chat. */
@@ -9,7 +10,7 @@ export type NativeChatReplyReveals = {
    *  began while the reader was watching, not ones already written when the pane opened. */
   begun: Set<string>
   /** How much of a row was drawn when it left the window, so returning does not replay it. */
-  drawn: Map<string, number>
+  drawn: Map<string, NativeChatTextReveal>
 }
 
 /** Absent outside a transcript: such a row neither begins nor is remembered. */

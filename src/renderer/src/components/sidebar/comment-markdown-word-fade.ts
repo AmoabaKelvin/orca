@@ -2,7 +2,7 @@
 // as it is appended. Words already rendered keep their element, so appending
 // text mounts only the new ones.
 
-import type { Element, ElementContent, Root } from 'hast'
+import type { Element, Root } from 'hast'
 
 /** Elements whose renderers read their text, or that are faded in as a whole. */
 const UNSPLIT_TAGS = new Set(['a', 'code', 'pre', 'kbd', 'svg', 'math'])
@@ -22,17 +22,11 @@ const WORD_PATTERN = new RegExp(
   'gu'
 )
 
-function wordElements(value: string): ElementContent[] {
-  return Array.from(value.matchAll(WORD_PATTERN), ([token]): ElementContent =>
-    token.trim() === ''
-      ? { type: 'text', value: token }
-      : {
-          type: 'element',
-          tagName: 'span',
-          properties: { dataWord: '' },
-          children: [{ type: 'text', value: token }]
-        }
-  )
+export function markdownWordTokens(value: string): { value: string; offset: number }[] {
+  return Array.from(value.matchAll(WORD_PATTERN), (match) => ({
+    value: match[0],
+    offset: match.index
+  }))
 }
 
 function splitWords(node: Root | Element): void {
@@ -40,7 +34,12 @@ function splitWords(node: Root | Element): void {
   for (let index = node.children.length - 1; index >= 0; index -= 1) {
     const child = node.children[index]
     if (child.type === 'text') {
-      node.children.splice(index, 1, ...wordElements(child.value))
+      node.children[index] = {
+        type: 'element',
+        tagName: 'span',
+        properties: { dataWordGroup: '' },
+        children: [{ type: 'text', value: child.value }]
+      }
     } else if (child.type === 'element' && !UNSPLIT_TAGS.has(child.tagName)) {
       splitWords(child)
     }

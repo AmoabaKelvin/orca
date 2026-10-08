@@ -7,16 +7,14 @@ import rehypeSanitize, { defaultSchema, type Options as SanitizeSchema } from 'r
 import remend from 'remend'
 import { cn } from '@/lib/utils'
 import {
-  compactCommentMarkdownComponents,
-  createCompactCommentMarkdownComponents,
-  createDocumentCommentMarkdownComponents,
-  documentCommentMarkdownComponents,
+  selectCommentMarkdownComponents,
   isTrustedCompactImageSrc,
   type CommentMarkdownLinkClickHandler,
   type DocumentCodeBlockRenderer
 } from './comment-markdown-element-renderers'
 import { remarkNativeChatFileLinks } from './comment-markdown-native-chat-file-links'
 import { rehypeWordFade } from './comment-markdown-word-fade'
+import { CommentMarkdownWords } from './CommentMarkdownWords'
 import {
   splitMarkdownTopLevelBlocks,
   type MarkdownBlock,
@@ -227,6 +225,7 @@ type CommentMarkdownProps = React.ComponentPropsWithoutRef<'div'> & {
   linkifyFilePaths?: boolean
   expandImages?: boolean
   renderCodeBlock?: DocumentCodeBlockRenderer
+  renderMermaid?: boolean
   /** The content is still being appended to: render it block by block, so each
    *  append re-renders only the last block, and close markup its end leaves open.
    *  The block-by-block render stays on once seen. */
@@ -269,6 +268,7 @@ const CommentMarkdown = React.memo(
       linkifyFilePaths = false,
       expandImages = false,
       renderCodeBlock,
+      renderMermaid = true,
       growing = false,
       fadeWords = false,
       extension,
@@ -276,23 +276,24 @@ const CommentMarkdown = React.memo(
     },
     ref
   ) {
-    const baseComponents = React.useMemo(() => {
-      if (!onLinkClick) {
-        return variant === 'document'
-          ? renderCodeBlock
-            ? createDocumentCommentMarkdownComponents(undefined, renderCodeBlock)
-            : documentCommentMarkdownComponents
-          : expandImages
-            ? createCompactCommentMarkdownComponents(undefined, true)
-            : compactCommentMarkdownComponents
-      }
-      return variant === 'document'
-        ? createDocumentCommentMarkdownComponents(onLinkClick, renderCodeBlock)
-        : createCompactCommentMarkdownComponents(onLinkClick, expandImages)
-    }, [expandImages, renderCodeBlock, variant, onLinkClick])
+    const baseComponents = React.useMemo(
+      () =>
+        selectCommentMarkdownComponents({
+          variant,
+          onLinkClick,
+          renderCodeBlock,
+          renderMermaid,
+          expandImages
+        }),
+      [expandImages, renderCodeBlock, renderMermaid, variant, onLinkClick]
+    )
     const components = React.useMemo(
       () => (extension ? { ...baseComponents, ...extension.components } : baseComponents),
       [baseComponents, extension]
+    )
+    const fadingComponents = React.useMemo(
+      () => ({ ...components, span: CommentMarkdownWords }),
+      [components]
     )
     const activeRehypePlugins = React.useMemo(
       () => (extension ? extensionRehypePlugins(extension) : rehypePlugins),
@@ -306,6 +307,11 @@ const CommentMarkdown = React.memo(
       return githubRepo ? [...withExtension, remarkGitHubReferences(githubRepo)] : withExtension
     }, [extension, githubRepo, linkifyFilePaths])
     const blocks = useMarkdownBlocks(content, growing)
+    const [hadWordFade, setHadWordFade] = React.useState(fadeWords)
+    if (fadeWords && !hadWordFade) {
+      setHadWordFade(true)
+    }
+    const wrapsWords = fadeWords || hadWordFade
     const fadingRehypePlugins = React.useMemo(
       () => [...activeRehypePlugins, rehypeWordFade],
       [activeRehypePlugins]
@@ -328,8 +334,8 @@ const CommentMarkdown = React.memo(
           <MemoizedMarkdown
             key={block.start}
             remarkPlugins={activeRemarkPlugins}
-            rehypePlugins={fadeWords ? fadingRehypePlugins : activeRehypePlugins}
-            components={components}
+            rehypePlugins={wrapsWords ? fadingRehypePlugins : activeRehypePlugins}
+            components={wrapsWords ? fadingComponents : components}
             urlTransform={
               allowFileUriLinks ? commentMarkdownFileUriUrlTransform : commentMarkdownUrlTransform
             }

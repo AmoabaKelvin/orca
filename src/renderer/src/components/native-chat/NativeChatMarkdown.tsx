@@ -37,9 +37,12 @@ export function NativeChatMarkdown({
   return (
     <CommentMarkdown
       {...props}
-      content={extension && streaming ? withoutPendingNativeChatVisualDirectiveTail(content) : content}
+      content={
+        extension && streaming ? withoutPendingNativeChatVisualDirectiveTail(content) : content
+      }
       extension={extension}
       fadeWords={fadeWords}
+      renderMermaid={!streaming}
       data-word-fade={wordFadeArmed ? '' : undefined}
       className={cn('native-chat-markdown', className)}
     />

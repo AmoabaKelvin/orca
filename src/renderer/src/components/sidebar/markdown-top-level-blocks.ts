@@ -66,7 +66,9 @@ export function splitMarkdownTopLevelBlocks(
     return wholeDocument(source)
   }
   // Each block runs to the next one's start, so the blank lines between stay in the source.
-  const starts = tree.children.map((child) => child.position?.start.offset ?? 0)
+  const starts = tree.children.map(
+    (child) => ('position' in child ? child.position?.start.offset : undefined) ?? 0
+  )
   starts[0] = 0
   const blocks = starts.map((start, index) => ({
     start: base + start,
