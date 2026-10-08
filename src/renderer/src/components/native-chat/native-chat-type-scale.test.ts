@@ -22,6 +22,10 @@ describe('chat type scale', () => {
     expect(declared(step)).toContain('var(--text-sm)')
   })
 
+  it('scales spacing and icons with the reading step', () => {
+    expect(declared('--spacing')).toContain('var(--text-sm)')
+  })
+
   it('sizes code from the code text size setting', () => {
     expect(declared('--text-chat-code')).toContain('var(--chat-code-font-size')
   })

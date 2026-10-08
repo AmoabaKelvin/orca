@@ -179,7 +179,7 @@ export function NativeChatDiffCard({
           type="button"
           onClick={() => hasBody && setExpanded(!expanded)}
           className={cn(
-            'flex min-h-[26px] min-w-0 flex-1 items-center gap-2 rounded-md text-left font-sans text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+            'flex min-h-6.5 min-w-0 flex-1 items-center gap-2 rounded-md text-left font-sans text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
             hasBody ? 'cursor-pointer hover:bg-accent/20' : 'cursor-default'
           )}
           aria-expanded={hasBody ? expanded : undefined}

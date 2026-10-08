@@ -127,7 +127,7 @@ export function NativeChatToolLine({
         type="button"
         onClick={() => hasDetail && setExpanded(!expanded)}
         className={cn(
-          'group/tool-line flex min-h-[26px] w-full items-center gap-2 rounded-md text-left font-sans text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+          'group/tool-line flex min-h-6.5 w-full items-center gap-2 rounded-md text-left font-sans text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
           hasDetail ? 'cursor-pointer' : 'cursor-default'
         )}
         aria-expanded={hasDetail ? expanded : undefined}

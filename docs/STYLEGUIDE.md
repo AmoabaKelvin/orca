@@ -105,7 +105,7 @@ The native chat uses four steps and no others. Never write an arbitrary size (`t
 | `text-3xs`       | 10px    | Badges and mono pills                                                                                      |
 | `text-chat-code` | 12px    | Code blocks, diffs, commands and tool output                                                               |
 
-The chat root (`.native-chat-appearance`) redefines these steps as ratios of the Text size setting, so every tier scales together; `text-chat-code` follows the Code text size setting. Size an element with one of these utilities only: a CSS rule that sets `font-size` outside a layer silently overrides them.
+The chat root (`.native-chat-appearance`) redefines these steps as ratios of the Text size setting, so every tier scales together; `text-chat-code` follows the Code text size setting. The chat root also ties the spacing unit to the text size (4px at the default 14px), so icons, gaps, padding and row heights grow with the text. Use spacing-scale utilities (`size-3.5`, `min-h-6.5`, `pl-3.25`), not pixel lengths (`min-h-[26px]`), or the element stays fixed while the rest scales. Size an element with one of these utilities only: a CSS rule that sets `font-size` outside a layer silently overrides them.
 
 ### Chat text colour, hover and focus
 
