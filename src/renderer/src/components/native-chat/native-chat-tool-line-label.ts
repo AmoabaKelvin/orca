@@ -25,7 +25,7 @@ export function nativeChatToolLineLabel(
   filePath: string | null
   /** The whole command, when the row had to shorten it. */
   commandDetail: string | null
-  /** Grammar of `target` and `commandDetail`; null when the row holds no command text. */
+  /** Grammar of `commandDetail`; null when the row holds no command text. */
   commandLanguage: string | null
 } {
   const display = createToolInputDisplay(call.input)

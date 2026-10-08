@@ -169,11 +169,7 @@ export function NativeChatToolLine({
             title={label?.title ?? resultPreview}
             aria-hidden={label?.filePath ? true : undefined}
           >
-            {label?.commandLanguage ? (
-              <NativeChatHighlightedCode code={label.target} language={label.commandLanguage} />
-            ) : (
-              (label?.target ?? resultPreview)
-            )}
+            {label?.target ?? resultPreview}
           </span>
         ) : null}
         {label?.filePath ? <span className="sr-only">{label.filePath}</span> : null}
