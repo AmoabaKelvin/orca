@@ -38,10 +38,13 @@ function scrollRoot(container: HTMLElement): HTMLElement {
   return scroller
 }
 
+const paintedScrollTops = new WeakMap<HTMLElement, number>()
+
 /** Deliver resize and scroll events to a fixed point, as a painted frame would. */
 function paint(container: HTMLElement): void {
   const scroller = scrollRoot(container)
-  let lastScrollTop = scroller.scrollTop
+  // Commit-time writes also dispatch their browser scroll event before the next paint.
+  let lastScrollTop = paintedScrollTops.get(scroller) ?? 0
   for (let pass = 0; pass < 12; pass += 1) {
     let changed = false
     act(() => {
@@ -54,6 +57,7 @@ function paint(container: HTMLElement): void {
       changed = true
     }
     if (!changed && pass >= 2) {
+      paintedScrollTops.set(scroller, lastScrollTop)
       return
     }
   }
