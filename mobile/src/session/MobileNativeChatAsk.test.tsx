@@ -51,8 +51,11 @@ async function passAutoAdvanceBeat(): Promise<void> {
   })
 }
 
+// The react-native mock above renders host components as plain strings.
+const isHost = (node: { type: unknown }, name: string): boolean => node.type === name
+
 const shows = (text: string): boolean =>
-  tree.root.findAll((node) => node.type === 'Text' && node.props.children === text).length > 0
+  tree.root.findAll((node) => isHost(node, 'Text') && node.props.children === text).length > 0
 
 afterEach(() => {
   act(() => tree.unmount())
@@ -115,7 +118,7 @@ describe('MobileNativeChatAsk single-select auto-advance', () => {
     press('Spaces')
     const cancel = tree.root.find(
       (node) =>
-        node.type === 'Pressable' && node.findAll((n) => n.props.children === 'Cancel').length > 0
+        isHost(node, 'Pressable') && node.findAll((n) => n.props.children === 'Cancel').length > 0
     )
     await act(async () => cancel.props.onPress())
     await passAutoAdvanceBeat()
