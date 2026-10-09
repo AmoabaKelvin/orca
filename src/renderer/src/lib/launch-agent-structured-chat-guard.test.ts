@@ -82,8 +82,6 @@ const store = {
     agentDefaultEnv: {},
     activeRuntimeEnvironmentId: null,
     experimentalNativeChat: true,
-    experimentalStructuredNativeChat: true,
-    openAgentTabsInChatByDefault: true,
     nativeChatSessionOptions: undefined as
       | Record<
           string,
@@ -161,7 +159,10 @@ vi.mock('@/runtime/local-structured-session-tabs-sync', () => ({
   LOCAL_STRUCTURED_SESSION_OWNER: 'local-structured-session'
 }))
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
-  readLocalRuntimeCapabilitiesOrUnknown: () => hostCapabilities
+  readLocalRuntimeCapabilitiesOrUnknown: () => hostCapabilities,
+  ensureLocalRuntimeCapabilities: async () => hostCapabilities,
+  // A launch made before the runtime answered hears back that it supports no structured chat.
+  awaitLocalRuntimeCapabilities: () => ({ known: Promise.resolve([]), stop: () => {} })
 }))
 vi.mock('@/lib/worktree-runtime-owner', () => ({
   getExecutionHostIdForWorktree: () =>
@@ -175,9 +176,8 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
       : mockCallStructuredAgentSession(target, method, params)
 }))
 
-/** Structured adoption creates the tab in terminal mode and flips it to chat once
- *  Codex is ready; the bridge stamps `viewMode: 'chat'` on the tab up front. That
- *  difference is the only observable signal that the availability guard ran. */
+/** Structured adoption creates a terminal tab and flips it to chat once Codex is ready.
+ *  The absence of an initial chat mode shows that the availability guard ran. */
 describe('structured chat adoption guard on the launch path', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -244,7 +244,7 @@ describe('structured chat adoption guard on the launch path', () => {
     mockCreateSupport.mockResolvedValue({ supported: true })
     mockToastError.mockReset()
     hostCapabilities = STRUCTURED_HOST_CAPABILITIES
-    store.settings.openAgentTabsInChatByDefault = true
+    store.settings.experimentalNativeChat = true
     store.settings.nativeChatSessionOptions = undefined
   })
 
@@ -391,8 +391,12 @@ describe('structured chat adoption guard on the launch path', () => {
       hostCapabilities = capabilities
       const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-      launchAgentInNewTab({ requestId: 'request-5', agent: 'claude', worktreeId: 'wt-1' })
-      launchAgentInNewTab({ requestId: 'request-6', agent: 'codex', worktreeId: 'wt-1' })
+      const launches = [
+        launchAgentInNewTab({ requestId: 'request-5', agent: 'claude', worktreeId: 'wt-1' }),
+        launchAgentInNewTab({ requestId: 'request-6', agent: 'codex', worktreeId: 'wt-1' })
+      ]
+      // With no answer yet, each launch waits (bounded) for the runtime before opening its terminal.
+      await Promise.all(launches.map((launch) => launch?.structuredSettlement))
 
       expect(mockCreateStructuredCodexSessionLaunchIntent).not.toHaveBeenCalled()
       expect(mockCreateTab).toHaveBeenCalledTimes(2)
@@ -402,7 +406,7 @@ describe('structured chat adoption guard on the launch path', () => {
   /** The toggle is hidden under Terminal chat but its persisted value survives, so the launch
    *  path must re-check the default view rather than trust a stale opt-in. */
   it('ignores a stale structured opt-in while the default view is Terminal chat', async () => {
-    store.settings.openAgentTabsInChatByDefault = false
+    store.settings.experimentalNativeChat = false
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
     const result = launchAgentInNewTab({
@@ -668,10 +672,13 @@ describe('structured chat adoption guard on the launch path', () => {
 
     launchAgentInNewTab({ requestId: 'request-18', agent: 'codex', worktreeId: 'wt-1' })
 
-    expect(mockCreateTab).toHaveBeenCalledWith('wt-1', undefined, undefined, {
-      launchAgent: 'codex',
-      viewMode: 'chat'
-    })
+    expect(mockCreateTab).toHaveBeenCalledWith(
+      'wt-1',
+      undefined,
+      undefined,
+      expect.objectContaining({ launchAgent: 'codex' })
+    )
+    expect(mockCreateTab.mock.calls[0]?.[3]).not.toHaveProperty('viewMode')
     expect(mockWaitForAgentReady).not.toHaveBeenCalled()
   })
 
@@ -681,10 +688,13 @@ describe('structured chat adoption guard on the launch path', () => {
 
     launchAgentInNewTab({ requestId: 'request-19', agent: 'codex', worktreeId: 'wt-1' })
 
-    expect(mockCreateTab).toHaveBeenCalledWith('wt-1', undefined, undefined, {
-      launchAgent: 'codex',
-      viewMode: 'chat'
-    })
+    expect(mockCreateTab).toHaveBeenCalledWith(
+      'wt-1',
+      undefined,
+      undefined,
+      expect.objectContaining({ launchAgent: 'codex' })
+    )
+    expect(mockCreateTab.mock.calls[0]?.[3]).not.toHaveProperty('viewMode')
     expect(mockWaitForAgentReady).not.toHaveBeenCalled()
   })
 })

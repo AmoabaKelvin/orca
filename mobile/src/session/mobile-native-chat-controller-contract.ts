@@ -12,7 +12,9 @@ import type {
 } from '../../../src/shared/native-chat-turn-status'
 import type { NativeChatTurnJournal } from '../../../src/shared/native-chat-turn-membership'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
+import type { MobileNativeChatCommandRefusalCauses } from './use-mobile-native-chat-send-error'
 import type { MobileStructuredQueuedMessageControls } from './use-mobile-structured-queued-message-controls'
+import type { MobileStructuredBackgroundTasks } from './use-mobile-structured-background-tasks'
 import type { MobileNativeChatPendingMessage } from './use-mobile-native-chat-drafts'
 import type { useMobileNativeChatSession } from './use-mobile-native-chat-session'
 import type { MobileNativeChatSessionOptionPickersProps } from './MobileNativeChatSessionOptionPickers'
@@ -44,6 +46,8 @@ export type MobileNativeChatController = {
   nativeChatSettledTurns: NativeChatSettledTurns | null
   /** Structured lane: the journal that places each transcript row in its turn. */
   nativeChatTurnJournal: NativeChatTurnJournal | null
+  /** What a refused command's line stands on. */
+  nativeChatCommandRefusalCauses: MobileNativeChatCommandRefusalCauses
   nativeChatCanStop: boolean
   nativeChatStreamingText?: string
   /** Agent mid-turn, regardless of whether chat is the visible view. */
@@ -80,6 +84,8 @@ export type MobileNativeChatController = {
   /** Host-held queued drafts shown as cards above the composer (structured lane; any host
    *  that publishes them). */
   nativeChatQueued: MobileStructuredQueuedMessageControls
+  /** Running child work shown in a strip above the composer; null off the structured lane. */
+  nativeChatBackgroundTasks: MobileStructuredBackgroundTasks | null
   nativeChatFilePaths: string[]
   loadNativeChatFiles: (query: string) => void
   handleNativeChatQuestionAnswer: (text: string) => Promise<boolean>
@@ -96,7 +102,6 @@ export type MobileNativeChatController = {
       id?: string
       path: string
       previewUri: string
-      contentFingerprint?: string
     }[]
   ) => Promise<MobileNativeChatSendOutcome>
   /** Launch-context text still parked on the agent's TUI input line, or null.

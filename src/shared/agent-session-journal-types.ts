@@ -1,3 +1,4 @@
+import type { AgentSessionProviderContextBoundary } from './agent-session-provider-context'
 // ─── Canonical agent-session journal: cross-process wire shapes ─────────────
 // The host-owned timeline for a structured agent session. Everything here must
 // be plain JSON: rows are persisted verbatim and later republished to clients,
@@ -180,6 +181,13 @@ export type AgentJournalPromptOption = {
   description?: string
 }
 
+export type AgentJournalFreeTextInput = {
+  allowEmpty?: boolean
+  multiline?: boolean
+  initialValue?: string
+  placeholder?: string
+}
+
 export type AgentJournalQuestion = {
   id: string
   question: string
@@ -188,6 +196,7 @@ export type AgentJournalQuestion = {
   options: AgentJournalPromptOption[]
   /** Present when the provider accepts an answer outside the offered options. */
   freeTextQuestionId?: string
+  freeTextInput?: AgentJournalFreeTextInput
 }
 
 export type AgentJournalApprovalMatchedAskRule = {
@@ -236,6 +245,7 @@ export type AgentJournalQuestionItem = {
   questions?: AgentJournalQuestion[]
   /** Present when the provider accepts an answer outside the offered options. */
   freeTextQuestionId?: string
+  freeTextInput?: AgentJournalFreeTextInput
   resolution: AgentJournalResolution
 }
 
@@ -312,6 +322,7 @@ type AgentJournalStatusItemFields = {
   kind: 'status'
   /** Optional display hints; unknown values retain the ordinary text fallback. */
   presentation?: string
+  contextClear?: AgentSessionProviderContextBoundary
   tone?: string
   /** Legacy carrier of a turn record: written by hosts before v3, and published
    *  to clients that predate the `turn` item. New code reads turns through
