@@ -82,6 +82,55 @@ describe('turn diff rollups', () => {
     expect(turn.files[1]?.target.fileIndex).toBe(1)
   })
 
+  it('counts an edit a provider reports as the tool call itself', () => {
+    const message: NativeChatMessage = {
+      id: 'claude',
+      role: 'assistant',
+      source: 'transcript',
+      timestamp: 1,
+      blocks: [
+        {
+          type: 'tool-call',
+          name: 'Edit',
+          input: {
+            replace_all: false,
+            file_path: '/repo/AGENTS.md',
+            old_string: '# Design System\n\nAll UI work',
+            new_string: '# Design System\n\n<!-- note -->\nAll UI work'
+          },
+          callId: 'edit',
+          state: 'completed'
+        },
+        {
+          type: 'tool-result',
+          output: 'The file /repo/AGENTS.md has been updated successfully.',
+          callId: 'edit'
+        },
+        {
+          type: 'tool-call',
+          name: 'Write',
+          input: { file_path: '/repo/new.ts', content: 'one\ntwo\n' },
+          callId: 'write',
+          state: 'completed'
+        },
+        {
+          type: 'tool-call',
+          name: 'Edit',
+          input: { file_path: '/repo/later.ts', old_string: 'a', new_string: 'b' },
+          callId: 'pending',
+          state: 'running'
+        }
+      ]
+    }
+    const turn = nativeChatTurnDiffs([message], ['turn']).get('turn')!
+    expect(turn.files.map(({ path, added, removed }) => ({ path, added, removed }))).toEqual([
+      { path: '/repo/AGENTS.md', added: 1, removed: 0 },
+      { path: '/repo/new.ts', added: 2, removed: 0 }
+    ])
+    const cards = [...buildEditCards(message.blocks).editCards.values()]
+    expect(turn.files.map((file) => file.target.editKey)).toEqual(cards.map((card) => card.key))
+  })
+
   it('does not count generic output, failed edits, running edits, or unparseable patches', () => {
     const messages = ['shell', 'Edit'].map((name) => ({
       ...diff(name, 'x'),
