@@ -177,6 +177,7 @@ export function createRelayServer(
     },
     regionalRehomeTrustProbeHostExists: (input) => sessions.get(input) !== null,
     cellIncarnation,
+    cellSeatFeed: (sinceSeq) => sessions.seatFeed(sinceSeq),
     isDraining: () => sessions.isDraining(),
     runtimeCounts: () => runtimeCounts(),
     regionalRehomeSafetySnapshot: () => ({
