@@ -702,7 +702,9 @@ describe("a subagent's edits in its turn's changed files", () => {
       'child-edit',
       'answer'
     ])
-    const diff = nativeChatTurnDiffs(rows.messages, rows.turnKeys, sections.pathOf).get('ask')
+    const diff = nativeChatTurnDiffs(rows.messages, rows.turnKeys, {
+      subagentSectionsOf: sections.pathOf
+    }).get('ask')
     expect(diff?.files.map((file) => file.target)).toEqual([
       { messageId: 'child-edit', editKey: 'Diff:0', fileIndex: 0, subagentSections: ['task-1'] }
     ])
@@ -730,7 +732,9 @@ describe("a subagent's edits in its turn's changed files", () => {
       turnKeys,
       nativeChatSubagentRowsInOrder(sections.rows)
     )
-    const diffs = nativeChatTurnDiffs(merged.messages, merged.turnKeys, sections.pathOf)
+    const diffs = nativeChatTurnDiffs(merged.messages, merged.turnKeys, {
+      subagentSectionsOf: sections.pathOf
+    })
     expect(Array.from(diffs.keys())).toEqual(['ask-1'])
     // No roster names it, so its head sits where its first row happened: among
     // ask-1's rows, which draw ahead of the send that waited behind them.

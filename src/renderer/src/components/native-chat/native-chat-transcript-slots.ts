@@ -254,7 +254,7 @@ export function buildNativeChatTranscriptSlots(
           {
             hasReceipt: receipt !== undefined,
             hasStatus: status !== undefined,
-            hasTurnDiff: turnDiff !== undefined,
+            turnDiffRows: turnDiff?.treeRows ?? 0,
             folded
           },
           typography

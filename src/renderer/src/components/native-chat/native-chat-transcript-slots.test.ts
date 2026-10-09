@@ -144,7 +144,13 @@ describe('transcript slots', () => {
   })
 
   it('keeps a message whose only content is its turn diff rollup', () => {
-    const diff: NativeChatTurnDiff = { files: [], added: 1, removed: 0, truncated: false }
+    const diff: NativeChatTurnDiff = {
+      files: [],
+      treeRows: 0,
+      added: 1,
+      removed: 0,
+      truncated: false
+    }
     const slots = build([text('u', 'ask', 'user'), text('blank', '')], {
       turnDiffs: new Map([['u', diff]])
     })
@@ -590,6 +596,7 @@ describe('turn-owned grouping', () => {
     ]
     const diff = (added: number): NativeChatTurnDiff => ({
       files: [],
+      treeRows: 0,
       added,
       removed: 0,
       truncated: false

@@ -60,7 +60,7 @@ function workRunSlot(
       {
         hasReceipt: false,
         hasStatus: head.status !== undefined,
-        hasTurnDiff: turnDiff !== undefined,
+        turnDiffRows: turnDiff?.treeRows ?? 0,
         inSubagentSection: head.depth > 0
       },
       typography

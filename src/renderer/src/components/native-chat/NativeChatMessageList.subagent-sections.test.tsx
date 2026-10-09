@@ -209,8 +209,7 @@ describe("a subagent's rows in the transcript", () => {
     renderList()
     expect(screen.queryByRole('button', { name: /^Edited .*a\.ts(?:\s|$)/ })).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: /1 changed file/ }))
-    fireEvent.click(screen.getByRole('button', { name: /src\/a.ts/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^a\.ts/ }))
 
     expect(screen.getByText('Edited')).toBeInTheDocument()
     expect(screen.getByText('The PR is CLEAN.')).toBeInTheDocument()
@@ -263,11 +262,8 @@ describe("a subagent's rows in the transcript", () => {
         expandSignal={false}
       />
     )
-    const rollups = screen.getAllByRole('button', { name: /changed file/ })
-    expect(rollups.map((rollup) => rollup.textContent)).toEqual([
-      expect.stringMatching(/1 changed file/),
-      expect.stringMatching(/1 changed file/)
-    ])
+    const rollups = screen.getAllByText('1 changed file')
+    expect(rollups).toHaveLength(2)
     const inOrder = [
       screen.getByText('Edited a.'),
       rollups[0]!,
@@ -286,8 +282,7 @@ describe("a subagent's rows in the transcript", () => {
     fireEvent.click(screen.getByRole('button', { name: /Ran 1 subagent/ }))
     fireEvent.click(screen.getByRole('button', { name: /Ran 1 subagent/ }))
 
-    fireEvent.click(screen.getByRole('button', { name: /1 changed file/ }))
-    fireEvent.click(screen.getByRole('button', { name: /src\/a.ts/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^a\.ts/ }))
 
     expect(screen.getByText('Edited')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Ran 1 subagent/, expanded: true })).toBeVisible()

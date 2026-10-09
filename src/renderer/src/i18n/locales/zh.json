@@ -18224,7 +18224,12 @@
         "one": "1 个已更改的文件",
         "many": "{{count}} 更改了文件",
         "partial": "部分差异",
-        "recorded": "本轮记录编辑的总计。"
+        "recorded": "本轮记录编辑的总计。",
+        "collapseFolders": "折叠所有文件夹",
+        "expandFolders": "展开所有文件夹",
+        "allChanges": "所有更改",
+        "openAllChanges": "打开工作区的所有更改（可能与此轮不同）",
+        "openCurrentDiff": "打开此文件的当前差异"
       },
       "receipt": {
         "unavailable": "所选答案不可用",

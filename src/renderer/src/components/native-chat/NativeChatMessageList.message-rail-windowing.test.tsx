@@ -103,8 +103,7 @@ describe('revealing a diff from a turn rollup', () => {
     const selectedTop =
       screen.getByText('Second prompt').closest<HTMLElement>('[data-index]')?.offsetTop ?? 0
     expect(selectedTop).toBeGreaterThan(0)
-    fireEvent.click(screen.getByRole('button', { name: /1 changed file/ }))
-    fireEvent.click(screen.getByRole('button', { name: /src\/a.ts/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^a\.ts/ }))
     scrollTranscript(container, 6000)
     expect(screen.getByText('Edited')).toBeInTheDocument()
     scrollTo.mockClear()
@@ -121,8 +120,7 @@ describe('revealing a diff from a turn rollup', () => {
 
     scrollTranscript(container, 0)
     scrollTo.mockClear()
-    fireEvent.click(screen.getByRole('button', { name: /1 changed file/ }))
-    fireEvent.click(screen.getByRole('button', { name: /src\/a.ts/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^a\.ts/ }))
     const diffTop = screen.getByText('Edited').closest<HTMLElement>('[data-index]')?.offsetTop ?? 0
     expect(Number.isFinite(diffTop)).toBe(true)
     expect(scrollTo.mock.calls.filter(([options]) => options?.behavior === 'smooth')).toEqual([

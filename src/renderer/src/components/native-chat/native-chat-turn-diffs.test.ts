@@ -82,6 +82,28 @@ describe('turn diff rollups', () => {
     expect(turn.files[1]?.target.fileIndex).toBe(1)
   })
 
+  it('counts a file once however its path was written, and marks one outside the workspace', () => {
+    const messages = [
+      diff('absolute', '/repo/src/a.ts'),
+      diff('relative', 'src/a.ts'),
+      diff('outside', '/elsewhere/b.ts')
+    ]
+    const turn = nativeChatTurnDiffs(
+      messages,
+      messages.map(() => 'turn'),
+      { worktreePath: '/repo' }
+    ).get('turn')!
+    expect(
+      turn.files.map(({ path, inWorkspace, added }) => ({ path, inWorkspace, added }))
+    ).toEqual([
+      { path: 'src/a.ts', inWorkspace: true, added: 2 },
+      { path: '/elsewhere/b.ts', inWorkspace: false, added: 1 }
+    ])
+    expect(turn.files[0]?.target.messageId).toBe('relative')
+    // Two files, each under its own folder.
+    expect(turn.treeRows).toBe(4)
+  })
+
   it('does not count generic output, failed edits, running edits, or unparseable patches', () => {
     const messages = ['shell', 'Edit'].map((name) => ({
       ...diff(name, 'x'),

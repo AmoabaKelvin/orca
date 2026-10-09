@@ -223,9 +223,8 @@ describe('revealing a diff from a turn rollup', () => {
     expect(screen.queryByRole('button', { name: /^Edited .*a\.ts(?:\s|$)/ })).toBeNull()
     const mountedBefore = windowState(container).indexes.length
 
-    fireEvent.click(screen.getByRole('button', { name: /1 changed file/ }))
     scrollTo.mockClear()
-    fireEvent.click(screen.getByRole('button', { name: /src\/a.ts/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^a\.ts/ }))
 
     expect(screen.getByText('Edited')).toBeInTheDocument()
     expect(screen.getByText('after')).toBeInTheDocument()

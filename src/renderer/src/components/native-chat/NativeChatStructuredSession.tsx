@@ -22,6 +22,7 @@ import { useNativeChatFind } from './use-native-chat-find'
 import { NativeChatFindBar } from './NativeChatFindBar'
 import { LinkActionPopover } from '@/components/link-actions/LinkActionPopover'
 import { useNativeChatLinkActions } from './use-native-chat-link-actions'
+import { useNativeChatTurnDiffViewer } from './use-native-chat-turn-diff-viewer'
 import { useNativeChatFileLinkContext } from './use-native-chat-file-link-context'
 import { useRecheckNativeChatFileLinksWhenTurnEnds } from './use-native-chat-file-link-existence'
 import { useNativeChatTabOwnerWorktreeId } from './use-native-chat-tab-owner'
@@ -188,6 +189,7 @@ export function NativeChatStructuredSession(
     rootRef,
     { sessionId: props.sessionId, isVisible: props.isVisible }
   )
+  const openTurnDiff = useNativeChatTurnDiffViewer(fileLinkContext)
   const prompt = controller.prompts[0] ?? null
   // Prompts this build cannot answer leave the composer open: a send starts a turn, whose card
   // cancel then works.
@@ -310,6 +312,7 @@ export function NativeChatStructuredSession(
                   onLinkClick={onLinkClick}
                   allowFileUriLinks={onLinkClick !== undefined}
                   runtimeContext={imageRuntimeContext}
+                  onOpenDiffViewer={openTurnDiff}
                   deliveryNotices={deliveryNotices}
                 />
               </NativeChatClaudeSignInContext.Provider>

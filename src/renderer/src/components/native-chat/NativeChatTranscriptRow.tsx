@@ -12,6 +12,7 @@ import type { NativeChatSubagentDisclosure } from './native-chat-subagent-sectio
 import type { NativeChatTaskListPredecessors } from './native-chat-task-list-history'
 import type { NativeChatTranscriptSlot } from './native-chat-transcript-slots'
 import type { NativeChatDiffReveal, NativeChatDiffTarget } from './native-chat-turn-diffs'
+import type { NativeChatTurnDiffViewer } from './use-native-chat-turn-diff-viewer'
 import { NativeChatRewindContext } from './native-chat-rewind-context'
 import { nativeChatRowOffersRewind } from './native-chat-rewind-eligibility'
 
@@ -32,6 +33,7 @@ export type NativeChatTranscriptRowContext = {
   subagentDisclosure: NativeChatSubagentDisclosure
   onScrollMessageToTop: (element: HTMLElement) => void
   onRevealDiff: (target: NativeChatDiffTarget) => void
+  onOpenDiffViewer?: NativeChatTurnDiffViewer
 }
 
 /** One transcript row: the message (or the receipt standing in for it), the turn
@@ -132,8 +134,13 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
         />
       )}
       {slot.statusAbove ? null : statusRow}
-      {turnDiff ? (
-        <NativeChatTurnDiffRollup diff={turnDiff} onReveal={context.onRevealDiff} />
+      {turnDiff && turnKey ? (
+        <NativeChatTurnDiffRollup
+          diff={turnDiff}
+          disclosureKey={`turn-diff:${turnKey}`}
+          onReveal={context.onRevealDiff}
+          onOpenDiffViewer={context.onOpenDiffViewer}
+        />
       ) : null}
     </div>
   )

@@ -60,6 +60,7 @@ import { isStructuredAgentSessionThinking } from '../../../../shared/structured-
 import type { NativeChatSettledTurns } from '../../../../shared/native-chat-turn-status'
 import type { NativeChatDiffReveal, NativeChatDiffTarget } from './native-chat-turn-diffs'
 import { useNativeChatTurnDiffs } from './use-native-chat-turn-diffs'
+import type { NativeChatTurnDiffViewer } from './use-native-chat-turn-diff-viewer'
 import { transcriptTailRow } from './native-chat-transcript-tail-row'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 
@@ -90,7 +91,8 @@ export function NativeChatMessageList({
   awaitingInput = null,
   turnActivity,
   stopping = false,
-  runtimeContext
+  runtimeContext,
+  onOpenDiffViewer
 }: {
   ref?: Parameters<typeof useNativeChatMessageListHandle>[0]
   session: NativeChatLiveSession
@@ -120,6 +122,7 @@ export function NativeChatMessageList({
   /** A person's Stop is ending the live turn: its tail line reads "Stopping…". */
   stopping?: boolean
   runtimeContext?: RuntimeFileOperationArgs | null
+  onOpenDiffViewer?: NativeChatTurnDiffViewer
 }): React.JSX.Element {
   const [navigationRequest, setNavigationRequest] = useState<NativeChatNavigationRequest | null>(
     null
@@ -170,7 +173,8 @@ export function NativeChatMessageList({
   const turnDiffs = useNativeChatTurnDiffs(
     journalItems ? turnRows : null,
     subagentRowsInOrder,
-    subagentSections.pathOf
+    subagentSections.pathOf,
+    runtimeContext?.worktreePath
   )
   // "Thinking" is real reasoning content at the tail of the turn, not the absence
   // of output — the latter reports thinking while the request is merely in flight.
@@ -339,7 +343,8 @@ export function NativeChatMessageList({
       onToggleExpandedTurn: toggleExpandedTurn,
       subagentDisclosure,
       onScrollMessageToTop: scrollMessageToTop,
-      onRevealDiff: revealDiff
+      onRevealDiff: revealDiff,
+      onOpenDiffViewer
     }),
     [
       session.agent,
@@ -348,6 +353,7 @@ export function NativeChatMessageList({
       expandedTurnIds,
       deliveryNotices,
       onLinkClick,
+      onOpenDiffViewer,
       revealDiff,
       revealedDiff,
       runtimeContext,

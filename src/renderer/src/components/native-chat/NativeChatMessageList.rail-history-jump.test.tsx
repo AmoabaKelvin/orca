@@ -63,7 +63,7 @@ const ROW_HEIGHT_BY_TEXT = new Map(
     estimateNativeChatRowHeight(nativeChatRowContentMetrics(entry), {
       hasReceipt: false,
       hasStatus: false,
-      hasTurnDiff: false
+      turnDiffRows: 0
     })
   ])
 )
@@ -534,8 +534,7 @@ describe('revealing a diff while a rail jump pages', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Oldest prompt' }))
     // Anti-vacuous: the older page is in flight.
     expect(holdPage).toHaveBeenCalledTimes(1)
-    fireEvent.click(screen.getByRole('button', { name: /1 changed file/ }))
-    fireEvent.click(screen.getByRole('button', { name: /src\/a.ts/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^a\.ts/ }))
     scrollTranscript(container, 6000)
     expect(screen.getByText('Edited')).toBeInTheDocument()
     scrollTo.mockClear()

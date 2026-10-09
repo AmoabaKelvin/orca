@@ -18323,9 +18323,14 @@
       },
       "turnDiff": {
         "one": "1 fichier modifié",
-        "many": "{{count}} a modifié les fichiers",
+        "many": "{{count}} fichiers modifiés",
         "partial": "Différence partielle",
-        "recorded": "Totaux des modifications enregistrées à ce tour."
+        "recorded": "Totaux des modifications enregistrées à ce tour.",
+        "collapseFolders": "Réduire tous les dossiers",
+        "expandFolders": "Développer tous les dossiers",
+        "allChanges": "Toutes les modifications",
+        "openAllChanges": "Ouvrir toutes les modifications de l'espace de travail, qui peuvent différer de ce tour",
+        "openCurrentDiff": "Ouvrir le diff actuel de ce fichier"
       },
       "receipt": {
         "unavailable": "Réponse sélectionnée indisponible",

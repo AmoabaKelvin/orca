@@ -8,7 +8,7 @@ import {
   nativeChatRowContentMetrics
 } from './native-chat-row-height-estimate'
 
-const NO_CHROME = { hasReceipt: false, hasStatus: false, hasTurnDiff: false }
+const NO_CHROME = { hasReceipt: false, hasStatus: false, turnDiffRows: 0 }
 
 function message(text: string, role: NativeChatMessage['role'] = 'assistant'): NativeChatMessage {
   return {
@@ -142,10 +142,13 @@ describe('transcript row height estimate', () => {
     const empty = nativeChatRowContentMetrics(message(''))
     const bare = estimateNativeChatRowHeight(empty, NO_CHROME)
     const statusOnly = estimateNativeChatRowHeight(empty, { ...NO_CHROME, hasStatus: true })
-    const diffOnly = estimateNativeChatRowHeight(empty, { ...NO_CHROME, hasTurnDiff: true })
+    const diffOnly = estimateNativeChatRowHeight(empty, { ...NO_CHROME, turnDiffRows: 1 })
 
-    expect(statusOnly).toBe(diffOnly)
+    const threeFiles = estimateNativeChatRowHeight(empty, { ...NO_CHROME, turnDiffRows: 3 })
+
     expect(statusOnly - bare).toBeLessThan(NATIVE_CHAT_ROW_GAP_PX)
+    expect(threeFiles - diffOnly).toBe(48)
+    expect(diffOnly).toBeLessThan(statusOnly + 48)
   })
 
   it('includes both rendered parts and their gap for a receipt carrying a diff', () => {
@@ -153,17 +156,17 @@ describe('transcript row height estimate', () => {
     const receipt = estimateNativeChatRowHeight(empty, {
       hasReceipt: true,
       hasStatus: false,
-      hasTurnDiff: false
+      turnDiffRows: 0
     })
     const diff = estimateNativeChatRowHeight(empty, {
       hasReceipt: false,
       hasStatus: false,
-      hasTurnDiff: true
+      turnDiffRows: 1
     })
     const together = estimateNativeChatRowHeight(empty, {
       hasReceipt: true,
       hasStatus: false,
-      hasTurnDiff: true
+      turnDiffRows: 1
     })
 
     expect(together).toBe(receipt + NATIVE_CHAT_ROW_GAP_PX + diff)

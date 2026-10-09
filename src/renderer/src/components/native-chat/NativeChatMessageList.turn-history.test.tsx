@@ -62,13 +62,19 @@ function session(items: AgentJournalRenderItem[]): NativeChatLiveSession {
     readPhase: 'ready'
   }
 }
-function view(items: AgentJournalRenderItem[], structured = true) {
+function view(
+  items: AgentJournalRenderItem[],
+  structured = true,
+  onOpenDiffViewer?: (relativePath?: string) => void
+) {
   return (
     <NativeChatMessageList
       session={session(items)}
       journalItems={structured ? items : undefined}
       isWorking={false}
       expandSignal={false}
+      onOpenDiffViewer={onOpenDiffViewer}
+      runtimeContext={{ settings: null, worktreeId: 'worktree', worktreePath: '/repo' }}
     />
   )
 }
@@ -195,20 +201,23 @@ describe('turn history presentation', () => {
     vi.spyOn(HTMLElement.prototype, 'scrollTo').mockImplementation(scrollTo)
     render(view([user, prose, diff()]))
     expect(screen.queryByRole('button', { name: /^Edited .*a\.ts(?:\s|$)/ })).toBeNull()
-    const header = screen.getByRole('button', { name: /1 changed file/ })
-    expect(header).toHaveAttribute('aria-expanded', 'false')
-    fireEvent.click(header)
-    fireEvent.click(screen.getByRole('button', { name: /src\/a.ts/ }))
+    expect(screen.getByText('1 changed file')).toBeInTheDocument()
+    const folder = screen.getByRole('button', { name: /^src/ })
+    expect(folder).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(screen.getByRole('button', { name: /^a\.ts/ }))
     expect(screen.getByText('Edited')).toBeInTheDocument()
     expect(screen.getByText('after')).toBeInTheDocument()
     expect(screen.getByText('before')).toBeInTheDocument()
     expect(scrollTo).toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: /Edited 1 file/ }))
     expect(screen.queryByRole('button', { name: /^Edited .*a\.ts(?:\s|$)/ })).toBeNull()
-    fireEvent.click(header)
-    expect(header).toHaveAttribute('aria-expanded', 'false')
-    fireEvent.click(header)
-    fireEvent.click(screen.getByRole('button', { name: /src\/a.ts/ }))
+    // A folder closed by hand still reopens with the rest.
+    fireEvent.click(folder)
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all folders' }))
+    expect(screen.queryByRole('button', { name: /^a\.ts/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Expand all folders' }))
+    expect(screen.getByRole('button', { name: /^src/ })).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(screen.getByRole('button', { name: /^a\.ts/ }))
     expect(scrollTo.mock.calls.length).toBeGreaterThanOrEqual(2)
   })
 
@@ -244,12 +253,27 @@ describe('turn history presentation', () => {
       }
     }
     rerender(view([user, prose, diff('@@ -0,0 +1,2 @@\n+first\n+second'), resolved]))
-    expect(screen.getByRole('button', { name: /1 changed file \+2/ })).toBeInTheDocument()
+    expect(screen.getByText('1 changed file').parentElement).toHaveTextContent(
+      /1 changed file\s*\+2/
+    )
     expect(screen.getByText('Run tests?')).toBeInTheDocument()
     expect(screen.getByText('Allow once')).toBeInTheDocument()
     expect(screen.getByText('Answered on desktop')).toBeInTheDocument()
     expect(screen.getByText('Resolved').closest('[data-native-chat-receipt]')).not.toBeNull()
     expect(screen.queryByText('resolved')).toBeNull()
+  })
+
+  it('opens the recorded edit from a file, and the current diff only from its labelled actions', () => {
+    vi.spyOn(HTMLElement.prototype, 'scrollTo').mockImplementation(scrollTo)
+    const openTurnDiff = vi.fn()
+    render(view([user, prose, diff()], true, openTurnDiff))
+    fireEvent.click(screen.getByRole('button', { name: /^a\.ts/ }))
+    expect(openTurnDiff).not.toHaveBeenCalled()
+    expect(screen.getByText('after')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: "Open this file's current diff" }))
+    expect(openTurnDiff).toHaveBeenLastCalledWith('src/a.ts')
+    fireEvent.click(screen.getByRole('button', { name: 'All changes' }))
+    expect(openTurnDiff).toHaveBeenLastCalledWith()
   })
 
   it('keeps rollups turn-local and leaves legacy message lists unchanged', () => {
@@ -261,8 +285,8 @@ describe('turn history presentation', () => {
     const secondDiff = { ...diff(), itemId: 'second-diff', sequence: 6, observedAt: 6000 }
     const items = [user, prose, diff(), secondUser, secondDiff]
     const { rerender } = render(view(items))
-    expect(screen.getAllByRole('button', { name: /1 changed file/ })).toHaveLength(2)
+    expect(screen.getAllByText('1 changed file')).toHaveLength(2)
     rerender(view(items, false))
-    expect(screen.queryByRole('button', { name: /changed file/ })).toBeNull()
+    expect(screen.queryByText(/changed file/)).toBeNull()
   })
 })

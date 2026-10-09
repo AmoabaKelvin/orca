@@ -31,7 +31,7 @@ export type NativeChatRowContentMetrics = {
 export type NativeChatRowChromeMetrics = {
   hasReceipt: boolean
   hasStatus: boolean
-  hasTurnDiff: boolean
+  turnDiffRows: number
   /** Behind a folded turn: prose and tool activity draw nothing, so estimating
    *  them would reserve a screen of height for a row that paints a roster. */
   folded?: boolean
@@ -56,7 +56,9 @@ const SUBAGENT_ROW_PX = 32
 /** The one-line head that names a subagent above its own rows. */
 export const NATIVE_CHAT_SUBAGENT_SECTION_HEAD_PX = SUBAGENT_ROW_PX
 const STATUS_ROW_PX = 28
-const TURN_DIFF_PX = 28
+/** The changed-files card: its header and padding, then one row per file or folder. */
+const TURN_DIFF_CHROME_PX = 42
+const TURN_DIFF_ROW_PX = 24
 const RECEIPT_PX = 56
 /** How far assistant prose's controls hang below the row (`-mb-5`) outside a section. */
 const AGENT_CONTROLS_OVERHANG_PX = 20
@@ -189,8 +191,8 @@ export function estimateNativeChatRowHeight(
     height += STATUS_ROW_PX
     partCount += 1
   }
-  if (chrome.hasTurnDiff) {
-    height += TURN_DIFF_PX
+  if (chrome.turnDiffRows > 0) {
+    height += TURN_DIFF_CHROME_PX + chrome.turnDiffRows * TURN_DIFF_ROW_PX
     partCount += 1
   }
   height += Math.max(0, partCount - 1) * NATIVE_CHAT_ROW_GAP_PX

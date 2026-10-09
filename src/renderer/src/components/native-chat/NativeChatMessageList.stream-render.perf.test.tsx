@@ -9,6 +9,7 @@ import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import { projectStructuredAgentSessionMessages } from '../../../../shared/structured-agent-session-message-projection'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import type * as UnifiedPatchModule from '../../../../shared/native-chat-unified-patch'
+import type * as TurnDiffTreeModule from './native-chat-turn-diff-tree'
 import type { NativeChatLiveSession } from './use-native-chat-live-session'
 import { installNativeChatMessageListTestViewport } from './native-chat-message-list-test-viewport'
 
@@ -38,6 +39,18 @@ vi.mock('../../../../shared/native-chat-unified-patch', async (importOriginal) =
     summarizeUnifiedPatch: (...args: Parameters<typeof actual.summarizeUnifiedPatch>) => {
       patchCalls.summary += 1
       return actual.summarizeUnifiedPatch(...args)
+    }
+  }
+})
+
+const treeCalls = vi.hoisted(() => ({ count: 0 }))
+vi.mock('./native-chat-turn-diff-tree', async (importOriginal) => {
+  const actual = await importOriginal<typeof TurnDiffTreeModule>()
+  return {
+    ...actual,
+    nativeChatTurnDiffTree: (...args: Parameters<typeof actual.nativeChatTurnDiffTree>) => {
+      treeCalls.count += 1
+      return actual.nativeChatTurnDiffTree(...args)
     }
   }
 })
@@ -171,9 +184,10 @@ describe('native chat transcript re-render cost during a streaming turn', () => 
       )
     }
     expect(patchCalls).toEqual({ summary: 1, detailed: 0 })
-    fireEvent.click(screen.getByRole('button', { name: /1 changed file/ }))
     expect(patchCalls.detailed).toBe(0)
-    fireEvent.click(screen.getByRole('button', { name: /src\/a.ts/ }))
+    // Built for the card's first row and again when the tail became the turn's last row.
+    expect(treeCalls.count).toBe(2)
+    fireEvent.click(screen.getByRole('button', { name: /^a\.ts/ }))
     expect(patchCalls).toEqual({ summary: 1, detailed: 1 })
     expect(screen.getByText('new')).toBeInTheDocument()
   })

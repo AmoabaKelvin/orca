@@ -11,18 +11,18 @@ const NO_TURN_DIFFS: ReadonlyMap<string, NativeChatTurnDiff> = new Map()
 export function useNativeChatTurnDiffs(
   turns: NativeChatTurnRows | null,
   subagentRows: readonly NativeChatSubagentRow[],
-  subagentSectionsOf: ReadonlyMap<string, readonly string[]>
+  subagentSectionsOf: ReadonlyMap<string, readonly string[]>,
+  worktreePath: string | null | undefined
 ): ReadonlyMap<string, NativeChatTurnDiff> {
   return useMemo(() => {
     if (!turns) {
       return NO_TURN_DIFFS
     }
     const merged = nativeChatRowsInTranscriptOrder(turns.messages, turns.turnKeys, subagentRows)
-    return nativeChatTurnDiffs(
-      merged.messages,
-      merged.turnKeys,
+    return nativeChatTurnDiffs(merged.messages, merged.turnKeys, {
       subagentSectionsOf,
-      turns.partialTurnKey
-    )
-  }, [subagentRows, subagentSectionsOf, turns])
+      partialTurnKey: turns.partialTurnKey,
+      worktreePath
+    })
+  }, [subagentRows, subagentSectionsOf, turns, worktreePath])
 }

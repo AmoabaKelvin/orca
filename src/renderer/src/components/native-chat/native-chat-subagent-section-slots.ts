@@ -120,7 +120,7 @@ export function nativeChatSubagentSectionSlots({
           {
             hasReceipt: receipt !== undefined,
             hasStatus: false,
-            hasTurnDiff: false,
+            turnDiffRows: 0,
             inSubagentSection: true
           },
           typography

@@ -18259,7 +18259,12 @@
         "one": "1 つの変更されたファイル",
         "many": "{{count}} がファイルを変更しました",
         "partial": "部分的な差分",
-        "recorded": "このターンに記録された編集の合計。"
+        "recorded": "このターンに記録された編集の合計。",
+        "collapseFolders": "すべてのフォルダーを折りたたむ",
+        "expandFolders": "すべてのフォルダーを展開",
+        "allChanges": "すべての変更",
+        "openAllChanges": "ワークスペースのすべての変更を開く（このターンの内容と異なる場合があります）",
+        "openCurrentDiff": "このファイルの現在の差分を開く"
       },
       "receipt": {
         "unavailable": "選択した回答は利用できません",

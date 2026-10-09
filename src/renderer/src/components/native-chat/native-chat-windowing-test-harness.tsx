@@ -66,7 +66,7 @@ export function marker(index: number): NativeChatMessage {
 export const ROW_PX = estimateNativeChatRowHeight(nativeChatRowContentMetrics(marker(0)), {
   hasReceipt: false,
   hasStatus: false,
-  hasTurnDiff: false
+  turnDiffRows: 0
 })
 export const ROW_PITCH_PX = ROW_PX + NATIVE_CHAT_ROW_GAP_PX
 

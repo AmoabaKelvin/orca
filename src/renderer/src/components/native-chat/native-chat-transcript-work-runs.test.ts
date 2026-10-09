@@ -208,12 +208,14 @@ describe('work runs with an edit in their turn', () => {
     files: [
       {
         path: 'a.ts',
+        inWorkspace: true,
         added: 1,
         removed: 1,
         truncated: false,
         target: { messageId: 'a', editKey: 'Diff:0', fileIndex: 0 }
       }
     ],
+    treeRows: 1,
     added: 1,
     removed: 1,
     truncated: false

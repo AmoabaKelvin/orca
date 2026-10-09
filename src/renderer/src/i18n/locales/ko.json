@@ -18259,7 +18259,12 @@
         "one": "변경된 파일 1개",
         "many": "{{count}} 변경된 파일",
         "partial": "부분적인 차이점",
-        "recorded": "이번 차례에 기록된 수정사항의 합계입니다."
+        "recorded": "이번 차례에 기록된 수정사항의 합계입니다.",
+        "collapseFolders": "모든 폴더 접기",
+        "expandFolders": "모든 폴더 펼치기",
+        "allChanges": "모든 변경 사항",
+        "openAllChanges": "작업 공간의 모든 변경 사항 열기(이 턴과 다를 수 있음)",
+        "openCurrentDiff": "이 파일의 현재 diff 열기"
       },
       "receipt": {
         "unavailable": "선택한 답변을 사용할 수 없습니다.",

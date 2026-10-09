@@ -18351,7 +18351,12 @@
         "one": "1 archivo modificado",
         "many": "{{count}} archivos modificados",
         "partial": "Diff parcial",
-        "recorded": "Totales de las ediciones registradas en este turno."
+        "recorded": "Totales de las ediciones registradas en este turno.",
+        "collapseFolders": "Contraer todas las carpetas",
+        "expandFolders": "Expandir todas las carpetas",
+        "allChanges": "Todos los cambios",
+        "openAllChanges": "Abrir todos los cambios del espacio de trabajo, que pueden diferir de este turno",
+        "openCurrentDiff": "Abrir el diff actual de este archivo"
       },
       "notices": {
         "contextCleared": "Contexto borrado",
