@@ -3,7 +3,16 @@ import {
   createIncrementalSyntaxTokenizer,
   type SyntaxProgress
 } from './incremental-syntax-tokenizer'
-import { loadSyntaxTokenizer, type SyntaxToken, type SyntaxTokenizer } from './syntax-tokenizer'
+import {
+  loadedSyntaxHighlighter,
+  loadSyntaxLanguage,
+  type SyntaxHighlighter,
+  type SyntaxToken
+} from './syntax-highlighter'
+
+vi.mock('./oniguruma', async () => ({
+  loadOniguruma: (await import('./oniguruma-test-harness')).loadNodeOniguruma
+}))
 
 const DOCUMENT = [
   'const greeting = `hello',
@@ -14,12 +23,13 @@ const DOCUMENT = [
   ''
 ].join('\n')
 
-async function typescriptTokenizer(): Promise<SyntaxTokenizer> {
-  const tokenizer = await loadSyntaxTokenizer('typescript')
-  if (!tokenizer) {
+async function typescriptTokenizer(): Promise<SyntaxHighlighter> {
+  await loadSyntaxLanguage('typescript')
+  const highlighter = loadedSyntaxHighlighter('typescript')
+  if (!highlighter) {
     throw new Error('typescript grammar did not load')
   }
-  return tokenizer
+  return highlighter
 }
 
 function colorsOf(lines: readonly (readonly SyntaxToken[])[]): unknown {
@@ -49,7 +59,7 @@ describe('createIncrementalSyntaxTokenizer', () => {
 
     for (let length = 1; length <= DOCUMENT.length; length += 1) {
       const streamed = DOCUMENT.slice(0, length)
-      const fullPass = tokenizer.tokenize(streamed).lines
+      const fullPass = tokenizer(streamed).lines
       // A full pass reports the empty line after a final newline; nothing renders for it.
       if (streamed.endsWith('\n')) {
         fullPass.pop()
@@ -91,11 +101,9 @@ describe('createIncrementalSyntaxTokenizer', () => {
     // Every batch takes one tick of a clock that otherwise stands still.
     let now = 0
     vi.spyOn(performance, 'now').mockImplementation(() => now)
-    const tokenize = createIncrementalSyntaxTokenizer({
-      tokenize: (code, grammarState) => {
-        now += 1
-        return tokenizer.tokenize(code, grammarState)
-      }
+    const tokenize = createIncrementalSyntaxTokenizer((code, state) => {
+      now += 1
+      return tokenizer(code, state)
     })
     const code = 'const value = compute(1, "two", [3])\n'.repeat(200)
 
@@ -110,6 +118,23 @@ describe('createIncrementalSyntaxTokenizer', () => {
     expect(colors(progress)).toEqual(
       colors(createIncrementalSyntaxTokenizer(tokenizer)(code, Infinity))
     )
+  })
+
+  it('keeps every line after a skipped one plain, however the document streams', async () => {
+    const tokenize = createIncrementalSyntaxTokenizer(await typescriptTokenizer())
+    const code = `const a = 1\nconst long = "${'x'.repeat(2000)}"\nconst b = 2\nconst c = 3\n`
+
+    let progress = tokenize(code.slice(0, code.indexOf('const b')), Infinity)
+    progress = tokenize(code, Infinity)
+
+    expect(progress.degraded).toBe(true)
+    expect(colors(progress)).toEqual([
+      expect.arrayContaining([['const', '#0000FF', '#569CD6']]),
+      [[`const long = "${'x'.repeat(2000)}"`, undefined, undefined]],
+      [['const b = 2', undefined, undefined]],
+      [['const c = 3', undefined, undefined]]
+    ])
+    expect(text(progress, code)).toBe(code)
   })
 
   it.each(['a = 1\r\nb = 2\r\n', 'a = 1\r\nb = 2\nc = 3\r', 'a = 1\rb = 2\r\n\r\nc'])(

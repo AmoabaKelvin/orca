@@ -2,19 +2,23 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import {
   createIncrementalSyntaxTokenizer,
   type SyntaxProgress
-} from '@/lib/incremental-syntax-tokenizer'
-import { loadedSyntaxTokenizer, loadSyntaxTokenizer } from '@/lib/syntax-tokenizer'
+} from '@/lib/syntax-highlighting/incremental-syntax-tokenizer'
+import { scheduleSyntaxHighlighting } from '@/lib/syntax-highlighting/syntax-highlight-scheduler'
+import {
+  loadedSyntaxHighlighter,
+  loadSyntaxLanguage
+} from '@/lib/syntax-highlighting/syntax-highlighter'
 import { BoundedMap } from '../../../shared/bounded-map'
-import { yieldToEventLoop } from '../../../shared/event-loop-yield'
 
 // Each token is a DOM node, so only the start of a very long block is colored.
 const MAX_HIGHLIGHTED_CODE_LENGTH = 50_000
 // Tokenizing runs on the renderer thread, so it is spent in slices shorter than a frame.
 const RENDER_BUDGET_MS = 4
-const SLICE_BUDGET_MS = 6
-// The cache is weighed in tokens, roughly 200 bytes each.
-const MAX_FINISHED_TOKENS = 30_000
+const MAX_FINISHED_BYTES = 8 * 1024 * 1024
 const MAX_FINISHED_ENTRIES = 256
+// Rough retained size of one token object beyond its text.
+const TOKEN_OVERHEAD_BYTES = 120
+const LINE_OVERHEAD_BYTES = 80
 
 let renderDeadline: number | null = null
 
@@ -29,11 +33,23 @@ function remainingRenderBudgetMs(): number {
   return Math.max(0, renderDeadline - performance.now())
 }
 
+/** UTF-16 text in the key and the tokens' copies of it, plus the objects holding them. */
+function finishedBytes(progress: SyntaxProgress, key: string): number {
+  let bytes = key.length * 2
+  for (const line of progress.lines) {
+    bytes += LINE_OVERHEAD_BYTES
+    for (const token of line.tokens) {
+      bytes += TOKEN_OVERHEAD_BYTES + token.content.length * 2
+    }
+  }
+  return bytes
+}
+
 // Finished blocks, so a row scrolled back into view paints in color without tokenizing again.
 const finished = new BoundedMap<string, SyntaxProgress>({
   maxEntries: MAX_FINISHED_ENTRIES,
-  maxBytes: MAX_FINISHED_TOKENS,
-  sizeOf: (progress) => progress.lines.reduce((count, line) => count + line.tokens.length, 0)
+  maxBytes: MAX_FINISHED_BYTES,
+  sizeOf: finishedBytes
 })
 
 function finishedKey(language: string, source: string): string {
@@ -48,35 +64,36 @@ function finishedKey(language: string, source: string): string {
 export function useHighlightedSyntax(code: string, language: string): SyntaxProgress | null {
   const source =
     code.length > MAX_HIGHLIGHTED_CODE_LENGTH ? code.slice(0, MAX_HIGHLIGHTED_CODE_LENGTH) : code
-  const tokenizer = loadedSyntaxTokenizer(language)
+  const highlighter = loadedSyntaxHighlighter(language)
   const [, rerender] = useReducer((count: number) => count + 1, 0)
 
+  // Why: `source` is a dependency so a block still streaming asks again after a failed load.
   useEffect(() => {
-    if (tokenizer) {
+    if (highlighter) {
       return
     }
-    void loadSyntaxTokenizer(language).then((loaded) => {
-      if (loaded) {
+    let cancelled = false
+    void loadSyntaxLanguage(language).then((status) => {
+      if (!cancelled && status === 'ready') {
         rerender()
       }
     })
-  }, [language, tokenizer])
+    return () => {
+      cancelled = true
+    }
+  }, [language, highlighter, source])
 
   const tokenize = useMemo(
-    () => (tokenizer ? createIncrementalSyntaxTokenizer(tokenizer) : null),
-    [tokenizer]
+    () => (highlighter ? createIncrementalSyntaxTokenizer(highlighter) : null),
+    [highlighter]
   )
   // Short blocks finish here and paint in color at once; longer ones continue below.
-  const started = useMemo(() => {
-    try {
-      return (
-        finished.get(finishedKey(language, source)) ??
-        (tokenize ? tokenize(source, remainingRenderBudgetMs()) : null)
-      )
-    } catch {
-      return null
-    }
-  }, [language, source, tokenize])
+  const started = useMemo(
+    () =>
+      finished.get(finishedKey(language, source)) ??
+      (tokenize ? tokenize(source, remainingRenderBudgetMs()) : null),
+    [language, source, tokenize]
+  )
   const [continued, setContinued] = useState<{
     after: SyntaxProgress
     progress: SyntaxProgress
@@ -87,26 +104,11 @@ export function useHighlightedSyntax(code: string, language: string): SyntaxProg
     if (!tokenize || !started || started.highlightedLength >= source.length) {
       return
     }
-    let cancelled = false
-    void (async () => {
-      let progress = started
-      while (progress.highlightedLength < source.length) {
-        await yieldToEventLoop()
-        if (cancelled) {
-          return
-        }
-        try {
-          progress = tokenize(source, SLICE_BUDGET_MS)
-        } catch {
-          // The lines colored so far stay; the rest keeps its plain text.
-          return
-        }
-        setContinued({ after: started, progress })
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
+    return scheduleSyntaxHighlighting((budgetMs) => {
+      const next = tokenize(source, budgetMs)
+      setContinued({ after: started, progress: next })
+      return next.highlightedLength >= source.length
+    })
   }, [source, started, tokenize])
 
   const latest = useRef({ language, source, progress })
@@ -117,7 +119,12 @@ export function useHighlightedSyntax(code: string, language: string): SyntaxProg
   useEffect(
     () => () => {
       const last = latest.current
-      if (last.progress && last.progress.highlightedLength >= last.source.length) {
+      // A degraded block may only have lost its grammar mid-stream, so it is colored afresh next time.
+      if (
+        last.progress &&
+        !last.progress.degraded &&
+        last.progress.highlightedLength >= last.source.length
+      ) {
         finished.set(finishedKey(last.language, last.source), last.progress)
       }
     },

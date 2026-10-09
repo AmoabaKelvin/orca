@@ -1,4 +1,4 @@
-import type { SyntaxGrammarState, SyntaxToken, SyntaxTokenizer } from './syntax-tokenizer'
+import type { SyntaxHighlighter, SyntaxHighlightState, SyntaxToken } from './syntax-highlighter'
 
 export type SyntaxLine = {
   /** Offset of the line in the document; unique, so it keys the line. */
@@ -12,6 +12,8 @@ export type SyntaxProgress = {
   lines: SyntaxLine[]
   /** `code.slice(highlightedLength)` has not been tokenized yet. */
   highlightedLength: number
+  /** A line was skipped, so the lines after it stay plain. */
+  degraded: boolean
 }
 
 // A batch cannot be interrupted, so it stays near a millisecond of dense code.
@@ -32,24 +34,26 @@ function detachedLines(text: string): string {
  * line, and stops once `budgetMs` is spent. Completed lines keep their identity.
  */
 export function createIncrementalSyntaxTokenizer(
-  tokenizer: SyntaxTokenizer
+  highlight: SyntaxHighlighter
 ): (code: string, budgetMs: number) => SyntaxProgress {
   let completed = ''
-  let state: SyntaxGrammarState | undefined
+  let state: SyntaxHighlightState | undefined
   let lines: SyntaxLine[] = []
+  let degraded = false
 
   return (code, budgetMs) => {
     if (!code.startsWith(completed)) {
       completed = ''
       state = undefined
       lines = []
+      degraded = false
     }
     const deadline = performance.now() + budgetMs
     // Why: markdown ends a fence still being written with a newline, so the last line can grow.
     const lastBreak = code.lastIndexOf('\n', code.length - 2) + 1
     while (completed.length < lastBreak) {
       if (performance.now() >= deadline) {
-        return { lines, highlightedLength: completed.length }
+        return { lines, highlightedLength: completed.length, degraded }
       }
       const from = completed.length
       let end = from
@@ -60,8 +64,9 @@ export function createIncrementalSyntaxTokenizer(
         }
         end = next
       }
-      const tokenized = tokenizer.tokenize(detachedLines(code.slice(from, end)), state)
-      state = tokenized.grammarState
+      const tokenized = highlight(detachedLines(code.slice(from, end)), state)
+      state = tokenized.state
+      degraded ||= tokenized.outcome !== 'ok'
       let start = from
       const batch = tokenized.lines.map((tokens) => {
         const lineEnd = tokens.reduce((offset, token) => offset + token.content.length, start)
@@ -75,16 +80,20 @@ export function createIncrementalSyntaxTokenizer(
     }
     const last = code.slice(completed.length)
     if (!last) {
-      return { lines, highlightedLength: code.length }
+      return { lines, highlightedLength: code.length, degraded }
     }
     if (performance.now() >= deadline) {
-      return { lines, highlightedLength: completed.length }
+      return { lines, highlightedLength: completed.length, degraded }
     }
     const text = detachedLines(last)
-    const tokens = tokenizer.tokenize(text, state).lines[0] ?? []
+    const partial = highlight(text, state)
     return {
-      lines: [...lines, { start: completed.length, tokens, ending: last.slice(text.length) }],
-      highlightedLength: code.length
+      lines: [
+        ...lines,
+        { start: completed.length, tokens: partial.lines[0] ?? [], ending: last.slice(text.length) }
+      ],
+      highlightedLength: code.length,
+      degraded: degraded || partial.outcome !== 'ok'
     }
   }
 }

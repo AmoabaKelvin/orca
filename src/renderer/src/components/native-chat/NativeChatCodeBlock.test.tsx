@@ -3,8 +3,13 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { loadSyntaxTokenizer } from '@/lib/syntax-tokenizer'
+import { loadSyntaxLanguage } from '@/lib/syntax-highlighting/syntax-highlighter'
 import { NativeChatCodeBlock, NativeChatPlainCodeBlock } from './NativeChatCodeBlock'
+
+vi.mock('@/lib/syntax-highlighting/oniguruma', async () => ({
+  loadOniguruma: (await import('@/lib/syntax-highlighting/oniguruma-test-harness'))
+    .loadNodeOniguruma
+}))
 
 afterEach(() => {
   cleanup()
@@ -72,7 +77,7 @@ describe('NativeChatCodeBlock', () => {
 
   it('leaves the code of a dimmed row uncolored', async () => {
     const code = <code>{'const dimmed = 1\n'}</code>
-    await loadSyntaxTokenizer('typescript')
+    await loadSyntaxLanguage('typescript')
     const colored = render(<NativeChatCodeBlock language="typescript">{code}</NativeChatCodeBlock>)
     expect(colored.container.querySelector('pre span')).not.toBeNull()
 

@@ -1,4 +1,5 @@
 import { translate } from '@/i18n/i18n'
+import { nativeChatCommandLanguage } from './native-chat-command-language'
 import { nativeChatToolCategory } from './native-chat-tool-category'
 import {
   nativeChatFullCommand,
@@ -49,7 +50,7 @@ export function nativeChatToolLineLabel(
     target = fullCommand === null ? target : summarizeToolInput(fullCommand)
     title = fullCommand ?? target
     if (fullCommand !== null) {
-      commandLanguage = 'shellscript'
+      commandLanguage = nativeChatCommandLanguage(call.name, call.input)
       const plainCommand = nativeChatPlainCommandInput(call.input)
       if (plainCommand?.trim() === fullCommand) {
         commandDetail = plainCommand === target ? null : plainCommand
