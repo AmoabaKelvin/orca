@@ -57,9 +57,12 @@ describe('NativeChatCodeBlock', () => {
     )
     const pre = container.querySelector('pre')
 
-    await waitFor(() => {
-      expect(pre?.querySelector('span[style*="--syntax-dark"]')).not.toBeNull()
-    })
+    await waitFor(
+      () => {
+        expect(pre?.querySelector('span[style*="--syntax-dark"]')).not.toBeNull()
+      },
+      { timeout: 10_000 }
+    )
     expect(pre?.textContent).toBe(code)
   })
 

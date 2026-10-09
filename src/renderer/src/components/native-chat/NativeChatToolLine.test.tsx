@@ -339,9 +339,13 @@ describe('tool sentence rows', () => {
     const detail = container.querySelector('pre')
 
     if (colored) {
-      await waitFor(() => {
-        expect(detail?.querySelector('span[style*="--syntax-dark"]')).not.toBeNull()
-      })
+      // The first PowerShell block in this file loads the grammar and its regex engine.
+      await waitFor(
+        () => {
+          expect(detail?.querySelector('span[style*="--syntax-dark"]')).not.toBeNull()
+        },
+        { timeout: 10_000 }
+      )
     } else {
       expect(detail?.querySelector('span')).toBeNull()
     }

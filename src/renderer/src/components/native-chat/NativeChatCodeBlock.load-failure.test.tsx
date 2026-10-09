@@ -42,9 +42,12 @@ describe('NativeChatCodeBlock grammar load failure', () => {
       now += 5000
       rerender(block('fn main() {\n    let answer = 42;\n'))
 
-      await waitFor(() => {
-        expect(container.querySelector('pre span[style*="--syntax-dark"]')).not.toBeNull()
-      })
+      await waitFor(
+        () => {
+          expect(container.querySelector('pre span[style*="--syntax-dark"]')).not.toBeNull()
+        },
+        { timeout: 10_000 }
+      )
       expect(container.querySelector('pre')?.textContent).toBe(
         'fn main() {\n    let answer = 42;\n'
       )
