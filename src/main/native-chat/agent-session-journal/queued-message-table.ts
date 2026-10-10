@@ -56,8 +56,7 @@ export type QueuedMessageRow = {
    *  card, cleared when a withdrawal sends it back to waiting. Host-only; the published link is
    *  the submission's `queuedMessageId`. */
   consumedAs: string | null
-  /** The conversation /clear carried this card from; null for a card written here. What the
-   *  replacement's 'cleared' pause is derived from. */
+  /** Inert historical column; current inserts write null. */
   carriedFrom: string | null
   /** Where the journal stood when it was queued: a Stop's pause holds only cards queued before
    *  it. Null on rows from builds before it was recorded, which read as queued before any Stop. */
@@ -75,7 +74,6 @@ export function insertQueuedMessage(
     body: AgentJournalMessageItem
     fingerprint: string
     hostInstance: string
-    carriedFrom?: string
     queuedAt: AgentJournalCursor
     now: number
     /** Absent: after every other card. */
@@ -100,7 +98,7 @@ export function insertQueuedMessage(
     input.now,
     input.hostInstance,
     input.holdReason ?? null,
-    input.carriedFrom ?? null,
+    null,
     input.queuedAt.epoch,
     input.queuedAt.sequence
   )
@@ -119,7 +117,7 @@ export function insertQueuedMessage(
     settledAt: null,
     settledByOp: null,
     consumedAs: null,
-    carriedFrom: input.carriedFrom ?? null,
+    carriedFrom: null,
     queuedAt: input.queuedAt
   }
 }
@@ -157,6 +155,8 @@ export function consumeQueuedMessageInTransaction(
     sessionId: string
     messageId: string
     expect: 'waiting' | 'returned'
+    /** The body being sent: a card edited since it was read is not consumed with its old text. */
+    fingerprint: string
     /** The fresh submission id; never the draft's own id. */
     consumedAs: string
     settledByOp: string | null
@@ -173,7 +173,7 @@ export function consumeQueuedMessageInTransaction(
       `UPDATE queued_messages
        SET state = 'dispatched', hold_reason = NULL, returned_reason = NULL, returned_rejection = NULL,
            settled_at = ?, settled_by_op = ?, consumed_as = ?, host_instance = COALESCE(?, host_instance)
-       WHERE session_id = ? AND message_id = ? AND state = ?`
+       WHERE session_id = ? AND message_id = ? AND state = ? AND fingerprint = ?`
     )
     .run(
       input.now,
@@ -182,7 +182,8 @@ export function consumeQueuedMessageInTransaction(
       input.hostInstance ?? null,
       input.sessionId,
       input.messageId,
-      input.expect
+      input.expect,
+      input.fingerprint
     )
   return Number(changed.changes ?? 0) === 1
 }

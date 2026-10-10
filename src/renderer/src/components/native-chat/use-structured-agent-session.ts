@@ -3,12 +3,14 @@ import { useStructuredAgentSessionSends } from './use-structured-agent-session-s
 import { useStructuredAgentSessionCommandWrite } from './use-structured-agent-session-command-write'
 import { structuredAgentSessionNewSendsQueue } from './structured-agent-session-queue-request'
 import type { AgentType } from '../../../../shared/agent-status-types'
+import type { AgentSessionCancelResult } from '../../../../shared/agent-session-wire'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
-import { takeBackStructuredLaunchPrompts } from '@/lib/structured-agent-session-launch-prompt'
+import { useStructuredLegacyLaunchStop } from '@/lib/structured-agent-session-legacy-launch-stop'
 import { supportsStructuredAgentSessionPromptCancel } from '@/runtime/structured-agent-session-client'
 import {
   useStructuredAgentSessionHostQueuesCommands,
+  useStructuredAgentSessionHostEditsQueuedMessages,
   useStructuredAgentSessionHostQueuesMessagesState
 } from '@/runtime/structured-agent-session-host-capability'
 import { structuredAgentSessionStopControl } from './structured-agent-session-stop-control'
@@ -36,7 +38,7 @@ import {
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
 import { withNativeChatCutTurnNotices } from '../../../../shared/native-chat-cut-turn-notice'
-import { useStructuredAgentSessionRewind } from './use-native-chat-rewind'
+import { useStructuredAgentSessionRewind } from './use-structured-agent-session-rewind'
 import type { NativeChatRewindHost } from './use-native-chat-rewind'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
@@ -51,6 +53,8 @@ export function useStructuredAgentSession(args: {
   transportEnabled?: boolean
   /** The host has published the session but its provider has not answered startup yet. */
   providerStarting?: boolean
+  /** The host runs the session's provider, started or not. */
+  providerRunning?: boolean
   /** This view started the session; only then does the stored selection name what it runs. */
   launch?: StructuredAgentSessionLaunchView
   /** The composer Edit copies a card's text into. */
@@ -90,6 +94,7 @@ export function useStructuredAgentSession(args: {
     enabled: transportEnabled
   })
   const commandPending = useRef(false)
+  const legacyLaunchStop = useStructuredLegacyLaunchStop(sessionId)
   const transportState = useStructuredAgentSessionTransportState(state, transportEnabled)
   const {
     conversationCommands,
@@ -108,6 +113,7 @@ export function useStructuredAgentSession(args: {
     isVisible,
     providerVisible,
     providerStarting,
+    ...(args.providerRunning ? { providerRunning: true } : {}),
     fence: state.fence,
     turnId: transportState.turnId,
     unloadedTurnRevisions: state.unloadedTurnRevisions,
@@ -153,12 +159,14 @@ export function useStructuredAgentSession(args: {
 
   const threadGoal = useStructuredAgentSessionThreadGoal({
     journalItems: transportState.journalItems,
+    journalEpoch: state.epoch,
     support: threadGoalSupport,
     mutate
   })
   const contextUsage = useStructuredAgentSessionContextUsage(
     transportState.journalItems,
-    contextUsageSupport
+    contextUsageSupport,
+    state.epoch
   )
 
   const railOutline = useStructuredAgentSessionRailOutline({
@@ -172,12 +180,7 @@ export function useStructuredAgentSession(args: {
   const commandWrite = useStructuredAgentSessionCommandWrite(sessionId, write)
   const sending = pending.some((entry) => entry.phase === 'sending')
   // What the host refuses a rewind behind; a command's own hold is the runner's below.
-  const conversationBusy = Boolean(
-    transportState.turnId ||
-    prompts.length ||
-    transportState.backgroundTasks.isMonitoring ||
-    sending
-  )
+  const conversationBusy = transportState.conversationBusy || prompts.length > 0 || sending
   const rewind = useStructuredAgentSessionRewind({
     sessionId,
     target,
@@ -185,6 +188,7 @@ export function useStructuredAgentSession(args: {
     ...args.rewind,
     state,
     support: transportEnabled ? rewindSupport : undefined,
+    contextFloor: contextUsageSupport?.contextFloor ?? threadGoalSupport?.contextFloor,
     // The host also refuses a rewind behind its queued cards, paused ones included.
     blocked: conversationBusy || commandPending.current || queuedMessageIds.length > 0,
     write
@@ -208,6 +212,11 @@ export function useStructuredAgentSession(args: {
     transcriptPending,
     transportState.submissions
   )
+  const editCapable = useStructuredAgentSessionHostEditsQueuedMessages(target)
+  const editTransport = useMemo(
+    () => ({ target, sessionId, capable: editCapable, write }),
+    [editCapable, sessionId, target, write]
+  )
   const queuedController = useStructuredAgentSessionQueuedMessages({
     // Its published list, pause and submissions; the rest is named below.
     ...transportState,
@@ -217,7 +226,8 @@ export function useStructuredAgentSession(args: {
     // Hidden from the transcript, a queue send on its way reads as sending among the cards.
     sending: pending,
     composerScopeKey,
-    mutate
+    mutate,
+    editTransport
   })
   return {
     epoch: state.epoch,
@@ -273,12 +283,12 @@ export function useStructuredAgentSession(args: {
     turnId: transportState.turnId,
     ...structuredAgentSessionStopControl({
       published: transportEnabled,
+      ...legacyLaunchStop,
       host: stopControl,
       transportState,
       sends: {
         sending,
-        stopSends: sends.stopSends,
-        takeBackLaunchText: () => takeBackStructuredLaunchPrompts(sessionId)
+        stopSends: sends.stopSends
       }
     }),
     stopPressed: stopControl.pressed,
@@ -297,7 +307,7 @@ export function useStructuredAgentSession(args: {
       })
     },
     stopBackgroundTask: (taskId?: string) =>
-      mutate('agentSession.cancel', 'agentSession.cancel', {
+      mutate<AgentSessionCancelResult>('agentSession.cancel', 'agentSession.cancel', {
         turnId: 'background-tasks',
         scope: 'background-tasks',
         ...(taskId ? { taskId } : {})
