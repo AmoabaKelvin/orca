@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import * as path from 'node:path'
-import { resolveSpawn, runProcess, runProcessSync } from './run-process'
+import { runProcess, runProcessSync } from './run-process'
+import { resolveSpawn } from './spawn-resolution'
 import { WINDOWS_ARGUMENT_CORPUS } from './__fixtures__/windows-argument-corpus'
 
 const SPEC = { program: 'C:\\bin\\agent.cmd', args: ['--prompt', 'hi'] }
@@ -175,7 +176,8 @@ describe('abort', () => {
       const root = await mkdtemp(path.join(tmpdir(), 'run-process-barrier-'))
       const marker = path.join(root, 'descendant-state')
       const descendantScript =
-        `printf ready > "$1";trap 'printf signaled > "$1"' TERM;` + `while :;do sleep 1;done`
+        // Trap before ready: an abort right after ready must not hit sh's default TERM action.
+        `trap 'printf signaled > "$1"' TERM;printf ready > "$1";` + `while :;do sleep 1;done`
       const controller = new AbortController()
       const pending = runProcess({
         program: process.execPath,

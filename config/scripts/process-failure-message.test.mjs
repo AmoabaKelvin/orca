@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { describeProcessFailure } from './script-child-process.mjs'
+import { describeProcessFailure } from './process-failure-message.mjs'
 
 it('names a timeout and both streams when stderr is empty', () => {
   expect(
