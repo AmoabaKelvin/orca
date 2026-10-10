@@ -27,6 +27,8 @@ on:
       - 'src/renderer/src/components/editor/rich-markdown-lowlight-cache.test.ts'
       - 'src/renderer/src/components/terminal-pane/agent-completion-coordinator-queued-inspection-disposal.test.ts'
       - 'src/renderer/src/lib/pane-manager/pane-terminal-output-scheduler-queue-retention.test.ts'
+      - 'src/main/claude-usage/scanner-incremental-append.test.ts'
+      - 'src/main/claude-usage/store-checkpoint-persistence.test.ts'
 
 permissions:
   contents: read

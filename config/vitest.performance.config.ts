@@ -21,7 +21,9 @@ const contracts = [
   'src/renderer/src/store/store-identity-churn-probe.test.ts',
   'config/scripts/app-store-performance-plugin.test.mjs',
   'config/scripts/quadratic-buffer-concat-plugin.test.mjs',
-  'config/scripts/sort-comparator-performance-plugin.test.mjs'
+  'config/scripts/sort-comparator-performance-plugin.test.mjs',
+  'src/main/claude-usage/scanner-incremental-append.test.ts',
+  'src/main/claude-usage/store-checkpoint-persistence.test.ts'
 ]
 
 for (const contract of contracts) {

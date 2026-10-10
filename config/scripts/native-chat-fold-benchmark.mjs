@@ -56,6 +56,10 @@ function measureOutputMemory(run, messages, check) {
   }
 }
 
+if (!global.gc) {
+  throw new Error('Memory measurements require node --expose-gc')
+}
+
 if (process.argv.includes('--memory-control')) {
   const samples = Array.from({ length: 5 }, () =>
     measureOutputMemory(
@@ -125,9 +129,6 @@ async function load(ref) {
   }
 }
 
-if (!global.gc) {
-  throw new Error('Memory measurements require node --expose-gc')
-}
 const loaded = Object.fromEntries(
   await Promise.all(Object.entries(refs).map(async ([arm, ref]) => [arm, await load(ref)]))
 )

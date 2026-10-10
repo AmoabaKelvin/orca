@@ -25,6 +25,8 @@ and inherit the full suite's setup and forced-GC support. This makes existing
 regression coverage easy to run and attribute; it does not create new workload
 coverage by itself.
 
+Incremental Claude scans and persisted Claude cache checkpoints are also included.
+
 `.github/workflows/performance-contracts.yml` runs daily and manually on Linux,
 macOS and Windows, and on PRs changing this tooling or any listed contract file.
 It uploads per-OS JSON test results, plus the source inventory once from Linux
