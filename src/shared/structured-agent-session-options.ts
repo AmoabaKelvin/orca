@@ -23,21 +23,28 @@ import {
   encodeStructuredAgentSessionOptionValue
 } from './structured-agent-session-option-codec'
 
+function withSessionModel(
+  seed: AgentSessionOptionCatalog,
+  models: CatalogModel[],
+  modelId: string | undefined
+): CatalogModel[] {
+  return !modelId || models.some((model) => model.id === modelId)
+    ? models
+    : [...models, { id: modelId, label: modelId, options: seed.unknownModelOptions ?? [] }]
+}
+
 export function structuredAgentSessionOptionCatalog(
   seed: AgentSessionOptionCatalog,
   result: AgentSessionOptionsResult
 ): AgentSessionOptionCatalog {
-  const models: CatalogModel[] = result.models.map((model) =>
+  const models = result.models.map((model) =>
     discoveredModel(model, result.fastModeSupport?.supported === true)
   )
-  if (result.current.model && !models.some((model) => model.id === result.current.model)) {
-    models.push({
-      id: result.current.model,
-      label: result.current.model,
-      options: seed.unknownModelOptions ?? []
-    })
+  return {
+    ...seed,
+    models: withSessionModel(seed, models, result.current.model),
+    defaultModelIsCliDefault: true
   }
-  return { ...seed, models, defaultModelIsCliDefault: true }
 }
 
 export type StructuredAgentSessionOptionState = {
@@ -135,6 +142,17 @@ export function applyStructuredAgentSessionOptions(
     },
     result.current.confirmed ?? []
   )
+  // Not a live answer: stay on the built-in list so the host's listing can still fill the picker.
+  if (result.modelsUnknown) {
+    const held = settleStructuredAgentSessionBuiltinCatalog(state)
+    return {
+      ...held,
+      catalog: held.catalog && {
+        ...held.catalog,
+        models: withSessionModel(seed, held.catalog.models, result.current.model)
+      }
+    }
+  }
   return {
     ...state,
     catalog: structuredAgentSessionOptionCatalog(seed, result),

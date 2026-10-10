@@ -22,7 +22,10 @@ import { structuredAgentSessionOptionModels } from './structured-agent-session-o
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 
-type RestingOptions = Pick<AgentSessionOptionsResult, 'models' | 'fastModeSupport' | 'current'>
+type RestingOptions = Pick<
+  AgentSessionOptionsResult,
+  'models' | 'modelsUnknown' | 'fastModeSupport' | 'current'
+>
 
 /** Initial explicit picks follow the same rules as a pick made while the chat is at rest. */
 export function structuredAgentSessionOptionOverridesRefusal(
@@ -81,7 +84,9 @@ async function readStructuredAgentSessionOptionsAtRest(
       ? models.find((entry) => entry.id === model)?.defaultEffort
       : undefined)
   return {
-    models: listed ? structuredAgentSessionOptionModels(listed, model, (row) => row) : [],
+    ...(listed
+      ? { models: structuredAgentSessionOptionModels(listed, model, (row) => row) }
+      : { models: [], modelsUnknown: true }),
     ...(catalog.origin !== 'unknown' && catalog.fastModeSupport
       ? { fastModeSupport: catalog.fastModeSupport }
       : {}),

@@ -8,6 +8,7 @@ import {
   settleStructuredAgentSessionBuiltinCatalog,
   structuredAgentSessionOptionSnapshot
 } from './structured-agent-session-options'
+import { structuredAgentSessionSeedCatalog } from './structured-agent-session-seed-catalog'
 
 const SEED = getAgentSessionOptionCatalog('codex')!
 
@@ -151,5 +152,35 @@ describe('structured option state from the host model catalog', () => {
     const snapshot = structuredAgentSessionOptionSnapshot(live)
     const model = snapshot.find((descriptor) => descriptor.id === 'model')!
     expect(model.kind.type === 'select' ? model.kind.currentValue : null).toBe('gpt-live')
+  })
+
+  it('lets the host listing fill the picker after a resting host answered with no list', () => {
+    const seed = structuredAgentSessionSeedCatalog('opencode')
+    const resting = applyStructuredAgentSessionOptions(
+      createStructuredAgentSessionOptionState('opencode', seed),
+      seed,
+      { models: [], modelsUnknown: true, current: {} }
+    )
+    expect(structuredAgentSessionOptionSnapshot(resting)).toMatchObject([
+      { id: 'model', settable: false }
+    ])
+    const listed = applyStructuredAgentSessionModelCatalog(resting, seed, HOST_CATALOG, LAUNCH)
+    expect(structuredAgentSessionOptionSnapshot(listed)[0]).toMatchObject({
+      id: 'model',
+      kind: { choices: [{ value: 'gpt-hosted' }] }
+    })
+  })
+
+  it('keeps the effort picker for a saved model the resting host cannot list', () => {
+    const resting = applyStructuredAgentSessionOptions(
+      createStructuredAgentSessionOptionState('codex', SEED),
+      SEED,
+      { models: [], modelsUnknown: true, current: { model: 'gpt-saved' } }
+    )
+    expect(resting.catalogSource).toBe('builtin')
+    expect(structuredAgentSessionOptionSnapshot(resting).map(({ id }) => id)).toEqual([
+      'model',
+      'effort'
+    ])
   })
 })

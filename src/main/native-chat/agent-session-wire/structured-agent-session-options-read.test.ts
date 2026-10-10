@@ -58,6 +58,7 @@ describe('options at rest', () => {
       const result = await readStructuredAgentSessionOptions(context, SESSION)
       expect(probe).toHaveBeenCalledTimes(provider === 'codex' ? 1 : 0)
       expect(result.models).toEqual([])
+      expect(result.modelsUnknown).toBe(true)
       expect(result.current).not.toHaveProperty('model')
       record.options = { model: 'later-model', effort: 'off' }
       expect((await readStructuredAgentSessionOptions(context, SESSION)).current).toEqual({

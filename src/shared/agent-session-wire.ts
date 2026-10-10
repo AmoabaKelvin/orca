@@ -492,6 +492,8 @@ export type AgentSessionOptionsResult = {
    *  client whose loaded page starts after the row that carries it. */
   contextUsage?: { current: AgentSessionContextUsage; contextFloor?: AgentJournalCursor }
   models: AgentSessionModelOption[]
+  /** The host holds no model list yet, so the empty `models` is not the agent's answer. */
+  modelsUnknown?: true
   /** Session/account/transport support. Absent means unknown, never unsupported. */
   fastModeSupport?: AgentSessionFastModeSupport
   current: {
