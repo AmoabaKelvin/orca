@@ -43,7 +43,10 @@ export type NativeChatRowTypography = {
   lineHeightPx: number
   charsPerLine: number
 }
-const DEFAULT_ROW_TYPOGRAPHY: NativeChatRowTypography = { lineHeightPx: 22, charsPerLine: 96 }
+export const DEFAULT_ROW_TYPOGRAPHY: NativeChatRowTypography = {
+  lineHeightPx: 22,
+  charsPerLine: 96
+}
 const PROSE_MIN_LINES = 1
 const USER_BUBBLE_CHROME_PX = 32
 const USER_FOLD_TOGGLE_PX = 24

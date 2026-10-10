@@ -626,7 +626,7 @@ body:has(> [data-slot='dialog-overlay'], > [data-slot='sheet-overlay']) {
   );
   /* Mixed toward the foreground so each clears text contrast on the canvas in either scheme. */
   --chat-focus-ring: color-mix(in srgb, var(--chat-source-foreground) 50%, var(--chat-canvas));
-  --chat-warning: color-mix(in srgb, var(--color-amber-600) 70%, var(--chat-source-foreground));
+  --chat-warning: color-mix(in srgb, var(--status-warning) 70%, var(--chat-source-foreground));
   --chat-diff-added: color-mix(
     in srgb,
     var(--git-decoration-added) 70%,
