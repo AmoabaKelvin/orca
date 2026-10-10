@@ -3,6 +3,7 @@ import { NativeChatSkillPill } from './NativeChatSkillPill'
 import { formatNativeChatFileReference } from '../../../../shared/agent-image-paste'
 import { ReactNodeViewRenderer, Node, type JSONContent } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
+export { promptTextContent } from './native-chat-prompt-document-text'
 
 export const NativeChatSkill = Node.create({
   name: 'nativeChatSkill',
@@ -43,16 +44,6 @@ export function fileReferenceContent(path: string): JSONContent {
   return {
     type: NativeChatFileReference.name,
     attrs: { token: formatNativeChatFileReference(path), path }
-  }
-}
-
-export function promptTextContent(text: string): JSONContent {
-  return {
-    type: 'doc',
-    content: text.split('\n').map((line) => ({
-      type: 'paragraph',
-      content: line ? [{ type: 'text', text: line }] : []
-    }))
   }
 }
 
