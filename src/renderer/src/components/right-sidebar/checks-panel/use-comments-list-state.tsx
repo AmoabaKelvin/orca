@@ -43,6 +43,8 @@ export function getPRCommentsListDisplayModeLabel(mode: PRCommentsListDisplayMod
 
 export type PRCommentsListProps = {
   comments: PRComment[]
+  /** Set when the last read failed; replaces the empty-list copy. */
+  commentsError?: string | null
   commentsLoading: boolean
   reviewKind?: 'PR' | 'MR'
   commentsDisabled?: boolean

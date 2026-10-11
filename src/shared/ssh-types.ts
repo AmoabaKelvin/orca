@@ -359,6 +359,15 @@ export type SshRemotePtyLease = {
 }
 
 /**
+ * A lease that still claims a running terminal: a client holds it (`attached`) or let it run
+ * (`detached`). `expired` lost its owner without an exit record and `terminated` ended; neither is
+ * a claim, though only `terminated` is evidence the terminal exited.
+ */
+export function isLiveSshPtyLease(lease: Pick<SshRemotePtyLease, 'state'>): boolean {
+  return lease.state === 'attached' || lease.state === 'detached'
+}
+
+/**
  * `expired` says only that the CLIENT lost its route, never that the remote shell died
  * (docs/reference/ssh-execution-boundary.md), so it covers two unrelated cases. Two writers can
  * prove the route is dead for good — a newer lease won the pane, or the relay handed the id to
@@ -410,9 +419,7 @@ export type PortForwardEntry = {
   advertisedProtocol?: 'http' | 'https'
 }
 
-/** A listening port detected on the remote host by the relay.
- *  Keep in sync with src/relay/port-scan-handler.ts — DetectedPort.
- *  The relay is deployed as a standalone bundle and cannot import from shared. */
+/** A listening port detected on a remote host. */
 export type DetectedPort = {
   port: number
   host: string

@@ -12,6 +12,7 @@ import { getCanonicalUserDataPath } from '../persistence'
 import { createProfileStateStoreForStartup } from '../persistence/profile-state/profile-state-startup-authority'
 import { initializeBrowserClientHostId } from '../browser/browser-client-host-id'
 import { scheduleSecretProtectionGapReport } from '../host/deferred-secret-protection-report'
+import { withholdUnreachableKeychainForServe } from '../host/serve-keychain-guard'
 import { initSshHostKeyStoreFile } from '../ssh/ssh-host-key-store'
 import { initOrcadHeldFenceTokenFile } from '../ssh/orcad-held-fence-tokens'
 import { neutralizeLegacyTerminalShimDir } from '../pty/legacy-terminal-shim-dir'
@@ -21,11 +22,6 @@ import {
   setDefaultWslDistroOverride
 } from '../git/runner'
 import { wslHookRelayManager } from '../agent-hooks/wsl-hook-relay-manager'
-import {
-  attachClaudeLivePtyPersistence,
-  onLiveClaudePtysDrained,
-  seedLiveClaudePtysFromPersistence
-} from '../claude-accounts/live-pty-gate'
 import { applyAppIcon } from '../app-icon'
 import {
   shouldSuppressDevEducation,
@@ -95,6 +91,12 @@ export async function initializeReadyFoundation(): Promise<void> {
   // existing post-ready rename, which lands after the Keychain name is already resolved.
   app.setName(identity.appName)
   updateGpuAccelerationAboutPanel()
+  if (state.isServeMode) {
+    // Why before the profile loads: loading can decrypt secrets, which is the call that hangs.
+    await withholdUnreachableKeychainForServe({
+      usesMockKeychain: app.commandLine.hasSwitch('use-mock-keychain')
+    })
+  }
   // Why: managed WSL launchers live outside the Windows app bundle, so keep their launcher/bridge contract synced across app updates.
   state.managedWslCliReconciliationStatus = 'pending'
   state.managedWslCliReconciliationReady = reconcileManagedWslCliRegistrations({
@@ -254,21 +256,6 @@ export async function initializeReadyFoundation(): Promise<void> {
       }
     }
   })
-  // Why: run before ClaudeRuntimeAuthService's constructor sync — a surviving daemon Claude CLI holds the single-use refresh token; early refresh rotates it out mid-session.
-  attachClaudeLivePtyPersistence(store)
-  // Why: while a live claude defers the managed OAuth refresh, usage shows
-  // "Waiting for Claude session"; refetch when the last live PTY exits so the
-  // error clears immediately instead of after the failure backoff.
-  onLiveClaudePtysDrained(() => {
-    void state.rateLimits?.refreshAfterClaudeLivePtysDrained()
-  })
-  const persistedClaudePtyIds = store.getClaudeLivePtySessionIds()
-  seedLiveClaudePtysFromPersistence(persistedClaudePtyIds)
-  if (persistedClaudePtyIds.length > 0) {
-    console.log(
-      `[claude-live-pty] Seeded ${persistedClaudePtyIds.length} persisted Claude session id(s) into the refresh gate`
-    )
-  }
   applyAppIcon(store.getSettings().appIcon)
   if (shouldSuppressDevEducation({ isDev: is.dev })) {
     suppressDevEducationForStore(store)
