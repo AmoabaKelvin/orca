@@ -40,24 +40,14 @@ function changeLabel(change: NativeChatTaskChange): string {
   }
 }
 
-function TaskRow({
-  task,
-  label,
-  isInDock = false
-}: {
-  task: NativeChatTask
-  label?: string
-  /** When in a docked card above the composer, use app colors instead of chat colors. */
-  isInDock?: boolean
-}): React.JSX.Element {
+function TaskRow({ task, label }: { task: NativeChatTask; label?: string }): React.JSX.Element {
   const Icon =
     task.status === 'completed' ? CircleCheck : task.status === 'in_progress' ? CircleDot : Circle
   return (
     <li
       className={cn(
         'flex items-start gap-1.5',
-        task.status === 'in_progress' &&
-          (isInDock ? 'font-medium text-foreground' : 'font-medium text-chat-foreground-strong')
+        task.status === 'in_progress' && 'font-medium text-chat-foreground-strong'
       )}
     >
       <Icon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
@@ -74,13 +64,7 @@ function TaskRow({
   )
 }
 
-function Checklist({
-  list,
-  isInDock = false
-}: {
-  list: TaskList
-  isInDock?: boolean
-}): React.JSX.Element {
+function Checklist({ list }: { list: TaskList }): React.JSX.Element {
   return list.tasks.length === 0 ? (
     <p className="text-xs">{translate('components.native-chat.taskList.empty', 'No tasks')}</p>
   ) : (
@@ -89,7 +73,7 @@ function Checklist({
       className="space-y-1 py-1"
     >
       {list.tasks.map((task, index) => (
-        <TaskRow key={`${task.content}:${index}`} task={task} isInDock={isInDock} />
+        <TaskRow key={`${task.content}:${index}`} task={task} />
       ))}
     </ul>
   )
@@ -127,7 +111,7 @@ export function NativeChatTaskList({
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="max-h-40 overflow-y-auto px-3 pb-2 text-xs text-muted-foreground scrollbar-sleek">
-            <Checklist list={list} isInDock={true} />
+            <Checklist list={list} />
             {list.explanation ? (
               <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">
                 {list.explanation}
