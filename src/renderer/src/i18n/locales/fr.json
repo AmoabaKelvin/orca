@@ -18049,7 +18049,6 @@
         "fastMode": "Mode rapide",
         "speed": "Vitesse",
         "thinking": "Réflexion",
-        "options": "Options",
         "sessionOptions": "Options de session",
         "chooseInAgentPicker": "Choisir dans le sélecteur d'agents…",
         "searchModels": "Rechercher des modèles…",
@@ -18085,7 +18084,12 @@
         "attachmentUnreadable": "Impossible de lire les fichiers supprimés.",
         "tooManyAttachments": "Joignez {{value0}} fichiers maximum à la fois.",
         "pasteFailed": "Échec du collage.",
-        "commandAttachmentsUnsupported": "Retirez les pièces jointes avant d'utiliser une commande de session de chat."
+        "commandAttachmentsUnsupported": "Retirez les pièces jointes avant d'utiliser une commande de session de chat.",
+        "optionValueShort": {
+          "minimal": "Min.",
+          "medium": "Moy.",
+          "xhigh": "Extra"
+        }
       },
       "tool": {
         "running": "En cours…",

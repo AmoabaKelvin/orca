@@ -17966,7 +17966,6 @@
         "fastMode": "빠른 모드",
         "speed": "속도",
         "thinking": "사고",
-        "options": "옵션",
         "sessionOptions": "세션 옵션",
         "chooseInAgentPicker": "에이전트 선택기에서 선택…",
         "searchModels": "모델 검색…",
@@ -18018,7 +18017,12 @@
         "attachmentUnreadable": "삭제된 파일을 읽을 수 없습니다.",
         "tooManyAttachments": "한 번에 {{value0}}개 이하의 파일을 첨부하세요.",
         "pasteFailed": "붙여넣기 실패.",
-        "commandAttachmentsUnsupported": "채팅 세션 명령을 사용하기 전에 첨부 파일을 제거하세요."
+        "commandAttachmentsUnsupported": "채팅 세션 명령을 사용하기 전에 첨부 파일을 제거하세요.",
+        "optionValueShort": {
+          "minimal": "최소",
+          "medium": "중간",
+          "xhigh": "매우 높음"
+        }
       },
       "tool": {
         "running": "실행 중…",

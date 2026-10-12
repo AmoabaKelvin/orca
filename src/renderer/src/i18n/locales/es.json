@@ -17935,7 +17935,6 @@
         "fastMode": "Modo rápido",
         "speed": "Velocidad",
         "thinking": "Razonamiento",
-        "options": "Opciones",
         "sessionOptions": "Opciones de sesión",
         "chooseInAgentPicker": "Elegir en el selector del agente…",
         "searchModels": "Buscar modelos…",
@@ -17983,7 +17982,12 @@
         "attachmentUnreadable": "No se pudieron leer los archivos soltados.",
         "tooManyAttachments": "Adjunta {{value0}} archivos o menos a la vez.",
         "pasteFailed": "Error al pegar.",
-        "commandAttachmentsUnsupported": "Quita los archivos adjuntos antes de usar un comando de la sesión de chat."
+        "commandAttachmentsUnsupported": "Quita los archivos adjuntos antes de usar un comando de la sesión de chat.",
+        "optionValueShort": {
+          "minimal": "Mín.",
+          "medium": "Medio",
+          "xhigh": "Muy alto"
+        }
       },
       "tool": {
         "running": "Ejecutando…",

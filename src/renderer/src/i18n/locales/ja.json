@@ -17966,7 +17966,6 @@
         "fastMode": "高速モード",
         "speed": "速度",
         "thinking": "思考",
-        "options": "オプション",
         "sessionOptions": "セッションオプション",
         "chooseInAgentPicker": "Agent の選択画面で選ぶ…",
         "searchModels": "モデルを検索…",
@@ -18018,7 +18017,12 @@
         "attachmentUnreadable": "ドロップされたファイルを読み取れませんでした。",
         "tooManyAttachments": "一度に添付できるファイルは {{value0}} 個以下です。",
         "pasteFailed": "貼り付けに失敗しました。",
-        "commandAttachmentsUnsupported": "チャットセッションのコマンドを使う前に添付ファイルを削除してください。"
+        "commandAttachmentsUnsupported": "チャットセッションのコマンドを使う前に添付ファイルを削除してください。",
+        "optionValueShort": {
+          "minimal": "最小",
+          "medium": "中",
+          "xhigh": "最高"
+        }
       },
       "tool": {
         "running": "実行中…",

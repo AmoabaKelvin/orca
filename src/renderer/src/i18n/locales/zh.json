@@ -17945,7 +17945,6 @@
         "fastMode": "快速模式",
         "speed": "速度",
         "thinking": "思考",
-        "options": "选项",
         "sessionOptions": "会话选项",
         "chooseInAgentPicker": "在智能体选择器中选择…",
         "searchModels": "搜索模型…",
@@ -17997,7 +17996,12 @@
         "attachmentUnreadable": "无法读取删除的文件。",
         "tooManyAttachments": "每次最多附加 {{value0}} 个文件。",
         "pasteFailed": "粘贴失败。",
-        "commandAttachmentsUnsupported": "使用聊天会话命令前，请先移除附件。"
+        "commandAttachmentsUnsupported": "使用聊天会话命令前，请先移除附件。",
+        "optionValueShort": {
+          "minimal": "最小",
+          "medium": "中",
+          "xhigh": "极高"
+        }
       },
       "tool": {
         "running": "正在运行…",
