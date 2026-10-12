@@ -329,6 +329,32 @@ describe('NativeChatSessionOptionPickers', () => {
     expect(modelOpen()).toBe('false')
   })
 
+  it('comes back closed after the session reported no model while it was open', async () => {
+    const pickers = (
+      snapshot: SessionOptionDescriptor[],
+      pickerRequest: NativeChatOptionPickerRequest | null
+    ): React.JSX.Element => (
+      <NativeChatSessionOptionPickers
+        surface={surface}
+        snapshot={snapshot}
+        isWorking={false}
+        pickerRequest={pickerRequest}
+      />
+    )
+    const modelOpen = (): string | null | undefined =>
+      screen
+        .getByRole('button', { name: 'Model Opus 4.8' })
+        .closest('[data-testid="dropdown-root"]')
+        ?.getAttribute('data-open')
+
+    const { rerender } = render(pickers([model(), effort], { id: 'model', onOpened: () => {} }))
+    await waitFor(() => expect(modelOpen()).toBe('true'))
+
+    rerender(pickers([], null))
+    rerender(pickers([model(), effort], null))
+    expect(modelOpen()).toBe('false')
+  })
+
   it('sends a picked model to the session surface', async () => {
     const setOption = vi.fn().mockResolvedValue({ snapshot: [] })
     render(

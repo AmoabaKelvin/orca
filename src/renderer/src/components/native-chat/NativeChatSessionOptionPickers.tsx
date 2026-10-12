@@ -247,6 +247,10 @@ function NativeChatSessionOptionPickersInner({
     setModelOpen(true)
   } else if (requestedOptions && !optionsOpen) {
     setOptionsOpen(true)
+  } else if (!shown && (modelOpen || optionsOpen)) {
+    // Pickers that went away come back closed.
+    setModelOpen(false)
+    setOptionsOpen(false)
   }
   useEffect(() => pickerRequest?.onOpened(), [pickerRequest])
   if (!surface || !model) {
