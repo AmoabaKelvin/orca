@@ -156,6 +156,26 @@ describe('nativeChatAppearanceStyle terminal interface', () => {
       '--chat-foreground-mix': '56%'
     })
   })
+
+  it('lets message text follow any terminal size while controls and spacing stay in 12-20', () => {
+    const at = (terminalFontSize: number) =>
+      nativeChatAppearanceStyle(
+        makeSettings({ terminalFontSize, nativeChatAppearance: { matchTerminalInterface: true } })
+      )
+    expect(at(24)).toMatchObject({
+      '--chat-font-size': '24px',
+      '--chat-code-font-size': '24px',
+      '--chat-ui-font-size': '20px',
+      '--chat-estimated-line-height': (22 * 24) / 14,
+      '--chat-estimated-spacing-scale': 20 / 14
+    })
+    expect(at(10)).toMatchObject({
+      '--chat-font-size': '10px',
+      '--chat-ui-font-size': '12px',
+      '--chat-estimated-spacing-scale': 12 / 14
+    })
+    expect(at(16)['--chat-ui-font-size']).toBe('16px')
+  })
 })
 
 describe('chat root appearance style', () => {

@@ -42,10 +42,13 @@ export type NativeChatRowChromeMetrics = {
 export type NativeChatRowTypography = {
   lineHeightPx: number
   charsPerLine: number
+  /** Spacing and controls relative to the default; bounded separately from message text. */
+  spacingScale: number
 }
 export const DEFAULT_ROW_TYPOGRAPHY: NativeChatRowTypography = {
   lineHeightPx: 22,
-  charsPerLine: 96
+  charsPerLine: 96,
+  spacingScale: 1
 }
 const PROSE_MIN_LINES = 1
 const USER_BUBBLE_CHROME_PX = 32
@@ -144,7 +147,7 @@ export function estimateNativeChatRowHeight(
   typography = DEFAULT_ROW_TYPOGRAPHY
 ): number {
   // Chat spacing and icons scale with the text size, so a row's fixed parts do too.
-  const scale = typography.lineHeightPx / DEFAULT_ROW_TYPOGRAPHY.lineHeightPx
+  const scale = typography.spacingScale
   let partCount = 0
   let height = 0
   if (chrome.hasReceipt) {

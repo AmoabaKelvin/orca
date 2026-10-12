@@ -105,8 +105,7 @@ export function useNativeChatTranscriptWindow({
     [pinned]
   )
 
-  const scale = typography.lineHeightPx / DEFAULT_ROW_TYPOGRAPHY.lineHeightPx
-  const scaledGapPx = NATIVE_CHAT_ROW_GAP_PX * scale
+  const scaledGapPx = NATIVE_CHAT_ROW_GAP_PX * typography.spacingScale
   const virtualizer = useVirtualizer({
     count: slots.length,
     getScrollElement: () => scrollRef.current,
