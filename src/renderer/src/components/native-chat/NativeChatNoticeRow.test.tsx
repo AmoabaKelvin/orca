@@ -136,7 +136,7 @@ describe('the row an Orca stop leaves', () => {
     expect(
       screen.getByText('Orca on QA SSH stopped while this response was in progress.').parentElement
         ?.parentElement
-    ).toHaveClass('text-muted-foreground')
+    ).toHaveClass('text-chat-foreground-faint')
     expect(screen.queryByText(/was closed/)).toBeNull()
   })
 
