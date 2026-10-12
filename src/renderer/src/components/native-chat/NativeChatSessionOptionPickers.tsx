@@ -171,7 +171,13 @@ function SessionOptionPopover(props: {
       return
     }
     focusReturn.notePick()
-    props.onSet(descriptor, value)
+    // Why: effort is the last thing set before typing, so its level closes the picker.
+    if (descriptor.id === 'effort') {
+      setOpen(false)
+    }
+    if (descriptor.kind.currentValue !== value) {
+      props.onSet(descriptor, value)
+    }
   }
   const act = (descriptor: SessionOptionDescriptor): void => {
     if (busy) {

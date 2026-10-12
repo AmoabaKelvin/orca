@@ -62,6 +62,23 @@ const effort: SessionOptionDescriptor = {
   settable: true
 }
 
+const speed: SessionOptionDescriptor = {
+  id: 'serviceTier',
+  label: 'Speed',
+  category: 'mode',
+  kind: {
+    type: 'select',
+    currentValue: 'default',
+    choices: [
+      { value: 'default', label: 'Standard' },
+      { value: 'fast', label: 'Fast' }
+    ]
+  },
+  valueSource: 'applied',
+  transport: 'catalog',
+  settable: true
+}
+
 const fast: SessionOptionDescriptor = {
   id: 'fastMode',
   label: 'Fast mode',
@@ -139,25 +156,40 @@ describe('session option picker focus', () => {
     expect(document.activeElement).toBe(screen.getByRole('combobox'))
   })
 
-  it('stays open across a model, an effort and a switch pick, then lands focus in the message box', async () => {
-    const messageBox = await renderComposer([model, effort, fast])
+  // Effort is the last thing set before typing; the model and the other options are not.
+  it('stays open across a model, a speed and a switch pick, and closes into the message box on an effort pick', async () => {
+    const messageBox = await renderComposer([model, effort, speed, fast])
     await openPicker()
 
     fireEvent.click(screen.getByRole('option', { name: /Sonnet 5/ }))
     await settle()
-    fireEvent.click(screen.getByRole('radio', { name: 'High' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Fast' }))
     await settle()
     fireEvent.click(screen.getByRole('switch', { name: 'Fast mode' }))
+    await settle()
+    expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true)
+
+    fireEvent.click(screen.getByRole('radio', { name: 'High' }))
     await settle()
 
     expect(surface.setOption.mock.calls).toEqual([
       ['model', 'sonnet'],
-      ['effort', 'high'],
-      ['fastMode', true]
+      ['serviceTier', 'fast'],
+      ['fastMode', true],
+      ['effort', 'high']
     ])
-    expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(messageBox)
+  })
 
-    await pressEscape()
+  it('closes on a press of the effort level already in use, without a write', async () => {
+    const messageBox = await renderComposer([model, effort])
+    await openPicker()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Low' }))
+    await settle()
+
+    expect(surface.setOption).not.toHaveBeenCalled()
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(document.activeElement).toBe(messageBox)
   })
@@ -215,7 +247,7 @@ describe('session option picker focus', () => {
   it('lands focus in the message box when the pill closes the picker after a pick', async () => {
     const messageBox = await renderComposer([model, effort])
     const trigger = await openPicker()
-    fireEvent.click(screen.getByRole('radio', { name: 'High' }))
+    fireEvent.click(screen.getByRole('option', { name: /Sonnet 5/ }))
     await settle()
 
     // What a press is to the browser: pointerdown, focus on the button, then the click.
@@ -233,7 +265,7 @@ describe('session option picker focus', () => {
     const elsewhere = document.createElement('input')
     document.body.append(elsewhere)
     await openPicker()
-    fireEvent.click(screen.getByRole('radio', { name: 'High' }))
+    fireEvent.click(screen.getByRole('option', { name: /Sonnet 5/ }))
     await settle()
 
     // Radix waits for the click that follows an outside pointerdown before it dismisses.

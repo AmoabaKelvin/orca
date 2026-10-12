@@ -124,6 +124,7 @@ function OptionRow(props: {
       </label>
     )
   }
+  const current = descriptor.kind.currentValue
   return (
     <div className="flex min-h-7 flex-wrap items-center justify-between gap-x-3 gap-y-1 pl-2">
       <span id={labelId} className="text-xs text-muted-foreground">
@@ -136,12 +137,13 @@ function OptionRow(props: {
         spacing={0.5}
         role="radiogroup"
         aria-labelledby={labelId}
-        value={gone ? '' : (descriptor.kind.currentValue ?? '')}
+        value={gone ? '' : (current ?? '')}
         disabled={off}
         onValueChange={(value) => {
-          // Radix clears the value when the pressed level is pressed again.
-          if (value) {
-            onSet(value)
+          // Radix reports a press on the level in use as an empty value; it is still a press.
+          const pressed = value || current
+          if (pressed) {
+            onSet(pressed)
           }
         }}
         // Why -ml-2: a wrapped group lines its first label up under the row's.
