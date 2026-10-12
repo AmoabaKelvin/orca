@@ -1,4 +1,5 @@
 import { createCodexProviderActivityReader } from '../native-chat/agent-session-wire/provider-frame-activity'
+import { recordCodexContextUsage } from './codex-context-usage'
 import { CODEX_TOKEN_USAGE_METHOD } from './codex-subagent-activity'
 import {
   CODEX_JOURNAL_ADMITTED,
@@ -234,6 +235,17 @@ export function createCodexJournalTranslator(
         return publishActivity(event, goal)
       }
       if (event.method === CODEX_TOKEN_USAGE_METHOD) {
+        // The session's own thread fills the window its chat shows; a child's frame measures its own.
+        if (event.threadId === (deps.primaryThreadId?.() ?? null)) {
+          recordCodexContextUsage({
+            sink: deps.sink,
+            activeTurns,
+            attributionFor,
+            threadId: event.threadId,
+            params: event.params,
+            capturedAt: deps.now?.() ?? Date.now()
+          })
+        }
         // Classified `status-chrome`, so the generic-frame path swallows it
         // before the journal. The roster consumes it as a typed notification.
         const admission = subagents.handleTokenUsage(event.params)
