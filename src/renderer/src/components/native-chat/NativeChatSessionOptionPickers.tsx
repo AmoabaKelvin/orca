@@ -1,4 +1,4 @@
-import { memo, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -236,13 +236,22 @@ function NativeChatSessionOptionPickersInner({
   const optionsMenuFocus = useNativeChatPickerFocusReturn(focusComposer)
   const model = snapshot.find((descriptor) => descriptor.category === 'model')
   const options = sortNativeChatSessionOptions(snapshot)
+  const [modelOpen, setModelOpen] = useState(false)
+  const [optionsOpen, setOptionsOpen] = useState(false)
+  const shown = surface !== null && model !== undefined
+  const requestedModel = shown && pickerRequest?.id === model.id
+  const requestedOptions =
+    shown && options.some((descriptor) => descriptor.id === pickerRequest?.id)
+  // A request opens its picker once: `onOpened` drops it.
+  if (requestedModel && !modelOpen) {
+    setModelOpen(true)
+  } else if (requestedOptions && !optionsOpen) {
+    setOptionsOpen(true)
+  }
+  useEffect(() => pickerRequest?.onOpened(), [pickerRequest])
   if (!surface || !model) {
     return null
   }
-  const requestedModelSequence = pickerRequest?.id === model.id ? pickerRequest.sequence : null
-  const requestedOptionsSequence = options.some((descriptor) => descriptor.id === pickerRequest?.id)
-    ? (pickerRequest?.sequence ?? null)
-    : null
 
   const setOption = (descriptor: SessionOptionDescriptor, value: SessionOptionValue): void => {
     runSurfaceCall(descriptor.id, setPendingId, () => surface.setOption(descriptor.id, value))
@@ -252,9 +261,6 @@ function NativeChatSessionOptionPickersInner({
   }
 
   const modelReason = nativeChatSessionOptionDisabledReason(model.disabledReason)
-  const modelPickerKey = `model:${requestedModelSequence ?? 'idle'}`
-  // Read only when a request remounts the picker.
-  const modelPickerDefaultOpen = requestedModelSequence !== null
   const modelTrigger = {
     label: nativeChatModelPillLabel(model),
     tooltipLabel: translate('components.native-chat.composer.model', 'Model'),
@@ -272,8 +278,8 @@ function NativeChatSessionOptionPickersInner({
     <div className="flex min-w-0 items-center gap-0.5 text-chat-foreground-faint">
       {model.kind.type === 'select' && !model.action ? (
         <NativeChatModelCombobox
-          key={modelPickerKey}
-          defaultOpen={modelPickerDefaultOpen}
+          open={modelOpen}
+          onOpenChange={setModelOpen}
           choices={model.kind.choices}
           currentValue={model.kind.currentValue}
           readOnly={!model.settable || pendingId !== null}
@@ -285,7 +291,7 @@ function NativeChatSessionOptionPickersInner({
           )}
         />
       ) : (
-        <DropdownMenu key={modelPickerKey} defaultOpen={modelPickerDefaultOpen}>
+        <DropdownMenu open={modelOpen} onOpenChange={setModelOpen}>
           <PickerTrigger Trigger={DropdownMenuTrigger} {...modelTrigger} />
           <DropdownMenuContent
             align="start"
@@ -308,10 +314,7 @@ function NativeChatSessionOptionPickersInner({
         </DropdownMenu>
       )}
       {options.length > 0 ? (
-        <DropdownMenu
-          key={`options:${requestedOptionsSequence ?? 'idle'}`}
-          defaultOpen={requestedOptionsSequence !== null}
-        >
+        <DropdownMenu open={optionsOpen} onOpenChange={setOptionsOpen}>
           <PickerTrigger
             Trigger={DropdownMenuTrigger}
             label={nativeChatOptionsPillLabel(options)}

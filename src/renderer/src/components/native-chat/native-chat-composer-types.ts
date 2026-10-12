@@ -25,9 +25,11 @@ export type NativeChatComposerErrorDetail = {
   refusedWhile?: StructuredAgentSessionCommandRefusalCause
 }
 
+/** One opening of a picker. */
 export type NativeChatOptionPickerRequest = {
   id: string
-  sequence: number
+  /** Drops the request: one left standing reopens the picker each time the composer remounts. */
+  onOpened: () => void
 }
 
 /** A queue the host holds, with cards waiting. */

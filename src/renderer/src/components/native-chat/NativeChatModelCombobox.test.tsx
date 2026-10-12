@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 
+import { useState } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -21,16 +22,17 @@ const settle = (): Promise<void> =>
 type ComboboxOptions = { defaultOpen?: boolean; readOnly?: boolean; readOnlyReason?: string | null }
 type OnSelect = ReturnType<typeof vi.fn<(value: string) => void>>
 
-function renderCombobox(props: ComboboxOptions = {}): OnSelect {
-  const onSelect = vi.fn<(value: string) => void>()
-  render(
+function Combobox(props: ComboboxOptions & { onSelect: OnSelect }): React.JSX.Element {
+  const [open, setOpen] = useState(props.defaultOpen ?? true)
+  return (
     <NativeChatModelCombobox
       choices={CHOICES}
       currentValue="opus"
-      defaultOpen={props.defaultOpen ?? true}
+      open={open}
+      onOpenChange={setOpen}
       readOnly={props.readOnly ?? false}
       readOnlyReason={props.readOnlyReason ?? null}
-      onSelect={onSelect}
+      onSelect={props.onSelect}
       renderTrigger={(onKeyDown) => (
         <PopoverTrigger asChild>
           <Button onKeyDown={onKeyDown}>Model</Button>
@@ -38,6 +40,11 @@ function renderCombobox(props: ComboboxOptions = {}): OnSelect {
       )}
     />
   )
+}
+
+function renderCombobox(props: ComboboxOptions = {}): OnSelect {
+  const onSelect = vi.fn<(value: string) => void>()
+  render(<Combobox {...props} onSelect={onSelect} />)
   return onSelect
 }
 

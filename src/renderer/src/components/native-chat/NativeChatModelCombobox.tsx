@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Check } from 'lucide-react'
 import {
   Command,
@@ -17,8 +16,8 @@ import { NativeChatSessionOptionChoiceBody } from './NativeChatSessionOptionChoi
 type NativeChatModelComboboxProps = {
   choices: readonly SessionOptionSelectChoice[]
   currentValue: string | undefined
-  /** Read on mount only: the owner remounts to open on request. */
-  defaultOpen: boolean
+  open: boolean
+  onOpenChange: (open: boolean) => void
   /** Choices stay listed and searchable, but cannot be picked. */
   readOnly: boolean
   readOnlyReason: string | null
@@ -38,14 +37,14 @@ function modelChoiceFilter(value: string, search: string, keywords?: string[]): 
 export function NativeChatModelCombobox({
   choices,
   currentValue,
-  defaultOpen,
+  open,
+  onOpenChange: setOpen,
   readOnly,
   readOnlyReason,
   onSelect,
   focusComposer,
   renderTrigger
 }: NativeChatModelComboboxProps): React.JSX.Element {
-  const [open, setOpen] = useState(defaultOpen)
   const focusReturn = useNativeChatPickerFocusReturn(focusComposer)
   const searchLabel = translate('components.native-chat.composer.searchModels', 'Search models…')
   return (

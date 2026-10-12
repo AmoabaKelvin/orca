@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { useState } from 'react'
 import type * as ReactModule from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OMP_SESSION_OPTION_CATALOG } from '../../../../shared/agent-session-option-catalog-omp'
@@ -42,14 +43,8 @@ vi.mock('@/components/ui/tooltip', () => ({
 vi.mock('@/components/ui/dropdown-menu', () => {
   const React = require('react') as typeof ReactModule
   return {
-    DropdownMenu: ({
-      children,
-      defaultOpen
-    }: {
-      children: React.ReactNode
-      defaultOpen?: boolean
-    }) => (
-      <div data-testid="dropdown-root" data-open={defaultOpen ? 'true' : 'false'}>
+    DropdownMenu: ({ children, open }: { children: React.ReactNode; open?: boolean }) => (
+      <div data-testid="dropdown-root" data-open={open ? 'true' : 'false'}>
         {children}
       </div>
     ),
@@ -194,6 +189,7 @@ vi.mock('@/components/ui/popover', () => ({
 }))
 
 import { NativeChatSessionOptionPickers } from './NativeChatSessionOptionPickers'
+import type { NativeChatOptionPickerRequest } from './native-chat-composer-types'
 
 const surface = {
   getSnapshot: vi.fn(() => []),
@@ -273,7 +269,7 @@ describe('NativeChatSessionOptionPickers', () => {
         surface={surface}
         snapshot={[model(), effort]}
         isWorking={false}
-        pickerRequest={{ id: 'model', sequence: 1 }}
+        pickerRequest={{ id: 'model', onOpened: () => {} }}
       />
     )
     await waitFor(() =>
@@ -290,7 +286,7 @@ describe('NativeChatSessionOptionPickers', () => {
         surface={surface}
         snapshot={[model(), effort]}
         isWorking={false}
-        pickerRequest={{ id: 'effort', sequence: 2 }}
+        pickerRequest={{ id: 'effort', onOpened: () => {} }}
       />
     )
     await waitFor(() =>
@@ -301,6 +297,36 @@ describe('NativeChatSessionOptionPickers', () => {
           ?.getAttribute('data-open')
       ).toBe('true')
     )
+  })
+
+  it('opens once for a request, not again when the composer comes back', async () => {
+    // Holds the request across the picker's unmount, as the session does across a prompt card.
+    function Session(props: { composerShown: boolean }): React.JSX.Element | null {
+      const [request, setRequest] = useState<NativeChatOptionPickerRequest | null>({
+        id: 'model',
+        onOpened: () => setRequest(null)
+      })
+      return props.composerShown ? (
+        <NativeChatSessionOptionPickers
+          surface={surface}
+          snapshot={[model(), effort]}
+          isWorking={false}
+          pickerRequest={request}
+        />
+      ) : null
+    }
+    const modelOpen = (): string | null | undefined =>
+      screen
+        .getByRole('button', { name: 'Model Opus 4.8' })
+        .closest('[data-testid="dropdown-root"]')
+        ?.getAttribute('data-open')
+
+    const { rerender } = render(<Session composerShown />)
+    await waitFor(() => expect(modelOpen()).toBe('true'))
+
+    rerender(<Session composerShown={false} />)
+    rerender(<Session composerShown />)
+    expect(modelOpen()).toBe('false')
   })
 
   it('sends a picked model to the session surface', async () => {
