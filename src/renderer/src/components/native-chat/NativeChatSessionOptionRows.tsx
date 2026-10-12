@@ -167,7 +167,10 @@ export function NativeChatSessionOptionRows({
 }: NativeChatSessionOptionRowsProps): React.JSX.Element {
   const shown = useRef(options)
   const rows = withEarlierRows(shown.current, options)
-  shown.current = rows
+  // Why after commit: a render React throws away must not leave a row behind.
+  useLayoutEffect(() => {
+    shown.current = rows
+  })
   const frame = useRef<HTMLDivElement>(null)
   const content = useRef<HTMLDivElement>(null)
   // Why measured: a row arriving with the next model would otherwise jump the popover; the list
