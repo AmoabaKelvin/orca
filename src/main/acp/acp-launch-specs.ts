@@ -192,23 +192,38 @@ const OPENCODE_2X_LINE = { major: 2, floor: '2.0.14' } as const
 
 // `opencode acp` on 1.x serves in-process; on 2.x it starts a private `opencode serve --stdio` child
 // with this environment and ends it with stdin, so both lines run the chat's own account.
-const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
+function openCodeLaunchSpec(
+  row: Pick<
+    AcpLaunchSpec,
+    'agent' | 'command' | 'supportsVersion' | 'modelDiscovery' | 'transcriptImport'
+  >
+): AcpLaunchSpec {
+  return {
+    ...row,
+    // OpenCode has no bypass flag: full access answers each permission request yes.
+    args: () => ['acp'],
+    // Applied last: the client name ACP sessions report, and no question tool, which ACP cannot
+    // answer (it would wait forever).
+    env: { OPENCODE_CLIENT: 'acp', OPENCODE_ENABLE_QUESTION_TOOL: 'false' },
+    scrubEnvironment: scrubOpenCodeAcpEnvironment,
+    dialect: OPENCODE_ACP_DIALECT,
+    loginCommand: agentSessionSignInFor(row.agent)?.loginCommand ?? [],
+    account: openCodeAcpAccountBinding(),
+    installDirectories: ({ homePath }) => [join(homePath, '.opencode', 'bin')],
+    imagePrompts: true,
+    readStoredUserMessages: openCodeStoredUserMessagesReader(),
+    visualsSkill: loadOpenCodeVisualsSkill,
+    compaction: true,
+    sessionHistory: OPENCODE_SESSION_HISTORY
+  }
+}
+
+const OPENCODE_LAUNCH_SPEC = openCodeLaunchSpec({
   agent: 'opencode',
   command: 'opencode',
-  // OpenCode has no bypass flag: full access answers each permission request yes.
-  args: () => ['acp'],
-  // Applied last: the client name ACP sessions report, and no question tool, which ACP cannot
-  // answer (it would wait forever).
-  env: { OPENCODE_CLIENT: 'acp', OPENCODE_ENABLE_QUESTION_TOOL: 'false' },
-  scrubEnvironment: scrubOpenCodeAcpEnvironment,
-  dialect: OPENCODE_ACP_DIALECT,
-  loginCommand: agentSessionSignInFor('opencode')?.loginCommand ?? [],
-  account: openCodeAcpAccountBinding(),
-  installDirectories: ({ homePath }) => [join(homePath, '.opencode', 'bin')],
+  transcriptImport: OPENCODE_TRANSCRIPT_IMPORT,
   supportsVersion: (version) =>
     [OPENCODE_1X_LINE, OPENCODE_2X_LINE].some((line) => isStableCliVersionOnLine(version, line)),
-  imagePrompts: true,
-  readStoredUserMessages: openCodeStoredUserMessagesReader(),
   // Its `initialize` names no models; 1.x lists them with a command, 2.x in a session it deletes.
   modelDiscovery: {
     kind: 'command',
@@ -219,12 +234,19 @@ const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
     // 2.x rejects `--verbose`, and its own listings omit providers that report after startup.
     supportsVersion: (version) => isStableCliVersionOnLine(version, OPENCODE_1X_LINE),
     otherReleases: { kind: 'session', listingNamesConfiguredModel: false }
-  },
-  visualsSkill: loadOpenCodeVisualsSkill,
-  compaction: true,
-  transcriptImport: OPENCODE_TRANSCRIPT_IMPORT,
-  sessionHistory: OPENCODE_SESSION_HISTORY
-}
+  }
+})
+
+// Since 2.0.0 `opencode2` is an alias OpenCode's installer writes beside `opencode`, and the only
+// name for 2.x where `opencode` is still 1.x. Its chats share OpenCode's account and history rows.
+const OPENCODE2_LAUNCH_SPEC = openCodeLaunchSpec({
+  agent: 'opencode2',
+  command: 'opencode2',
+  // A terminal conversation of either line resumes in an OpenCode chat.
+  transcriptImport: null,
+  supportsVersion: (version) => isStableCliVersionOnLine(version, OPENCODE_2X_LINE),
+  modelDiscovery: { kind: 'session', listingNamesConfiguredModel: false }
+})
 
 // OMP serves ACP through `omp acp`; its environment reaches it as the user set it.
 const OMP_LAUNCH_SPEC: AcpLaunchSpec = {
@@ -302,6 +324,7 @@ const ANTIGRAVITY_LAUNCH_SPEC: AcpLaunchSpec = {
 export const ACP_LAUNCH_SPECS: readonly AcpLaunchSpec[] = [
   GROK_LAUNCH_SPEC,
   OPENCODE_LAUNCH_SPEC,
+  OPENCODE2_LAUNCH_SPEC,
   OMP_LAUNCH_SPEC,
   ANTIGRAVITY_LAUNCH_SPEC
 ]
