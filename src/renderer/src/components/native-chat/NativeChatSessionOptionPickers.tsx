@@ -1,4 +1,4 @@
-import { memo, useRef, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -80,15 +80,18 @@ function PickerTrigger(props: {
   /** The options' values, shown after the model; empty when there are none to show. */
   optionsLabel: string
   accessibleName: string
-  tooltipLabel: string
   disabled: boolean
   disabledReason: string | null
   dispatched: boolean
   triggerRef: React.Ref<HTMLButtonElement>
   onKeyDown: React.KeyboardEventHandler<HTMLButtonElement>
 }): React.JSX.Element {
+  const [tooltipOpen, setTooltipOpen] = useState(false)
+  // Why: the pill already shows its values, so it only gets a tooltip for what it cannot show.
+  // Held closed rather than unmounted: a pick can flip this, and the open picker hangs off the pill.
+  const informative = props.disabledReason !== null || props.dispatched
   return (
-    <Tooltip>
+    <Tooltip open={informative && tooltipOpen} onOpenChange={setTooltipOpen}>
       <TooltipTrigger asChild>
         <PopoverTrigger asChild disabled={props.disabled}>
           <Button
@@ -108,7 +111,7 @@ function PickerTrigger(props: {
       </TooltipTrigger>
       <TooltipContent side="top" sideOffset={4}>
         <div className="space-y-0.5">
-          <div>{props.disabledReason ?? props.tooltipLabel}</div>
+          {props.disabledReason ? <div>{props.disabledReason}</div> : null}
           {props.dispatched ? (
             <div>
               {translate(
@@ -129,18 +132,24 @@ function SessionOptionPopover(props: {
   isWorking: boolean
   /** A write is in flight: nothing else is taken, and the write controls say so. */
   busy: boolean
-  /** Read on mount only: the owner remounts to open on request. */
-  defaultOpen: boolean
-  /** Read on mount only: the option a slash command asked for, focused in place of the search. */
-  requestedOptionId: string | null
+  request: NativeChatOptionPickerRequest | null
   onSet: (descriptor: SessionOptionDescriptor, value: SessionOptionValue) => void
   onAction: (descriptor: SessionOptionDescriptor) => void
   focusComposer?: () => void
 }): React.JSX.Element {
   const { model, options, busy } = props
-  const [open, setOpen] = useState(props.defaultOpen)
-  // Spent by the opening it was asked for; a later one focuses the search as usual.
-  const requestedOptionId = useRef(props.requestedOptionId)
+  // Why here: this unmounts with the pill, so a picker that went away comes back closed.
+  const [open, setOpen] = useState(false)
+  const [seenRequest, setSeenRequest] = useState<NativeChatOptionPickerRequest | null>(null)
+  // The option a slash command asked for, focused in place of the search by that opening only.
+  const [requestedOptionId, setRequestedOptionId] = useState<string | null>(null)
+  if (props.request !== seenRequest) {
+    setSeenRequest(props.request)
+    if (props.request) {
+      setOpen(true)
+      setRequestedOptionId(props.request.id === model.id ? null : props.request.id)
+    }
+  }
   const focusReturn = useNativeChatPickerFocusReturn(props.focusComposer)
   const modelTitle = translate('components.native-chat.composer.model', 'Model')
   const modelLabel = nativeChatModelPillLabel(model)
@@ -189,7 +198,6 @@ function SessionOptionPopover(props: {
             ? `${modelName}, ${pillAccessibleName(optionsTitle, optionsLabel)}`
             : modelName
         }
-        tooltipLabel={options.length > 0 ? `${modelTitle} · ${optionsTitle}` : modelTitle}
         disabled={props.isWorking}
         disabledReason={modelReason ?? optionsReason}
         dispatched={
@@ -212,8 +220,8 @@ function SessionOptionPopover(props: {
         className="flex w-96 max-w-(--radix-popover-content-available-width) flex-col"
         onOpenAutoFocus={(event) => {
           const content = event.currentTarget
-          const optionId = requestedOptionId.current
-          requestedOptionId.current = null
+          const optionId = requestedOptionId
+          setRequestedOptionId(null)
           if (!optionId || !(content instanceof HTMLElement)) {
             return
           }
@@ -282,6 +290,9 @@ function NativeChatSessionOptionPickersInner({
   focusComposer
 }: NativeChatSessionOptionPickersProps): React.JSX.Element | null {
   const [pending, setPending] = useState<PendingPick | null>(null)
+  // Why: the session holds a request across composer remounts; one left standing reopens the
+  // picker each time a prompt card gives the composer back. Dropped even when nothing could open.
+  useEffect(() => pickerRequest?.consume(), [pickerRequest])
   const reportedModel = snapshot.find((descriptor) => descriptor.category === 'model')
   if (!surface || !reportedModel) {
     return null
@@ -291,25 +302,23 @@ function NativeChatSessionOptionPickersInner({
     withPendingValue(descriptor, pending)
   )
 
-  const run = (pick: PendingPick, call: () => Promise<unknown>): void => {
-    runSessionOptionSurfaceCall(pick, setPending, call)
-  }
-
   return (
     <div className="flex min-w-0 items-center text-chat-foreground-faint">
       <SessionOptionPopover
-        key={pickerRequest?.sequence ?? 'idle'}
         model={model}
         options={options}
         isWorking={isWorking}
         busy={pending !== null}
-        defaultOpen={Boolean(pickerRequest)}
-        requestedOptionId={pickerRequest && pickerRequest.id !== model.id ? pickerRequest.id : null}
+        request={pickerRequest ?? null}
         onSet={(descriptor, value) =>
-          run({ id: descriptor.id, value }, () => surface.setOption(descriptor.id, value))
+          runSessionOptionSurfaceCall({ id: descriptor.id, value }, setPending, () =>
+            surface.setOption(descriptor.id, value)
+          )
         }
         onAction={(descriptor) =>
-          run({ id: descriptor.id }, () => surface.invokeAction(descriptor.id))
+          runSessionOptionSurfaceCall({ id: descriptor.id }, setPending, () =>
+            surface.invokeAction(descriptor.id)
+          )
         }
         focusComposer={focusComposer}
       />

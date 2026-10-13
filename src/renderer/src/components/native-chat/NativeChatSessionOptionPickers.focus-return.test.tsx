@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/i18n/i18n', () => ({
@@ -111,6 +112,30 @@ async function renderComposer(
   return messageBox
 }
 
+/** A slash command's request held by the session, which drops it when the picker consumes it. */
+function Session(props: {
+  requestId: string
+  composerShown?: boolean
+  surfaceShown?: boolean
+}): React.JSX.Element {
+  const [request, setRequest] = useState<NativeChatOptionPickerRequest | null>({
+    id: props.requestId,
+    consume: () => setRequest(null)
+  })
+  return (
+    <TooltipProvider>
+      {props.composerShown === false ? null : (
+        <NativeChatSessionOptionPickers
+          surface={props.surfaceShown === false ? null : surface}
+          snapshot={[model, effort]}
+          isWorking={false}
+          pickerRequest={request}
+        />
+      )}
+    </TooltipProvider>
+  )
+}
+
 const pill = (): HTMLElement => screen.getByRole('button', { name: /^Model / })
 
 const openPicker = async (): Promise<HTMLElement> => {
@@ -147,7 +172,7 @@ describe('session option picker focus', () => {
   })
 
   it('opens on the option a slash command asked for, once', async () => {
-    await renderComposer([model, effort], { id: 'effort', sequence: 1 })
+    await renderComposer([model, effort], { id: 'effort', consume: () => {} })
     expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Low' }))
 
     // The request is spent: opening by hand afterwards focuses the search as usual.
@@ -276,5 +301,48 @@ describe('session option picker focus', () => {
 
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(document.activeElement).toBe(elsewhere)
+  })
+
+  it('opens once for a request, and comes back closed after the pill went away', async () => {
+    const { rerender } = render(<Session requestId="model" />)
+    await settle()
+    expect(screen.queryByRole('dialog')).not.toBeNull()
+
+    rerender(<Session requestId="model" surfaceShown={false} />)
+    await settle()
+    expect(screen.queryByRole('button', { name: /^Model / })).toBeNull()
+    rerender(<Session requestId="model" />)
+    await settle()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('focuses the effort for /effort once, not again after a prompt card', async () => {
+    const { rerender } = render(<Session requestId="effort" />)
+    await settle()
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Low' }))
+
+    rerender(<Session requestId="effort" composerShown={false} />)
+    await settle()
+    rerender(<Session requestId="effort" />)
+    await settle()
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    await openPicker()
+    expect(document.activeElement).toBe(screen.getByRole('combobox'))
+  })
+
+  // The pill already shows its values; a tooltip there only covers the picker it opens.
+  it('shows a tooltip on the pill only for what the pill cannot show', async () => {
+    await renderComposer([model, effort])
+    fireEvent.pointerMove(pill(), { pointerType: 'mouse' })
+    pill().focus()
+    await settle()
+    expect(screen.queryByRole('tooltip')).toBeNull()
+
+    cleanup()
+    await renderComposer([{ ...model, settable: false, disabledReason: 'set-when-session-starts' }])
+    pill().focus()
+    await settle()
+    expect(screen.getByRole('tooltip').textContent).toBe('Set when the session starts.')
   })
 })

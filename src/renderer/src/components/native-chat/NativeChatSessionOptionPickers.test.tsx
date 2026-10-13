@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OMP_SESSION_OPTION_CATALOG } from '../../../../shared/agent-session-option-catalog-omp'
 import {
@@ -72,6 +73,7 @@ vi.mock('@/components/ui/popover', () => ({
 }))
 
 import { NativeChatSessionOptionPickers } from './NativeChatSessionOptionPickers'
+import type { NativeChatOptionPickerRequest } from './native-chat-composer-types'
 
 const surface = {
   getSnapshot: vi.fn(() => []),
@@ -164,7 +166,7 @@ describe('NativeChatSessionOptionPickers', () => {
           surface={surface}
           snapshot={[model(), effort]}
           isWorking={false}
-          pickerRequest={{ id, sequence: 1 }}
+          pickerRequest={{ id, consume: () => {} }}
         />
       )
       await waitFor(() => expect(isOpen(pill('Model Opus 4.8, Effort High'))).toBe(true))
@@ -172,7 +174,7 @@ describe('NativeChatSessionOptionPickers', () => {
   )
 
   it('keeps the picker a slash command opened when the next model lacks that option', () => {
-    const request = { id: 'effort', sequence: 1 }
+    const request = { id: 'effort', consume: () => {} }
     const { rerender } = render(
       <NativeChatSessionOptionPickers
         surface={surface}
@@ -194,6 +196,38 @@ describe('NativeChatSessionOptionPickers', () => {
     // Still the same visit: open, with the effort row it opened on kept in place.
     expect(isOpen(pill('Model Opus 4.8'))).toBe(true)
     expect(effortLevels().every((level) => level.hasAttribute('disabled'))).toBe(true)
+  })
+
+  // Why: the session holds the request across the pill's unmount; a request left standing
+  // reopened the picker each time a prompt card handed the composer back.
+  it.each<[string, { composerShown?: boolean; snapshot?: SessionOptionDescriptor[] }]>([
+    ['the composer comes back after a prompt card', { composerShown: false }],
+    ['the session reports its model again', { snapshot: [] }]
+  ])('opens once for a request, not again when %s', async (_case, gone) => {
+    function Session(props: {
+      composerShown?: boolean
+      snapshot?: SessionOptionDescriptor[]
+    }): React.JSX.Element | null {
+      const [request, setRequest] = useState<NativeChatOptionPickerRequest | null>({
+        id: 'model',
+        consume: () => setRequest(null)
+      })
+      return props.composerShown === false ? null : (
+        <NativeChatSessionOptionPickers
+          surface={surface}
+          snapshot={props.snapshot ?? [model(), effort]}
+          isWorking={false}
+          pickerRequest={request}
+        />
+      )
+    }
+    const { rerender } = render(<Session />)
+    await waitFor(() => expect(isOpen(pill('Model Opus 4.8, Effort High'))).toBe(true))
+
+    rerender(<Session {...gone} />)
+    expect(screen.queryByRole('button', { name: /^Model/ })).toBeNull()
+    rerender(<Session />)
+    expect(isOpen(pill('Model Opus 4.8, Effort High'))).toBe(false)
   })
 
   it('sends a picked model to the session surface', async () => {
@@ -303,7 +337,6 @@ describe('NativeChatSessionOptionPickers', () => {
         isWorking={false}
       />
     )
-    expect(screen.getByText('Model')).not.toBeNull()
     expect(screen.getAllByText('Sent to the agent — not confirmed').length).toBeGreaterThan(0)
   })
 
@@ -315,7 +348,6 @@ describe('NativeChatSessionOptionPickers', () => {
         isWorking={false}
       />
     )
-    expect(screen.getByText('Model')).not.toBeNull()
     expect(screen.queryByText(/not confirmed/)).toBeNull()
   })
 
@@ -329,7 +361,6 @@ describe('NativeChatSessionOptionPickers', () => {
           isWorking={false}
         />
       )
-      expect(screen.getByText('Model')).not.toBeNull()
       expect(screen.queryByText(/not confirmed/)).toBeNull()
     }
   )
@@ -666,7 +697,7 @@ describe('NativeChatSessionOptionPickers', () => {
           { ...fast, kind: { type: 'boolean', currentValue: false } }
         ]}
         isWorking={false}
-        pickerRequest={{ id: 'model', sequence: 1 }}
+        pickerRequest={{ id: 'model', consume: () => {} }}
       />
     )
     const trigger = pill('Model')
