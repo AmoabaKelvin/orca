@@ -36,11 +36,8 @@ const NATIVE_CHAT_AGENT_PROFILES: Partial<Record<AgentType, NativeChatAgentProfi
     expandsSlashCommandsFromText: true
   },
   opencode: { skillPrefix: '/', skillSourceOwner: 'opencode', expandsSlashCommandsFromText: true },
-  opencode2: {
-    skillPrefix: '/',
-    skillSourceOwner: 'opencode2',
-    expandsSlashCommandsFromText: true
-  },
+  // OpenCode 2.x reads OpenCode's skill folders.
+  opencode2: { skillPrefix: '/', skillSourceOwner: 'opencode', expandsSlashCommandsFromText: true },
   grok: {
     skillPrefix: '/',
     skillSourceOwner: 'grok'

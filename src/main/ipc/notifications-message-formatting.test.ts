@@ -181,6 +181,37 @@ describe('registerNotificationHandlers', () => {
     )
   })
 
+  it('names OpenCode 2 in the title', async () => {
+    registerNotificationHandlers({
+      getSettings: () => ({
+        notifications: {
+          enabled: true,
+          agentTaskComplete: true,
+          terminalBell: false,
+          suppressWhenFocused: true
+        }
+      })
+    } as never)
+
+    await getDispatchHandler()(
+      {},
+      {
+        source: 'agent-task-complete',
+        worktreeId: 'repo::wt1',
+        worktreeLabel: 'feat/notis',
+        agentType: 'opencode2',
+        agentState: 'done'
+      }
+    )
+
+    expect(notificationCtorMock).toHaveBeenCalledWith(
+      expectedNativeNotificationOptions({
+        title: 'feat/notis - OpenCode 2 finished',
+        body: 'OpenCode 2 finished.'
+      })
+    )
+  })
+
   it('formats blocked and interrupted agent snapshots distinctly', async () => {
     registerNotificationHandlers({
       getSettings: () => ({

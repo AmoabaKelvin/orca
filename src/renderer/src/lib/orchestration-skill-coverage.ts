@@ -34,7 +34,11 @@ function isOrchestrationSkill(skill: DiscoveredSkill): boolean {
 // keep the two in step when an agent starts reading another agent's roots.
 function getSkillSourceOwnerForAgent(agent: TuiAgent): AgentType {
   // Why: both launch Claude Code and therefore consume Claude-owned skill roots.
-  return agent === 'claude-agent-teams' || agent === 'openclaude' ? 'claude' : agent
+  if (agent === 'claude-agent-teams' || agent === 'openclaude') {
+    return 'claude'
+  }
+  // OpenCode 2.x reads OpenCode's skill folders.
+  return agent === 'opencode2' ? 'opencode' : agent
 }
 
 /** `skills` and `sources` must come from the same discovery scan. */
