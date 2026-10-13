@@ -28,7 +28,10 @@ import {
   type MobileNativeChatPendingItem
 } from './mobile-native-chat-render-data'
 import { useMobileNativeChatPinchGesture } from './use-mobile-native-chat-pinch-gesture'
-import { useMobileNativeChatTailFollow } from './use-mobile-native-chat-tail-follow'
+import {
+  mobileNativeChatRowAnchor,
+  useMobileNativeChatTailFollow
+} from './use-mobile-native-chat-tail-follow'
 import { useMobileNativeChatTurnDisclosure } from './use-mobile-native-chat-turn-disclosure'
 import {
   mobileNativeChatComposerPlaceholder,
@@ -243,7 +246,7 @@ export function MobileNativeChatView({
     endUserDrag,
     beginMomentum,
     endMomentum,
-    detachFromTail,
+    readerIsScrolling,
     recordScrollMetrics
   } = useMobileNativeChatTailFollow<NativeChatMessage>({ hasItems: data.length > 0 })
 
@@ -263,21 +266,18 @@ export function MobileNativeChatView({
     [onSend, onClearSendError, jumpToTail]
   )
 
-  const loadEarlier = useCallback(() => {
-    detachFromTail()
-    onLoadEarlier?.()
-  }, [detachFromTail, onLoadEarlier])
+  const loadEarlier = useCallback(() => onLoadEarlier?.(), [onLoadEarlier])
 
   const onScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset } = e.nativeEvent
       recordScrollMetrics(e.nativeEvent)
-      // Near the top — page in older history.
-      if (contentOffset.y < 60 && hasMore && !loadingEarlier) {
+      // Near the top — page in older history. Only the reader's scroll: a pin reports offsets too.
+      if (contentOffset.y < 60 && hasMore && !loadingEarlier && readerIsScrolling()) {
         loadEarlier()
       }
     },
-    [hasMore, loadingEarlier, loadEarlier, recordScrollMetrics]
+    [hasMore, loadingEarlier, loadEarlier, readerIsScrolling, recordScrollMetrics]
   )
 
   // Per-turn status rows: one live indicator while the turn runs, then a settled
@@ -375,6 +375,7 @@ export function MobileNativeChatView({
               scrollEventThrottle={32}
               onContentSizeChange={pinToTailAfterContentResize}
               onLayout={pinToTail}
+              maintainVisibleContentPosition={mobileNativeChatRowAnchor(hasMore === true)}
               ListHeaderComponent={mobileNativeChatListHeader(hasMore, loadingEarlier, loadEarlier)}
               ListFooterComponent={mobileNativeChatListFooter(
                 liveStatus,
