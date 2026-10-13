@@ -1,6 +1,5 @@
 import { memo, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -20,9 +19,7 @@ import {
   nativeChatSessionOptionDisabledReason
 } from './native-chat-session-option-labels'
 import type { NativeChatOptionPickerRequest } from './native-chat-composer-types'
-import { agentSessionThrownFailure } from '../../../../shared/agent-session-write-failure'
-import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
-import { agentSessionWriteFailureText } from './agent-session-write-notice-text'
+import { runSessionOptionSurfaceCall } from './native-chat-session-option-surface-call'
 import { NativeChatModelCombobox } from './NativeChatModelCombobox'
 import { useNativeChatPickerFocusReturn } from './native-chat-picker-focus-return'
 import { NativeChatSessionOptionRows } from './NativeChatSessionOptionRows'
@@ -65,15 +62,6 @@ function withPendingValue(
     }
   }
   return descriptor
-}
-
-/** A host's error is words for its log, so it gets the table's; a local surface's error is
- *  already written for the person. */
-function optionUpdateFailureDescription(error: unknown): string {
-  if (error instanceof RuntimeRpcCallError) {
-    return agentSessionWriteFailureText(agentSessionThrownFailure(error, error.code), 'option')
-  }
-  return error instanceof Error ? error.message : String(error)
 }
 
 // Why: value-only visible text must still include the category in the
@@ -304,18 +292,7 @@ function NativeChatSessionOptionPickersInner({
   )
 
   const run = (pick: PendingPick, call: () => Promise<unknown>): void => {
-    setPending(pick)
-    void call()
-      .catch((error) => {
-        toast.error(
-          translate(
-            'components.native-chat.composer.optionUpdateFailed',
-            'Could not update option'
-          ),
-          { description: optionUpdateFailureDescription(error) }
-        )
-      })
-      .finally(() => setPending(null))
+    runSessionOptionSurfaceCall(pick, setPending, call)
   }
 
   return (

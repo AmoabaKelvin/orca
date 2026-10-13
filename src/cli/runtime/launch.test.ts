@@ -23,7 +23,7 @@ vi.mock('child_process', () => ({
   spawnSync: spawnSyncMock
 }))
 
-import { launchOrcaApp, serveOrcaApp } from './launch'
+import { getExecutableAppArgs, launchOrcaApp, serveOrcaApp, stripElectronRunAsNode } from './launch'
 
 class FakeChildProcess extends EventEmitter {
   stdout = new EventEmitter()
@@ -122,6 +122,20 @@ describe('serveOrcaApp', () => {
     return Promise.all(
       temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true }))
     )
+  })
+
+  it('names what to run when this orca is not an Orca app (an SSH host server CLI)', () => {
+    delete process.env.ORCA_APP_EXECUTABLE
+    const previous = process.env.ELECTRON_RUN_AS_NODE
+    delete process.env.ELECTRON_RUN_AS_NODE
+    try {
+      expect(() => serveOrcaApp({ supervise: true })).toThrow(
+        /Install the Orca app on this machine/
+      )
+      expect(spawnMock).not.toHaveBeenCalled()
+    } finally {
+      restoreEnv('ELECTRON_RUN_AS_NODE', previous)
+    }
   })
 
   it('launches an isolated profile with the keychain mocked, so serve is not blocked on it', async () => {
@@ -505,6 +519,16 @@ describe('serveOrcaApp', () => {
         cwd: resolve(__dirname, '../../..')
       })
     )
+  })
+
+  it("re-applies a direct launch's --no-sandbox to the Electron it starts, not to terminals", () => {
+    process.env.ORCA_ELECTRON_NO_SANDBOX = '1'
+    try {
+      expect(getExecutableAppArgs('/opt/Orca/orca-ide')).toEqual(['--no-sandbox'])
+      expect(stripElectronRunAsNode(process.env)).not.toHaveProperty('ORCA_ELECTRON_NO_SANDBOX')
+    } finally {
+      delete process.env.ORCA_ELECTRON_NO_SANDBOX
+    }
   })
 
   it.each([
