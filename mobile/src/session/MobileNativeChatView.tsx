@@ -27,6 +27,7 @@ import {
   mobileNativeChatEmptyState,
   type MobileNativeChatPendingItem
 } from './mobile-native-chat-render-data'
+import { useMobileNativeChatPageHistory } from './use-mobile-native-chat-page-history'
 import { useMobileNativeChatPinchGesture } from './use-mobile-native-chat-pinch-gesture'
 import {
   mobileNativeChatRowAnchor,
@@ -48,6 +49,7 @@ import type { MobileChatPermission } from './mobile-native-chat-permission'
 import type { MobileChatQuestion } from './mobile-native-chat-question'
 import type { MobileNativeChatSessionOptionPickersProps } from './MobileNativeChatSessionOptionPickers'
 import { MobileNativeChatMessage } from './MobileNativeChatMessage'
+import { MobileNativeChatScrollHold } from './MobileNativeChatScrollHold'
 import { mobileNativeChatUnsentNotices } from './mobile-native-chat-unsent-notices'
 import type { MobileNativeChatStatus } from './use-mobile-native-chat-session'
 
@@ -319,6 +321,8 @@ export function MobileNativeChatView({
     [toolsExpanded, fontScale, onOpenFile, structuredActivityUi, turns, unsentNotices]
   )
 
+  const history = useMobileNativeChatPageHistory(turns.listMessages, renderItem)
+
   const liveStatus = turns.liveLine ? (
     <MobileNativeChatLiveLine
       line={turns.liveLine}
@@ -357,12 +361,13 @@ export function MobileNativeChatView({
         </View>
       ) : (
         <GestureHandlerRootView style={styles.listWrap}>
+          <MobileNativeChatScrollHold headKey={turns.listMessages[0]?.id} listRef={listRef} />
           <GestureDetector gesture={pinchGesture}>
             <FlatList
               ref={listRef}
-              data={turns.listMessages}
+              data={history.listRows}
               keyExtractor={(item) => item.id}
-              renderItem={renderItem}
+              renderItem={history.renderListRow}
               contentContainerStyle={styles.listContent}
               // Let link/file taps land while the composer keyboard is up
               // instead of being swallowed by the dismiss gesture.
@@ -376,7 +381,9 @@ export function MobileNativeChatView({
               onContentSizeChange={pinToTailAfterContentResize}
               onLayout={pinToTail}
               maintainVisibleContentPosition={mobileNativeChatRowAnchor(hasMore === true)}
-              ListHeaderComponent={mobileNativeChatListHeader(hasMore, loadingEarlier, loadEarlier)}
+              ListHeaderComponent={history.withHistory(
+                mobileNativeChatListHeader(hasMore, loadingEarlier, loadEarlier)
+              )}
               ListFooterComponent={mobileNativeChatListFooter(
                 liveStatus,
                 turns.waitingRows,
