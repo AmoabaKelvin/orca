@@ -13,7 +13,7 @@ import type { AgentSessionModelOption } from '../../shared/agent-session-wire'
 import { createAcpAgentConnection } from './acp-agent-connection'
 import type { AcpLaunchSpec } from './acp-launch-specs'
 import {
-  acpLaunchVersionSupported,
+  probeAcpLaunchVersion,
   resolveAcpLaunchInvocation,
   type AcpLaunchInvocationDeps
 } from './acp-structured-launch-resolution'
@@ -35,7 +35,8 @@ export type AcpModelCatalogProbeDeps = AcpLaunchInvocationDeps & {
 
 /**
  * Lists an ACP agent's models without a session, under the binary, account and scrubbed
- * environment its chats launch with. A release that runs no structured chat lists nothing.
+ * environment its chats launch with. A release that runs no structured chat lists nothing, nor does
+ * one whose listing its chats' own lists do not match.
  */
 export function createAcpModelCatalogProbe(
   spec: AcpLaunchSpec,
@@ -53,14 +54,18 @@ export function createAcpModelCatalogProbe(
       ...deps,
       resolveWorkingDirectory: () => cwd
     })
-    if (
-      !(await acpLaunchVersionSupported(
-        spec,
-        { command, cwd, env },
-        deps.probeVersion ?? probeAgentCliVersion
-      ))
-    ) {
+    const listsVersion = discovery.kind === 'command' ? discovery.supportsVersion : undefined
+    const release = await probeAcpLaunchVersion(
+      spec,
+      { command, cwd, env },
+      listsVersion !== undefined,
+      deps.probeVersion ?? probeAgentCliVersion
+    )
+    if (!release.supported) {
       throw new Error(`${spec.agent} at ${command} does not run structured chats`)
+    }
+    if (listsVersion && (release.version === null || !listsVersion(release.version))) {
+      throw new Error(`${spec.agent} at ${command} lists its models only through its chats`)
     }
     let models: AgentSessionModelOption[]
     if (discovery.kind === 'command') {

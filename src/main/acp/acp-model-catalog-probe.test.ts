@@ -158,7 +158,7 @@ describe('ACP model catalog probes', () => {
       resolveEnvironment: async () => ({ PATH: '/usr/bin', HOME: '/home/user' }),
       dataDirectory: '/orca-data',
       resolveCommand: () => '/opt/opencode/bin/opencode',
-      probeVersion: async () => true,
+      probeVersion: async (_launch, supports) => supports('1.18.35'),
       homePath: '/home/user',
       runListing,
       connect
@@ -176,6 +176,22 @@ describe('ACP model catalog probes', () => {
     expect(success.models).toEqual([
       { id: 'opencode/big-pickle', label: 'opencode/Big Pickle', isDefault: false, efforts: [] }
     ])
+  })
+
+  // Every 2.x release rejects `--verbose`, and its other listings miss what its chats offer.
+  it('runs no listing command on OpenCode 2.x, whose chats list its models', async () => {
+    const runListing = vi.fn(async () => '')
+    const probe = createAcpModelCatalogProbe(OPENCODE, {
+      resolveEnvironment: async () => ({ PATH: '/usr/bin', HOME: '/home/user' }),
+      resolveCommand: () => '/opt/opencode/bin/opencode',
+      probeVersion: async (_launch, supports) => supports('2.0.28'),
+      homePath: '/home/user',
+      runListing
+    })
+    await expect(probe({ kind: 'opencode', locator: { kind: 'unmanaged' } })).rejects.toThrow(
+      /lists its models only through its chats/
+    )
+    expect(runListing).not.toHaveBeenCalled()
   })
 
   it('lists nothing for a release that runs no structured chat', async () => {

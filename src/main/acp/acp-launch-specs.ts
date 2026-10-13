@@ -73,6 +73,9 @@ export type AcpModelDiscovery =
       args: readonly string[]
       parse(stdout: string): AgentSessionModelOption[]
       listingNamesConfiguredModel: boolean
+      /** The releases whose listing matches what their chats offer; any other runs none, and its
+       *  chats' own lists fill the catalog. Absent lists on every release. */
+      supportsVersion?(version: string): boolean
     }
   | { kind: 'unavailable'; reason: string }
 
@@ -173,15 +176,13 @@ const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
   sessionHistory: GROK_SESSION_HISTORY
 }
 
+// The release the recorded sessions capture.
+const OPENCODE_1X_LINE = { major: 1, floor: '1.18.31' } as const
+// The 2.x release verified to start the private child below.
+const OPENCODE_2X_LINE = { major: 2, floor: '2.0.14' } as const
+
 // `opencode acp` on 1.x serves in-process; on 2.x it starts a private `opencode serve --stdio` child
 // with this environment and ends it with stdin, so both lines run the chat's own account.
-const OPENCODE_ACP_RELEASE_LINES = [
-  // The release the recorded sessions capture.
-  { major: 1, floor: '1.18.31' },
-  // The 2.x release verified to start that private child.
-  { major: 2, floor: '2.0.14' }
-] as const
-
 const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
   agent: 'opencode',
   command: 'opencode',
@@ -196,7 +197,7 @@ const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
   account: openCodeAcpAccountBinding(),
   installDirectories: ({ homePath }) => [join(homePath, '.opencode', 'bin')],
   supportsVersion: (version) =>
-    OPENCODE_ACP_RELEASE_LINES.some((line) => isStableCliVersionOnLine(version, line)),
+    [OPENCODE_1X_LINE, OPENCODE_2X_LINE].some((line) => isStableCliVersionOnLine(version, line)),
   imagePrompts: true,
   readStoredUserMessages: openCodeStoredUserMessagesReader(),
   // Its `initialize` names no models and `session/new` stores a session; the listing does neither.
@@ -205,7 +206,10 @@ const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
     args: OPENCODE_MODEL_LISTING_ARGS,
     parse: parseOpenCodeModelListing,
     // The listing marks no default; a chat started with no pick names it.
-    listingNamesConfiguredModel: false
+    listingNamesConfiguredModel: false,
+    // 2.x rejects `--verbose`; its own listings are empty before 2.0.27 and then omit providers
+    // that report after startup.
+    supportsVersion: (version) => isStableCliVersionOnLine(version, OPENCODE_1X_LINE)
   },
   visualsSkill: loadOpenCodeVisualsSkill,
   compaction: true,
