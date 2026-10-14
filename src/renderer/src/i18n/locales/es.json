@@ -18960,7 +18960,8 @@
       },
       "TerminalInteraction": {
         "copyTrimsGutter": "Recortar margen al copiar",
-        "copyTrimsGutterDescription": "Elimina el margen izquierdo tras el que se dibuja la salida del agente, para que el texto copiado no quede indentado. Solo se quita la indentación que comparten todas las líneas seleccionadas."
+        "copyTrimsGutterDescription": "Elimina el margen izquierdo tras el que se dibuja la salida del agente, para que el texto copiado no quede indentado. Solo se quita la indentación que comparten todas las líneas seleccionadas.",
+        "copyOnSelectDescription": "Copia automáticamente al portapapeles el texto que selecciones en un terminal o un chat."
       },
       "terminal": {
         "clipboard": {
@@ -18970,7 +18971,10 @@
             "margin": "margen",
             "leading": "inicial",
             "whitespace": "espacios en blanco",
-            "spaces": "espacios"
+            "spaces": "espacios",
+            "copyOnSelectDescription": "Copia automáticamente al portapapeles el texto que selecciones en un terminal o un chat en cuanto se hace la selección.",
+            "highlight": "resaltar",
+            "chat": "chat"
           }
         }
       }

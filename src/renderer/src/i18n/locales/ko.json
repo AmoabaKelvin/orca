@@ -18996,7 +18996,8 @@
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "복사 시 여백 자르기",
-        "copyTrimsGutterDescription": "복사한 텍스트에서 에이전트 출력의 왼쪽 여백을 제거합니다. 선택한 모든 줄에 공통된 들여쓰기만 제거됩니다."
+        "copyTrimsGutterDescription": "복사한 텍스트에서 에이전트 출력의 왼쪽 여백을 제거합니다. 선택한 모든 줄에 공통된 들여쓰기만 제거됩니다.",
+        "copyOnSelectDescription": "터미널이나 채팅에서 선택한 내용을 클립보드에 자동으로 복사합니다."
       },
       "terminal": {
         "clipboard": {
@@ -19006,7 +19007,10 @@
             "margin": "여유",
             "leading": "선행",
             "whitespace": "공백",
-            "spaces": "공백"
+            "spaces": "공백",
+            "copyOnSelectDescription": "터미널이나 채팅에서 텍스트를 선택하는 즉시 자동으로 클립보드에 복사합니다.",
+            "highlight": "강조",
+            "chat": "채팅"
           }
         }
       },

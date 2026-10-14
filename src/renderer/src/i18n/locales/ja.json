@@ -18996,7 +18996,8 @@
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "コピー時に余白をトリミングする",
-        "copyTrimsGutterDescription": "左側のガターをドロップすると、Agent の出力が後ろに描画されるため、コピーされたテキストはインデントされません。選択した行ごとに共有されるインデントのみが削除されます。"
+        "copyTrimsGutterDescription": "左側のガターをドロップすると、Agent の出力が後ろに描画されるため、コピーされたテキストはインデントされません。選択した行ごとに共有されるインデントのみが削除されます。",
+        "copyOnSelectDescription": "ターミナルやチャットで選択したテキストをクリップボードに自動的にコピーします。"
       },
       "terminal": {
         "clipboard": {
@@ -19006,7 +19007,10 @@
             "margin": "マージン",
             "leading": "先頭",
             "whitespace": "空白",
-            "spaces": "スペース"
+            "spaces": "スペース",
+            "copyOnSelectDescription": "ターミナルやチャットでテキストを選択するとすぐに、その内容をクリップボードに自動的にコピーします。",
+            "highlight": "ハイライト",
+            "chat": "チャット"
           }
         }
       },

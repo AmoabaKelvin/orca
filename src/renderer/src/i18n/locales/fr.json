@@ -19100,7 +19100,8 @@
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "Couper la gouttière lors de la copie",
-        "copyTrimsGutterDescription": "Déposez la sortie de l'agent de gouttière gauche qui est peinte derrière, donc le texte copié n'est pas en retrait. Seul le retrait de chaque partage de ligne sélectionnée est supprimé."
+        "copyTrimsGutterDescription": "Déposez la sortie de l'agent de gouttière gauche qui est peinte derrière, donc le texte copié n'est pas en retrait. Seul le retrait de chaque partage de ligne sélectionnée est supprimé.",
+        "copyOnSelectDescription": "Copier automatiquement vers le presse-papiers le texte sélectionné dans un terminal ou un chat."
       },
       "terminal": {
         "clipboard": {
@@ -19110,7 +19111,10 @@
             "margin": "marge",
             "leading": "menant",
             "whitespace": "espace",
-            "spaces": "espaces"
+            "spaces": "espaces",
+            "copyOnSelectDescription": "Copiez automatiquement vers le presse-papiers le texte sélectionné dans un terminal ou un chat dès que la sélection est faite.",
+            "highlight": "surligner",
+            "chat": "chat"
           }
         }
       },
