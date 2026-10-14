@@ -25,6 +25,7 @@ import {
   trimAutolinkTrailingPunctuation
 } from './markdown-inline-token-rules'
 import { isMobileMermaidLanguage } from './mobile-mermaid-language'
+import { mobileMarkdownTableColumnWidths } from './mobile-markdown-table-columns'
 import { useMobileMarkdownBlocks } from './use-mobile-markdown-blocks'
 import type { NativeChatVisualDirective } from '../../../src/shared/native-chat-visual-directive'
 import { MermaidDiagram } from './pr-sidebar/MermaidDiagram'
@@ -49,8 +50,6 @@ type Props = {
   renderVisual?: (directive: NativeChatVisualDirective, index: number) => ReactNode
 }
 
-const MAX_TABLE_ROWS = 40
-const MAX_TABLE_COLUMNS = 8
 /** Prose base size — passed to MermaidDiagram fallback mono text. */
 const MERMAID_BASE = 13
 type MarkdownTextSetup = {
@@ -332,40 +331,39 @@ function MobileMarkdownContent({
           )
         }
         if (block.type === 'table') {
-          const visibleHeaders = block.headers.slice(0, MAX_TABLE_COLUMNS)
-          const visibleRows = block.rows.slice(0, MAX_TABLE_ROWS)
-          const hiddenRows = Math.max(0, block.rows.length - visibleRows.length)
-          const hiddenColumns = Math.max(0, block.headers.length - visibleHeaders.length)
+          // Rows lay out independently, so a shared width per column is what lines them up.
+          const columnWidths = mobileMarkdownTableColumnWidths(block.headers, block.rows)
           return (
             <ScrollView key={index} horizontal showsHorizontalScrollIndicator={false}>
               <View style={styles.table}>
                 <View style={styles.tableRow}>
-                  {visibleHeaders.map((header, cellIndex) => (
+                  {block.headers.map((header, cellIndex) => (
                     <MarkdownText
                       key={cellIndex}
                       selectable
-                      style={[styles.tableCell, styles.tableHeader]}
+                      style={[
+                        styles.tableCell,
+                        styles.tableHeader,
+                        { width: columnWidths[cellIndex] }
+                      ]}
                     >
                       {renderInline(header, onOpenFile)}
                     </MarkdownText>
                   ))}
                 </View>
-                {visibleRows.map((row, rowIndex) => (
+                {block.rows.map((row, rowIndex) => (
                   <View key={rowIndex} style={styles.tableRow}>
-                    {visibleHeaders.map((_, cellIndex) => (
-                      <MarkdownText key={cellIndex} selectable style={styles.tableCell}>
+                    {columnWidths.map((width, cellIndex) => (
+                      <MarkdownText
+                        key={cellIndex}
+                        selectable
+                        style={[styles.tableCell, { width }]}
+                      >
                         {renderInline(row[cellIndex] ?? '', onOpenFile)}
                       </MarkdownText>
                     ))}
                   </View>
                 ))}
-                {hiddenRows > 0 || hiddenColumns > 0 ? (
-                  <NativeText style={styles.tableTruncated}>
-                    {hiddenRows > 0 ? `${hiddenRows} more rows` : ''}
-                    {hiddenRows > 0 && hiddenColumns > 0 ? ' · ' : ''}
-                    {hiddenColumns > 0 ? `${hiddenColumns} more columns` : ''}
-                  </NativeText>
-                ) : null}
               </View>
             </ScrollView>
           )

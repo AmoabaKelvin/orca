@@ -101,8 +101,6 @@ export const styles = StyleSheet.create({
     flexDirection: 'row'
   },
   tableCell: {
-    minWidth: 112,
-    maxWidth: 220,
     borderRightWidth: 1,
     borderBottomWidth: 1,
     borderColor: colors.borderSubtle,
@@ -115,11 +113,6 @@ export const styles = StyleSheet.create({
   tableHeader: {
     fontWeight: '700',
     backgroundColor: colors.bgRaised
-  },
-  tableTruncated: {
-    padding: spacing.sm,
-    fontSize: 12,
-    color: colors.textMuted
   },
   list: {
     gap: spacing.xs
