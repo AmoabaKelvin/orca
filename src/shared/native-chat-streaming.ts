@@ -22,10 +22,29 @@ function assistantText(message: NativeChatMessage | undefined): string {
     .trim()
 }
 
+/** The newest assistant words after row `after`: read back past the tool calls and thoughts that
+ *  landed after them, but never past the user's message, which starts a different reply. */
+export function latestNativeChatReplyText(
+  messages: readonly NativeChatMessage[],
+  after = -1
+): string {
+  for (let index = messages.length - 1; index > after; index -= 1) {
+    const message = messages[index]!
+    if (message.role === 'user') {
+      return ''
+    }
+    const text = assistantText(message)
+    if (text) {
+      return text
+    }
+  }
+  return ''
+}
+
 /**
  * Decide the streaming text to show, or null to show nothing. Returns the
  * preview only while it leads the transcript — i.e. it's longer than (and not
- * already contained in) the last assistant turn. Once the real turn lands with
+ * already contained in) the reply it streams. Once the real turn lands with
  * the same (or more) text, the preview is suppressed so the bubble doesn't
  * duplicate or flicker as the transcript catches up.
  *
@@ -50,7 +69,7 @@ export function deriveNativeChatStreamingText(args: {
   if (!text) {
     return null
   }
-  const lastText = assistantText(messages.at(-1))
+  const lastText = latestNativeChatReplyText(messages)
   if (lastText.includes(text) || text.length <= lastText.length) {
     return null
   }

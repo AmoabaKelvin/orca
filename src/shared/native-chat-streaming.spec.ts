@@ -121,6 +121,25 @@ describe('deriveNativeChatStreamingText', () => {
 })
 
 describe('nativeChatStreamingMessage', () => {
+  it('stays hidden while the agent runs a tool after the sentence it streamed', () => {
+    // A Claude transcript writes the sentence and the tool call it led into as separate rows.
+    const sentence = 'Checking the notes file now.'
+    const toolCall: NativeChatMessage = {
+      id: 'f4470ba3',
+      role: 'assistant',
+      blocks: [{ type: 'tool-call', name: 'Bash', input: { command: 'sleep 12' } }],
+      timestamp: null,
+      source: 'transcript'
+    }
+    expect(
+      deriveNativeChatStreamingText({
+        messages: [user('Say it, then run sleep 12.'), assistant(sentence), toolCall],
+        previewText: sentence,
+        working: true
+      })
+    ).toBeNull()
+  })
+
   it('builds a stable-id assistant hook message', () => {
     const m = nativeChatStreamingMessage('hi')
     expect(m.id).toBe(NATIVE_CHAT_STREAMING_ID)
