@@ -44,6 +44,8 @@ export function useNativeChatComposerRevealFocus({
 }: NativeChatComposerRevealFocusArgs): void {
   const revealed = isVisible && isFocusedGroup
   const claimedRef = useRef(false)
+  // An explicit tab activation takes focus from inside the pane too, short of a text field.
+  const explicitRef = useRef(false)
   const [reclaimCount, setReclaimCount] = useState(0)
 
   useEffect(() => {
@@ -52,6 +54,7 @@ export function useNativeChatComposerRevealFocus({
     }
     const reclaim = (): void => {
       claimedRef.current = false
+      explicitRef.current = true
       setReclaimCount((count) => count + 1)
     }
     revealedComposerReclaims.set(tabId, reclaim)
@@ -65,6 +68,7 @@ export function useNativeChatComposerRevealFocus({
   useEffect(() => {
     if (!revealed || !composerReady) {
       claimedRef.current = false
+      explicitRef.current = false
       return
     }
     if (claimedRef.current) {
@@ -88,6 +92,7 @@ export function useNativeChatComposerRevealFocus({
     }
     const finish = (): void => {
       claimedRef.current = true
+      explicitRef.current = false
       stopWatchingUserIntent()
     }
     ownerDocument?.addEventListener('pointerdown', cancelForPointer, true)
@@ -103,12 +108,16 @@ export function useNativeChatComposerRevealFocus({
       const active = rootRef.current?.ownerDocument.activeElement ?? null
       // Focus already inside this pane is our own take landing or the user's click; either ends it.
       // A just-collapsed card is hidden and inert, so focus left in it is about to drop to body.
-      if (rootRef.current?.contains(active) === true && !active?.closest('[hidden], [inert]')) {
+      if (
+        !explicitRef.current &&
+        rootRef.current?.contains(active) === true &&
+        !active?.closest('[hidden], [inert]')
+      ) {
         finish()
         return
       }
-      // Why: a live text field elsewhere is a user edit — a batch worktree-create keeps its
-      // next name field open behind the pane we just revealed.
+      // Why: a live text field is a user edit — a batch worktree-create keeps its next name
+      // field open behind the pane we just revealed, and the find bar keeps its query.
       if (shouldPreserveEditableFocus(active)) {
         finish()
         return

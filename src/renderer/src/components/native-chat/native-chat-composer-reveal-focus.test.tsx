@@ -75,7 +75,8 @@ function Harness(props: HarnessProps): React.JSX.Element {
     'div',
     { ref: rootRef },
     createElement('textarea', { ref: fieldRef, 'data-testid': 'composer' }),
-    createElement('button', { type: 'button', 'data-testid': 'in-pane-button' })
+    createElement('button', { type: 'button', 'data-testid': 'in-pane-button' }),
+    createElement('input', { 'data-testid': 'find-input' })
   )
 }
 
@@ -114,6 +115,54 @@ describe('useNativeChatComposerRevealFocus', () => {
     drainFrames()
 
     expect(container.querySelector('textarea')).toBe(document.activeElement)
+  })
+
+  it('takes focus from a control inside the pane when its tab is activated', () => {
+    render({ isVisible: true, isFocusedGroup: true })
+    drainFrames()
+    const button = container.querySelector('button')
+    act(() => {
+      button?.focus()
+    })
+
+    act(() => requestNativeChatComposerFocus('chat-tab'))
+    drainFrames()
+
+    expect(container.querySelector('textarea')).toBe(document.activeElement)
+  })
+
+  it('leaves the find input alone when its tab is activated', () => {
+    render({ isVisible: true, isFocusedGroup: true })
+    drainFrames()
+    const findInput = container.querySelector('input')
+    act(() => {
+      findInput?.focus()
+    })
+    const before = focusCalls
+
+    act(() => requestNativeChatComposerFocus('chat-tab'))
+    drainFrames()
+
+    expect(focusCalls).toBe(before)
+    expect(document.activeElement).toBe(findInput)
+  })
+
+  it('does not carry an unfinished tab activation into a later reveal', () => {
+    render({ isVisible: true, isFocusedGroup: true })
+    drainFrames()
+    act(() => requestNativeChatComposerFocus('chat-tab'))
+    render({ isVisible: false, isFocusedGroup: true })
+    const button = container.querySelector('button')
+    act(() => {
+      button?.focus()
+    })
+    const before = focusCalls
+
+    render({ isVisible: true, isFocusedGroup: true })
+    drainFrames()
+
+    expect(focusCalls).toBe(before)
+    expect(document.activeElement).toBe(button)
   })
 
   it('ignores a tab activation while the chat is not revealed or for another tab', () => {
