@@ -78,6 +78,7 @@ export function useHostScreenController({
     connState,
     embedded,
     fetchRepoMetadata,
+    hostCapabilities,
     hostId,
     state,
     syncViewSettingsFromDesktop: settings.syncViewSettingsFromDesktop
@@ -88,6 +89,7 @@ export function useHostScreenController({
     embedded,
     fetchWorktrees: catalog.fetchWorktrees,
     forgetHostClient,
+    hostCapabilities,
     hostId,
     pathname,
     router,
@@ -101,7 +103,7 @@ export function useHostScreenController({
   }
   const showNewWorktree = resolvedRouteActionState.showNewWorktree
 
-  const displayWorktrees = useHostDisplayWorktrees(connState, state)
+  const displayWorktrees = useHostDisplayWorktrees(connState, state, hostId)
   const sectionsResult = useWorkspaceSections({
     displayWorktrees,
     sortMode: state.sortMode,
