@@ -42,6 +42,17 @@ describe('nativeChatSentPrompts', () => {
     ])
   })
 
+  it('recalls a prompt without the markers of images recall cannot bring back', () => {
+    const image = { type: 'image-ref' as const, path: '/tmp/a.png' }
+    const prompts = nativeChatSentPrompts({
+      messages: [
+        message('1', 'user', '', { blocks: [image, { type: 'text', text: '[Image #1] ' }] }),
+        message('2', 'user', '', { blocks: [image, { type: 'text', text: 'fix [Image #1]' }] })
+      ]
+    })
+    expect(prompts).toEqual([{ id: '2', prompt: 'fix' }])
+  })
+
   it('collapses a prompt sent back to back into its newest copy', () => {
     const prompts = nativeChatSentPrompts({
       messages: [

@@ -3,6 +3,7 @@
 // history to store, and recall survives a remount, a reload, and another client's sends.
 
 import { deriveNativeChatRowContent } from '../../../../shared/native-chat-row-content'
+import { stripImagePromptMarker } from '../../../../shared/native-chat-image-transcript-markers'
 import { projectNativeChatTranscriptMessages } from '../../../../shared/native-chat-transcript-projection'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import type { NativeChatCommandMarker } from './native-chat-command-marker'
@@ -72,7 +73,8 @@ export function nativeChatSentPrompts(source: NativeChatRecallSource): NativeCha
       const command = commands[nextCommand++]
       push(`command:${command.id}`, command.command)
     }
-    push(message.id, deriveNativeChatRowContent(message.blocks).markdown)
+    // Recall brings back the text alone, so no marker may name an image that is not attached.
+    push(message.id, stripImagePromptMarker(deriveNativeChatRowContent(message.blocks).markdown))
   }
   for (const command of commands.slice(nextCommand)) {
     push(`command:${command.id}`, command.command)

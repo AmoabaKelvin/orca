@@ -92,6 +92,13 @@ it.each([
   expect(send('codex', classification, draft).submitted).toHaveBeenCalledOnce()
 })
 
+it('types the text without the composer’s image chips, as the TUI numbers images itself', () => {
+  send('claude', 'chat', 'compare [Image](orca-image:a) with [Image #2]', ['/tmp/shot.png'])
+  expect(vi.mocked(sendNativeChatMessageWithImageAttachments).mock.calls[0]?.[2]).toBe(
+    'compare  with [Image #2]'
+  )
+})
+
 it('reports nothing for a blank draft', () => {
   expect(send('codex', 'chat', '   ').submitted).not.toHaveBeenCalled()
 })

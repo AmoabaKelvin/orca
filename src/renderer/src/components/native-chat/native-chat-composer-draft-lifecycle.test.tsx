@@ -8,6 +8,7 @@ import type * as AttachmentsHook from './use-native-chat-composer-attachments'
 import type * as SendHook from './use-native-chat-structured-composer-send'
 import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
 import { createMemoryNativeChatComposerDraftStorage } from './native-chat-composer-draft-storage'
+import { imageReferenceToken } from '../../../../shared/native-chat-image-reference'
 
 vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))
 vi.mock('@/runtime/runtime-terminal-inspection', () => ({ isRemoteRuntimePtyId: () => false }))
@@ -301,7 +302,8 @@ describe('native-chat composer draft lifecycle', () => {
       seen.api?.attachments.resolvePendingImageAttachment(pending.id ?? '', '/repo/shot.png')
     )
 
-    expect(seen.api?.draft).toBe('')
+    // The chip went in after `/compact`, which the accepted command then took out.
+    expect(seen.api?.draft?.trim()).toBe(imageReferenceToken(pending.id ?? ''))
     expect(seen.api?.attachments.imageAttachments.map(({ path }) => path)).toEqual([
       '/repo/shot.png'
     ])

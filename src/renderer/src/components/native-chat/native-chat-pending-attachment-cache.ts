@@ -4,7 +4,10 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import type { NativeChatComposerDraftOwner } from './native-chat-composer-draft-storage'
-import { appendNativeChatDraftCache } from './native-chat-draft-cache'
+import {
+  appendNativeChatAttachmentCache,
+  appendNativeChatDraftCache
+} from './native-chat-draft-cache'
 import { formatNativeChatFileReference } from '../../../../shared/agent-image-paste'
 import {
   appendToNativeChatComposerDraft,
@@ -87,28 +90,63 @@ export function takeNativeChatPendingAttachment(
       scopeKey,
       current.filter((attachment) => attachment !== taken)
     )
+    settleReadyNativeChatPendingAttachments(scopeKey)
   }
   return taken
 }
 
-/** Settles a pending chip into the scope's draft, as an image the user attached. False when the
- *  user already removed it. */
+/** Moves the finished chips ahead of the first unfinished one into the draft. Why: images join the
+ *  draft in the order they were attached, so thumbnails and chip numbers don't jump as uploads end. */
+function settleReadyNativeChatPendingAttachments(scopeKey: string): void {
+  const current = nativeChatPendingAttachmentSnapshot(scopeKey)
+  const waiting = current.findIndex((chip) => chip.pending)
+  const ready = waiting === -1 ? current : current.slice(0, waiting)
+  if (ready.length === 0) {
+    return
+  }
+  const owner = pendingOwners.get(scopeKey)
+  writePending(scopeKey, current.slice(ready.length))
+  // A finished chip already holds only what the draft keeps.
+  appendToNativeChatComposerDraft(scopeKey, { images: ready, fromUser: true }, owner)
+}
+
+/** Settles a pending chip into the scope's draft, as an image the user attached, once every chip
+ *  attached before it has. False when the user already removed it. */
 export function settleNativeChatPendingAttachment(
   scopeKey: string,
   id: string,
   path: string,
   connectionId?: string | null
 ): boolean {
-  const owner = pendingOwners.get(scopeKey)
-  if (!takeNativeChatPendingAttachment(scopeKey, id)) {
+  const current = nativeChatPendingAttachmentSnapshot(scopeKey)
+  if (!current.some((chip) => chip.id === id)) {
     return false
   }
-  appendToNativeChatComposerDraft(
+  writePending(
     scopeKey,
-    { images: [{ id, path, ...(connectionId ? { connectionId } : {}) }], fromUser: true },
-    owner
+    current.map((chip) =>
+      chip.id === id ? { id, path, ...(connectionId ? { connectionId } : {}) } : chip
+    )
   )
+  settleReadyNativeChatPendingAttachments(scopeKey)
   return true
+}
+
+/** Attaches images after any chip still on its way, so they keep the order they were attached in:
+ *  pasted or dropped alike. */
+export function appendNativeChatAttachmentsAfterPending(
+  scopeKey: string,
+  images: readonly NativeChatComposerImageAttachment[],
+  options?: { fromUser?: boolean }
+): void {
+  if (images.length === 0) {
+    return
+  }
+  if (nativeChatPendingAttachmentSnapshot(scopeKey).length === 0) {
+    appendNativeChatAttachmentCache(scopeKey, images, options)
+    return
+  }
+  writePending(scopeKey, [...nativeChatPendingAttachmentSnapshot(scopeKey), ...images])
 }
 
 /** File results settle only while their operation still belongs to this draft. */

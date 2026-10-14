@@ -13,6 +13,7 @@ import type { NativeChatResolvedTarget } from './native-chat-composer-target'
 import { nativeChatPendingAttachmentSnapshot } from './native-chat-pending-attachment-cache'
 import { readNativeChatDraftCache } from './native-chat-draft-cache'
 import { NATIVE_FILE_DROP_MAX_PATHS } from '../../../../shared/native-file-drop'
+import { imageReferenceToken } from '../../../../shared/native-chat-image-reference'
 
 vi.mock('@/i18n/i18n', () => ({
   translate: (_key: string, fallback: string) => fallback
@@ -497,8 +498,9 @@ describe('useNativeChatComposerAttachments', () => {
     expect(readNativeChatAttachmentCache('pty-gone')).toEqual([
       { id: image, path: '/srv/agent-session-attachments/u1/shot.png' }
     ])
+    // The removed image's chip went with it; the kept one's stays bound to it.
     expect(readNativeChatDraftCache('pty-gone')).toBe(
-      '@/srv/agent-session-attachments/u3/notes.pdf'
+      `${imageReferenceToken(image)}\n\n@/srv/agent-session-attachments/u3/notes.pdf`
     )
     const back = await renderProbe('pty-gone')
     expect(back.latest().imageAttachments).toMatchObject([
@@ -588,24 +590,32 @@ describe('useNativeChatComposerAttachments', () => {
     )
   })
 
-  it('keeps a pending chip in the pending cache, without its preview, and the settled one in the draft', async () => {
+  it('keeps a pending chip in the pending cache, without its preview, and an image attached after it behind it', async () => {
     const probe = await renderProbe('pty-1')
     let pendingId: string | null = null
     act(() => {
       pendingId = probe.latest().beginPendingImageAttachment('blob:preview-1')
     })
     await act(async () => {
-      probe.latest().attachResolvedPaths(['/tmp/settled.png'])
+      probe.latest().attachResolvedPaths(['/tmp/later.png'])
     })
 
     // A composer that comes back must still wait for the pending one, which no draft saves.
-    expect(nativeChatPendingAttachmentSnapshot('pty-1')).toEqual([
-      { id: pendingId, path: '', pending: true }
+    expect(nativeChatPendingAttachmentSnapshot('pty-1')).toMatchObject([
+      { id: pendingId, path: '', pending: true },
+      { path: '/tmp/later.png' }
     ])
-    expect(readNativeChatAttachmentCache('pty-1')).toMatchObject([{ path: '/tmp/settled.png' }])
+    expect(readNativeChatAttachmentCache('pty-1')).toEqual([])
     expect(
       probe.latest().imageAttachments.find((attachment) => attachment.id === pendingId)?.previewUrl
     ).toBe('blob:preview-1')
+
+    // Thumbnails keep the order they were attached in, so their numbers don't jump.
+    act(() => probe.latest().resolvePendingImageAttachment(pendingId ?? '', '/tmp/first.png'))
+    expect(readNativeChatAttachmentCache('pty-1')).toMatchObject([
+      { path: '/tmp/first.png' },
+      { path: '/tmp/later.png' }
+    ])
     act(() => probe.root.unmount())
   })
 

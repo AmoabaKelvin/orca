@@ -4,10 +4,12 @@ import {
   TERMINAL_CONTROL_CHARACTER_PATTERN
 } from './ansi-escape-sequences'
 import { isTextBlock, type NativeChatBlock, type NativeChatMessage } from './native-chat-types'
+import { imageReferenceToken, replaceImageReferences } from './native-chat-image-reference'
 
 const IMAGE_SOURCE_MARKER = /^\[Image:\s*source:\s*(.+?)\]\s*$/
 const IMAGE_PROMPT_MARKER = /\[Image #\d+\]/
 const IMAGE_PROMPT_MARKERS = /\[Image #\d+\]/g
+const IMAGE_PROMPT_MARKER_NUMBERS = /\[Image #(\d+)\]/g
 const IMAGE_PROMPT_MARKER_AT_START = /^[^\S\r\n]*\[Image #\d+\]/
 const IMAGE_PROMPT_MARKER_AT_END = /\[Image #\d+\][^\S\r\n]*$/
 const HORIZONTAL_WHITESPACE_START = /^[^\S\r\n]+/
@@ -44,6 +46,28 @@ export function imageSourcePathsFromMessage(message: NativeChatMessage): string[
 
 export function isImageSourceUserTurn(message: NativeChatMessage): boolean {
   return imageSourcePathsFromMessage(message).length > 0
+}
+
+/** The text the agent reads: each composer chip becomes `[Image #N]`, N being its image's place
+ *  among the images sent with it, as the Claude and Codex TUIs number them. A chip whose image is
+ *  not sent is dropped. */
+export function imageReferencesToPromptMarkers(
+  text: string,
+  sentImageIds: readonly string[]
+): string {
+  return replaceImageReferences(text, (attachmentId) => {
+    const index = sentImageIds.indexOf(attachmentId)
+    return index === -1 ? '' : `[Image #${index + 1}]`
+  })
+}
+
+/** The inverse, for a sent message put back in the composer: `[Image #k]` becomes a chip for its
+ *  k-th image. A number past its images is left as typed. */
+export function promptMarkersToImageReferences(text: string, imageIds: readonly string[]): string {
+  return text.replace(IMAGE_PROMPT_MARKER_NUMBERS, (marker, number: string) => {
+    const attachmentId = imageIds[Number(number) - 1]
+    return attachmentId === undefined ? marker : imageReferenceToken(attachmentId)
+  })
 }
 
 export function stripImagePromptMarker(text: string): string {

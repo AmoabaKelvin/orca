@@ -72,6 +72,28 @@ describe('the pane pending attachment cache', () => {
     expect(readNativeChatComposerDraft(conversation).images).toEqual([])
   })
 
+  it('settles images into the draft in the order they were attached, whichever finished first', () => {
+    addPending('tab-1:leaf', 'first')
+    addPending('tab-1:leaf', 'second')
+    addPending('tab-1:leaf', 'third')
+
+    settleNativeChatPendingAttachment('tab-1:leaf', 'second', '/store/b.png')
+    expect(readNativeChatComposerDraft('tab-1:leaf').images).toEqual([])
+    // A finished chip waiting its turn shows as finished.
+    expect(nativeChatPendingAttachmentSnapshot('tab-1:leaf')[1]).toEqual({
+      id: 'second',
+      path: '/store/b.png'
+    })
+    settleNativeChatPendingAttachment('tab-1:leaf', 'first', '/store/a.png')
+    takeNativeChatPendingAttachment('tab-1:leaf', 'third')
+
+    expect(readNativeChatComposerDraft('tab-1:leaf').images.map(({ path }) => path)).toEqual([
+      '/store/a.png',
+      '/store/b.png'
+    ])
+    expect(nativeChatPendingAttachmentSnapshot('tab-1:leaf')).toEqual([])
+  })
+
   it('keeps reference settlement owned by the workspace after its chat closes', () => {
     const conversation = structuredAgentSessionDraftScopeKey('session-1')
     let open = true

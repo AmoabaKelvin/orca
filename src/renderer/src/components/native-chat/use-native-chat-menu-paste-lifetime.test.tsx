@@ -9,6 +9,7 @@ import type { NativeChatAttachmentOwner } from './native-chat-attachment-upload'
 import { nativeChatImageSendBlock } from './native-chat-image-reattach'
 import {
   clearNativeChatComposerDraftsForTests,
+  deleteNativeChatComposerDraftsOwnedBy,
   hydrateNativeChatComposerDrafts,
   nativeChatComposerDraftWritesSettled,
   readNativeChatComposerDraft,
@@ -142,7 +143,12 @@ it.each(
         resolveTarget: () => null,
         textareaRef: createRef<NativeChatComposerInput>(),
         setCaret: () => {},
-        setDraft: () => {},
+        setDraft: (update) =>
+          updateNativeChatComposerDraft(
+            scope('menu'),
+            { text: update(readNativeChatComposerDraft(scope('menu')).text) },
+            'immediate'
+          ),
         setNotice: () => {}
       })
     )
@@ -224,6 +230,7 @@ it.each([true, false])(
       if (end === 'remove') {
         await act(async () => view.result.current.attachments.clearImageAttachments())
       } else if (end === 'workspace') {
+        deleteNativeChatComposerDraftsOwnedBy(draftOwner)
         dropNativeChatPendingAttachmentsOwnedBy(draftOwner)
       }
       view.unmount()

@@ -1,6 +1,9 @@
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import type { JSONContent } from '@tiptap/react'
-import type { NativeChatComposerDraftOwner } from './native-chat-composer-draft-storage'
+import type {
+  NativeChatComposerDraftImage,
+  NativeChatComposerDraftOwner
+} from './native-chat-composer-draft-storage'
 // The composer's in-progress draft text and its editor document, keyed by the same stable pane
 // scope as image attachments. The composer unmounts when the pane toggles back to the hosted
 // terminal, so without this the typed-but-unsent draft would be lost on every TUI/GUI round-trip.
@@ -44,14 +47,16 @@ const appendListeners = new Map<string, Set<(text: string, previous: string) => 
 export function appendNativeChatDraftCache(
   scopeKey: string,
   text: string,
-  owner?: NativeChatComposerDraftOwner
+  owner?: NativeChatComposerDraftOwner,
+  /** A returned message's images, saved in the same step as the text whose chips name them. */
+  images?: readonly NativeChatComposerDraftImage[]
 ): boolean {
-  if (text === '') {
+  if (text === '' && !images?.length) {
     return true
   }
   const previous = readNativeChatDraftCache(scopeKey)
   // Durable now: the copy it came from (a send handed back, a queued card) goes right after this.
-  const durable = appendToNativeChatComposerDraft(scopeKey, { text }, owner)
+  const durable = appendToNativeChatComposerDraft(scopeKey, { text, images }, owner)
   appendListeners.get(scopeKey)?.forEach((listener) => listener(text, previous))
   return durable
 }

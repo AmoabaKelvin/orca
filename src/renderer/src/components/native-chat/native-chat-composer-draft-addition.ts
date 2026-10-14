@@ -19,28 +19,36 @@ export type NativeChatComposerDraftAddition = {
 
 /**
  * The draft's text and images with the addition made. Text follows the shared returned-text rule,
- * which never adds a paragraph the draft already ends with. `once` does the same for images (an id
- * the draft holds): a replay after a crash meets a draft that may already have been saved with it.
+ * which never adds a paragraph the draft already ends with. `once` is for a replay after a crash,
+ * which meets a draft that may already have been saved with the addition.
  */
 export function withNativeChatComposerDraftAddition(
   draft: NativeChatComposerDraft,
   addition: NativeChatComposerDraftAddition,
   options: { once?: boolean } = {}
 ): Pick<NativeChatComposerDraft, 'text' | 'images' | 'document'> {
+  // Image ids are unique to a message or attach, so one the draft holds means it was added already,
+  // whatever was typed since.
+  if (addition.images?.some(({ id }) => draft.images.some((held) => held.id === id))) {
+    return { text: draft.text, images: draft.images, document: draft.document }
+  }
   const text = appendReturnedDraftText(draft.text, addition.text ?? '')
   const images = [...draft.images]
   for (const { id, path, connectionId } of addition.images ?? []) {
-    if (options.once && images.some((held) => held.id === id)) {
+    // One that took a placeholder's place holds that id, so a replay knows it by its file.
+    if (options.once && addition.fromUser && images.some((held) => held.path === path)) {
       continue
     }
     const image = { id, path, ...(connectionId ? { connectionId } : {}) }
     const placeholder = addition.fromUser
       ? images.findIndex((held) => held.unavailableName === basename(path))
       : -1
-    if (placeholder === -1) {
-      images.push(image)
+    const replaced = images[placeholder]
+    if (replaced) {
+      // Its chips name the placeholder's id, so the image takes that id.
+      images[placeholder] = { ...image, id: replaced.id }
     } else {
-      images[placeholder] = image
+      images.push(image)
     }
   }
   return { text, images, document: appendPromptDocumentText(draft.document, draft.text, text) }
