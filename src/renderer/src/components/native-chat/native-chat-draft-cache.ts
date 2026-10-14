@@ -57,7 +57,10 @@ export function appendNativeChatDraftCache(
   const previous = readNativeChatDraftCache(scopeKey)
   // Durable now: the copy it came from (a send handed back, a queued card) goes right after this.
   const durable = appendToNativeChatComposerDraft(scopeKey, { text, images }, owner)
-  appendListeners.get(scopeKey)?.forEach((listener) => listener(text, previous))
+  // Why: an addition the draft already held adds nothing, so a composer must not show it again.
+  if (readNativeChatDraftCache(scopeKey) !== previous) {
+    appendListeners.get(scopeKey)?.forEach((listener) => listener(text, previous))
+  }
   return durable
 }
 
