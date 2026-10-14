@@ -10,13 +10,11 @@ const MIN_COLUMN_WIDTH = 48
 const MAX_COLUMN_WIDTH = 220
 const WHITESPACE = /\s/
 
-function cellContentWidth(cell: string): number {
-  // Links and images draw their label; emphasis and code markers draw nothing.
-  const visible = cell.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\*\*|__|~~|`/g, '')
+function cellContentWidth(text: string): number {
   let columns = 0
   let word = 0
   let longestWord = 0
-  for (const char of visible) {
+  for (const char of text) {
     // CJK, kana, Hangul, fullwidth forms and emoji draw about two Latin glyphs wide.
     const wide = char.codePointAt(0)! >= 0x2e80
     columns += wide ? 2 : 1
@@ -27,10 +25,11 @@ function cellContentWidth(cell: string): number {
   return Math.max(columns * AVERAGE_GLYPH_WIDTH, longestWord * WIDEST_GLYPH_WIDTH)
 }
 
-/** One width per header column, sized to the column's widest cell. */
-export function mobileMarkdownTableColumnWidths(headers: string[], rows: string[][]): number[] {
-  return headers.map((header, column) => {
-    let widest = cellContentWidth(header)
+/** One width per header column, sized to the column's widest cell. `rows` holds each cell's
+ *  drawn text, header row first. */
+export function mobileMarkdownTableColumnWidths(rows: readonly string[][]): number[] {
+  return (rows[0] ?? []).map((_, column) => {
+    let widest = 0
     for (const row of rows) {
       widest = Math.max(widest, cellContentWidth(row[column] ?? ''))
     }
