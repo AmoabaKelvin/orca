@@ -74,19 +74,19 @@ export type AcpModelDiscovery =
       args: readonly string[]
       parse(stdout: string): AgentSessionModelOption[]
       listingNamesConfiguredModel: boolean
-      /** The releases whose listing matches what their chats offer; any other lists the way
-       *  `otherReleases` names, else not at all and its chats' own lists fill the catalog. Absent
-       *  lists on every release. */
+      /** The releases whose listing matches what their chats offer; any other lists through
+       *  `otherReleases`, else not at all and its chats' own lists fill the catalog. Absent lists
+       *  on every release. */
       supportsVersion?(version: string): boolean
-      otherReleases?: 'session'
+      otherReleases?: AcpSessionModelDiscovery
     }
-  | {
-      /** What a new chat offers, read from a session the listing then deletes. An agent that
-       *  cannot delete one is not asked, so no empty conversation is left in its history. */
-      kind: 'session'
-      listingNamesConfiguredModel: boolean
-    }
+  | AcpSessionModelDiscovery
   | { kind: 'unavailable'; reason: string }
+
+/** What a new chat offers, read from a session opened in the asking chat's folder and then
+ *  deleted, as bb does. An agent that cannot delete one is not asked, and with no chat folder (a
+ *  prewarm) none is opened, so no conversation or new project is left in its history. */
+export type AcpSessionModelDiscovery = { kind: 'session'; listingNamesConfiguredModel: boolean }
 
 export type AcpLaunchSpec = {
   /** The Orca agent id, which names the agent's records, its catalog label and its settings. */
@@ -218,7 +218,7 @@ const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
     listingNamesConfiguredModel: false,
     // 2.x rejects `--verbose`, and its own listings omit providers that report after startup.
     supportsVersion: (version) => isStableCliVersionOnLine(version, OPENCODE_1X_LINE),
-    otherReleases: 'session'
+    otherReleases: { kind: 'session', listingNamesConfiguredModel: false }
   },
   visualsSkill: loadOpenCodeVisualsSkill,
   compaction: true,

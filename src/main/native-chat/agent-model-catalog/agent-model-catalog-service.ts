@@ -197,9 +197,9 @@ export function createAgentModelCatalogService(
   // answers after it, so the chat that reported it is followed by an answer naming it.
   const recordingDefaults = new Map<string, Promise<void>>()
   const listWith =
-    (probe: AgentModelCatalogProbe, home: AgentSessionAccountHome) =>
+    (probe: AgentModelCatalogProbe, home: AgentSessionAccountHome, workspacePath?: string) =>
     (): Promise<AgentModelCatalogSuccess> =>
-      probe(home, { signal: lifetime.signal }).catch((error: unknown) => {
+      probe(home, { signal: lifetime.signal, workspacePath }).catch((error: unknown) => {
         throw lifetime.signal.aborted
           ? new AgentModelCatalogListingStoppedError(String(error))
           : error
@@ -234,6 +234,9 @@ export function createAgentModelCatalogService(
           ? await sessionWorkspacePath(deps, record)
           : null
         : params.workspacePath
+      // A listing that opens a session opens it in this chat's folder.
+      const list = (probe: AgentModelCatalogProbe, home: AgentSessionAccountHome) =>
+        listWith(probe, home, workspacePath ?? undefined)
       await recordingDefaults.get(fingerprint)
       let entry = deps.store.get(fingerprint)
       const probe = deps.probes?.[params.agent]
@@ -272,7 +275,7 @@ export function createAgentModelCatalogService(
       // Past its TTL, only the probe re-derives a held reason. The reason is served meanwhile;
       // only a read that asks waits for the probe's answer.
       if (probe && home && !lifetime.signal.aborted && deps.store.heldReasonDue(fingerprint)) {
-        const probing = deps.store.refresh(fingerprint, params.agent, probe, listWith(probe, home))
+        const probing = deps.store.refresh(fingerprint, params.agent, probe, list(probe, home))
         if (!params.waitForListing) {
           return answer(entry, { listingInProgress: true })
         }
@@ -283,9 +286,9 @@ export function createAgentModelCatalogService(
       let listing = !entry && home ? deps.store.pendingListing(fingerprint) : null
       if (probe && home && !lifetime.signal.aborted) {
         if (entry && deps.store.shouldRefresh(fingerprint)) {
-          void deps.store.refresh(fingerprint, params.agent, probe, listWith(probe, home))
+          void deps.store.refresh(fingerprint, params.agent, probe, list(probe, home))
         } else if (!entry && !listing && !deps.store.hasActiveFailure(fingerprint)) {
-          void deps.store.refresh(fingerprint, params.agent, probe, listWith(probe, home))
+          void deps.store.refresh(fingerprint, params.agent, probe, list(probe, home))
           listing = deps.store.pendingListing(fingerprint)
         }
       }

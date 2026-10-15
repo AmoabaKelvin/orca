@@ -6,6 +6,7 @@ import {
   agentModelCatalogFingerprintForRecord,
   agentModelCatalogSessionAccess
 } from './agent-model-catalog-fingerprint'
+import { AgentModelCatalogListingDeferredError } from './agent-model-catalog-failures'
 import { createAgentModelCatalogService } from './agent-model-catalog-service'
 import {
   AGENT_MODEL_CATALOG_FRESH_MS,
@@ -94,6 +95,43 @@ describe('model catalog prewarm', () => {
     await service.prewarm()
     expect(codex).toHaveBeenCalledTimes(2)
     expect(grok).toHaveBeenCalledTimes(2)
+  })
+
+  // OpenCode 2.x lists in a session opened in the chat's folder; a prewarm has no chat.
+  it('hands a read its chat folder, and lets a listing that needs one skip the prewarm', async () => {
+    const store = new AgentModelCatalogStore()
+    const probe = vi.fn(
+      async (_home: AgentSessionAccountHome, options?: { workspacePath?: string }) => {
+        if (!options?.workspacePath) {
+          throw new AgentModelCatalogListingDeferredError('lists in a chat folder')
+        }
+        return listing('big-pickle')
+      }
+    )
+    const service = createAgentModelCatalogService({
+      store,
+      getRecord: () => undefined,
+      drivesRecord: () => true,
+      hasChatRecords: () => true,
+      resolveAccountHome: async () => HOME('OPENCODE_HOME', '/homes/a'),
+      probes: { opencode2: probe }
+    })
+
+    await service.prewarm()
+    expect(probe).toHaveBeenCalledWith(HOME('OPENCODE_HOME', '/homes/a'), {
+      signal: expect.any(AbortSignal)
+    })
+    // Not held as a failure: the first chat lists at once, in its own folder.
+    const read = await service.read({
+      agent: 'opencode2',
+      workspacePath: '/work/project',
+      waitForListing: true
+    })
+    expect(probe).toHaveBeenLastCalledWith(HOME('OPENCODE_HOME', '/homes/a'), {
+      signal: expect.any(AbortSignal),
+      workspacePath: '/work/project'
+    })
+    expect(read.origin).toBe('probe')
   })
 
   it('lists the new account after a switch and leaves the old account’s catalog alone', async () => {

@@ -10,6 +10,10 @@ export const AGENT_MODEL_CATALOG_FAILURE_TTL_MS = 30_000
 /** A probe the host stopped (it is going away): says nothing about the account, so it is not held. */
 export class AgentModelCatalogListingStoppedError extends Error {}
 
+/** A listing that runs only in a chat's folder, asked with none (a prewarm): like a stopped probe,
+ *  it says nothing about the account. */
+export class AgentModelCatalogListingDeferredError extends AgentModelCatalogListingStoppedError {}
+
 export type AgentModelCatalogFailure = {
   /** Set by the store's own refreshes; the fingerprint is a hash, so expiry by agent reads it. */
   agent?: string
