@@ -1,6 +1,10 @@
 import { useCallback, useMemo, useRef } from 'react'
 import { encodeNativeChatTranscriptIdentity } from '../../../src/shared/native-chat-transcript-retention'
 import { projectStructuredAgentSessionMessages } from '../../../src/shared/structured-agent-session-message-projection'
+import {
+  projectStructuredQuestionMessages,
+  structuredQuestionTranscript
+} from '../../../src/shared/structured-agent-question-projection'
 import { withNativeChatCutTurnNotices } from '../../../src/shared/native-chat-cut-turn-notice'
 import { tuiAgentDisplayName } from '../../../src/shared/tui-agent-display-names'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../src/shared/structured-agent-session-main-agent-working'
@@ -150,9 +154,15 @@ export function useMobileStructuredAgentSession(args: {
     onSendError
   })
   const messages = useMemo(
-    // A message the host recorded and then rejected stays where it was sent, as not sent.
+    // A message the host recorded and then rejected stays where it was sent, as not sent. A
+    // question draws as its ask row, as desktop draws it, never as the raw tool call.
     () =>
-      projectStructuredAgentSessionMessages(transcriptItems, sends.optimistic, state.submissions),
+      projectStructuredAgentSessionMessages(
+        transcriptItems,
+        sends.optimistic,
+        state.submissions,
+        projectStructuredQuestionMessages
+      ),
     [transcriptItems, sends.optimistic, state.submissions]
   )
   const turnId = runningStructuredAgentSessionTurnId(state)
@@ -304,6 +314,7 @@ export function useMobileStructuredAgentSession(args: {
     },
     cancelPrompt: (prompt?: { itemId: string; expectedRevision: number }) =>
       requestCancel(prompt ?? pendingStructuredPromptIdentity(stateRef.current)),
+    receipts: structuredQuestionTranscript(transcriptItems).receipts,
     permission: projectStructuredPermission(approvalPrompt),
     question: projectStructuredQuestion(questionPrompt, groupedDraft),
     respondPermission,

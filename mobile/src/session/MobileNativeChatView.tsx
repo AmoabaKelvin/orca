@@ -18,6 +18,7 @@ import type {
   NativeChatSettledTurns
 } from '../../../src/shared/native-chat-turn-status'
 import type { NativeChatTurnJournal } from '../../../src/shared/native-chat-turn-membership'
+import type { NativeChatResolvedPrompt } from '../../../src/shared/native-chat-resolution-receipt'
 import { colors } from '../theme/mobile-theme'
 import { styles } from './mobile-native-chat-view-styles'
 import { mobileNativeChatListFooter } from './mobile-native-chat-list-footer'
@@ -80,6 +81,8 @@ type Props = ComposerTrayProps & {
   settledTurns?: NativeChatSettledTurns | null
   /** Structured lane: the journal that places each row in its turn. */
   turnJournal?: NativeChatTurnJournal | null
+  /** Structured lane: the receipt each answered prompt's row draws in its place. */
+  receipts?: ReadonlyMap<string, NativeChatResolvedPrompt> | null
   /** Interrupt the agent mid-turn (shown as a Stop button on the working bar). */
   /** Interrupt a provider turn. */
   onStop?: () => void
@@ -171,6 +174,7 @@ export function MobileNativeChatView({
   workingStartedAt,
   settledTurns,
   turnJournal = null,
+  receipts = null,
   onStop,
   streaming,
   hasMore,
@@ -285,8 +289,6 @@ export function MobileNativeChatView({
   // Per-turn status rows: one live indicator while the turn runs, then a settled
   // "Worked for N" row. The structured lane owns them; the bridge lane keeps its
   // three-dot indicator.
-  // The display status, decided once in the session hook.
-  const stopping = turnIndicator?.stopping === true
   const turns = useMobileNativeChatTurnDisclosure({
     messages: data,
     enabled: structuredActivityUi,
@@ -296,7 +298,8 @@ export function MobileNativeChatView({
     turnJournal,
     thinking: turnIndicator?.thinking === true,
     activityText: turnIndicator?.activityText ?? null,
-    stopping,
+    // The display status, decided once in the session hook.
+    stopping: turnIndicator?.stopping === true,
     lineYields: structuredActivityUi && (ask != null || permission != null || question != null),
     scopeKey: sendSurfaceId
   })
@@ -315,10 +318,11 @@ export function MobileNativeChatView({
         structuredActivityUi={structuredActivityUi}
         onToggleTurn={turns.onToggleTurn}
         unsentNotice={item.unsent ? unsentNotices.get(item.id) : undefined}
+        receipt={receipts?.get(item.id)}
         {...turns.resolveRow(index, item)}
       />
     ),
-    [toolsExpanded, fontScale, onOpenFile, structuredActivityUi, turns, unsentNotices]
+    [toolsExpanded, fontScale, onOpenFile, structuredActivityUi, turns, unsentNotices, receipts]
   )
 
   const history = useMobileNativeChatPageHistory(turns.listMessages, renderItem)
@@ -333,7 +337,6 @@ export function MobileNativeChatView({
   ) : null
 
   const emptyState = mobileNativeChatEmptyState(status, agent ?? null, error)
-  const showLoading = status === 'loading' && messages.length === 0
 
   const lockReason = useSettledMobileNativeChatInputLock(inputLockReason)
   // Why only Send, terminal-backed only: that send types into the agent's prompt and can answer it,
@@ -355,7 +358,7 @@ export function MobileNativeChatView({
 
   return (
     <View style={[styles.root, { paddingBottom: bottomPad }]}>
-      {showLoading ? (
+      {status === 'loading' && messages.length === 0 ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.textSecondary} />
         </View>

@@ -17,7 +17,10 @@ import {
   readProviderRetry
 } from '../../../src/shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../src/shared/agent-session-failure-words'
+import { structuredQuestionTranscript } from '../../../src/shared/structured-agent-question-projection'
+import type { NativeChatResolvedPrompt } from '../../../src/shared/native-chat-resolution-receipt'
 import { colors } from '../theme/mobile-theme'
+import { ANSWERED_PROMPT_ITEMS } from './mobile-native-chat-answered-prompts.test-fixture'
 import { styles } from './mobile-native-chat-message-styles'
 
 vi.mock('react-native', async () => {
@@ -49,6 +52,7 @@ vi.mock('react-native', async () => {
 vi.mock('expo-clipboard', () => ({ setStringAsync: vi.fn() }))
 vi.mock('lucide-react-native', () => ({
   AlertCircle: 'AlertCircle',
+  MessageSquareMore: 'MessageSquareMore',
   AlertTriangle: 'AlertTriangle',
   ArrowUp: 'ArrowUp',
   Brain: 'Brain',
@@ -98,6 +102,7 @@ describe('MobileNativeChatMessage', () => {
       onToggleTurn?: () => void
       reasoningIsLive?: boolean
       unsentNotice?: string
+      receipt?: NativeChatResolvedPrompt
     } = {}
   ): ReactTestRenderer {
     act(() => {
@@ -131,6 +136,60 @@ describe('MobileNativeChatMessage', () => {
           String(node.type) === 'View' && node.props.accessibilityLabel === 'Context cleared'
       )
     ).toHaveLength(1)
+  })
+
+  // Every string drawn, nested spans included, in order.
+  const words = (node: ReactTestInstance): string[] =>
+    node.children.flatMap((child) => (typeof child === 'string' ? [child] : words(child)))
+
+  it('draws an answered approval and question as their receipts', () => {
+    const { messages, receipts } = structuredQuestionTranscript(ANSWERED_PROMPT_ITEMS)
+    const drawn = messages.flatMap((message) => {
+      const receipt = receipts.get(message.id)
+      return receipt ? [words(render(message, { receipt }).root).join('')] : []
+    })
+    expect(drawn).toEqual([
+      expect.stringMatching(
+        /^Bash\{[\s\S]*echo receipt-check[\s\S]*\}AllowResolved · Answered on desktop-renderer$/
+      ),
+      'Asked: Do you prefer tea or coffee?CoffeeResolved · Answered on desktop-renderer'
+    ])
+  })
+
+  it('draws a question call as the question awaited, then as asked, never as a raw tool line', () => {
+    // A Claude terminal chat's AskUserQuestion call and its answer, as the host decoded them.
+    const call: NativeChatMessage = toolMessage([
+      {
+        type: 'tool-call',
+        name: 'AskUserQuestion',
+        input: {
+          questions: [
+            {
+              question: 'Do you prefer red or blue?',
+              header: 'Color',
+              multiSelect: false,
+              options: [
+                { label: 'Red', description: 'You prefer red.' },
+                { label: 'Blue', description: 'You prefer blue.' }
+              ]
+            }
+          ]
+        },
+        callId: 'toolu_01D2nEEE5zhVRVmAvtmLBz5T'
+      }
+    ])
+    const answer = {
+      type: 'tool-result' as const,
+      output:
+        'Your questions have been answered: "Do you prefer red or blue?"="Blue". You can now continue with these answers in mind.',
+      callId: 'toolu_01D2nEEE5zhVRVmAvtmLBz5T'
+    }
+    expect(words(render(call).root).join('')).toBe(
+      'Awaiting user input: Do you prefer red or blue?'
+    )
+    expect(words(render({ ...call, blocks: [...call.blocks, answer] }).root).join('')).toBe(
+      'Asked: Do you prefer red or blue?'
+    )
   })
 
   // Each row as its host writes it: Claude's API retry and sign-in rows use these shared words.

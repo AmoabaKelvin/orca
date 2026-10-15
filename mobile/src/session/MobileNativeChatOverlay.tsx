@@ -104,6 +104,7 @@ export function MobileNativeChatOverlay({
           workingStartedAt={controller.nativeChatWorkingStartedAt}
           settledTurns={controller.nativeChatSettledTurns}
           turnJournal={controller.nativeChatTurnJournal}
+          receipts={controller.nativeChatReceipts}
           streaming={streaming}
           onStop={controller.handleNativeChatStop}
           ask={controller.nativeChatAsk}
