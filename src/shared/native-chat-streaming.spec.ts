@@ -118,12 +118,9 @@ describe('deriveNativeChatStreamingText', () => {
       })
     ).toBe('Partial answer that is now much longer than before')
   })
-})
-
-describe('nativeChatStreamingMessage', () => {
-  it('stays hidden while the agent runs a tool after the sentence it streamed', () => {
+  it('hides the sentence it streamed while a tool runs, but not a new reply after the tool', () => {
     // A Claude transcript writes the sentence and the tool call it led into as separate rows.
-    const sentence = 'Checking the notes file now.'
+    const sentence = 'Checking the notes file now, then I will compare it with the settings.'
     const toolCall: NativeChatMessage = {
       id: 'f4470ba3',
       role: 'assistant',
@@ -131,15 +128,21 @@ describe('nativeChatStreamingMessage', () => {
       timestamp: null,
       source: 'transcript'
     }
+    const messages = [user('Say it, then run sleep 12.'), assistant(sentence), toolCall]
+    expect(
+      deriveNativeChatStreamingText({ messages, previewText: sentence, working: true })
+    ).toBeNull()
     expect(
       deriveNativeChatStreamingText({
-        messages: [user('Say it, then run sleep 12.'), assistant(sentence), toolCall],
-        previewText: sentence,
+        messages,
+        previewText: 'The settings look correct.',
         working: true
       })
-    ).toBeNull()
+    ).toBe('The settings look correct.')
   })
+})
 
+describe('nativeChatStreamingMessage', () => {
   it('builds a stable-id assistant hook message', () => {
     const m = nativeChatStreamingMessage('hi')
     expect(m.id).toBe(NATIVE_CHAT_STREAMING_ID)

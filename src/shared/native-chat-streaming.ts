@@ -44,7 +44,7 @@ export function latestNativeChatReplyText(
 /**
  * Decide the streaming text to show, or null to show nothing. Returns the
  * preview only while it leads the transcript — i.e. it's longer than (and not
- * already contained in) the reply it streams. Once the real turn lands with
+ * already contained in) the last assistant turn. Once the real turn lands with
  * the same (or more) text, the preview is suppressed so the bubble doesn't
  * duplicate or flicker as the transcript catches up.
  *
@@ -69,8 +69,13 @@ export function deriveNativeChatStreamingText(args: {
   if (!text) {
     return null
   }
-  const lastText = latestNativeChatReplyText(messages)
+  const lastText = assistantText(messages.at(-1))
   if (lastText.includes(text) || text.length <= lastText.length) {
+    return null
+  }
+  // A tool call or thought after the sentence leaves the last row wordless. Hide only that same
+  // sentence: a new, shorter reply after the tool is not the earlier, longer commentary.
+  if (!lastText && latestNativeChatReplyText(messages).includes(text)) {
     return null
   }
   return text
