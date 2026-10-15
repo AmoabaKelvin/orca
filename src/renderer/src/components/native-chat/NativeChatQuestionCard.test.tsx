@@ -477,6 +477,17 @@ describe('NativeChatQuestionCard', () => {
     expect(document.activeElement).toBe(container.querySelector('[role="group"]'))
   })
 
+  it('puts the keyboard in the answer field when typing is the only answer', () => {
+    render(
+      { questions: [{ question: 'Type your answer:', multiSelect: false, options: [] }] },
+      vi.fn(),
+      true,
+      true
+    )
+
+    expect(document.activeElement).toBe(container.querySelector('input'))
+  })
+
   it('picks from a number key pressed anywhere inside its own chat pane', () => {
     vi.useFakeTimers()
     const onAnswer = vi.fn()

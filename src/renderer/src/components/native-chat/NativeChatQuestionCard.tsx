@@ -73,6 +73,7 @@ export function NativeChatQuestionCard({
   const q = prompt.questions[index]!
   const questionAllowsOther = Array.isArray(allowOther) ? (allowOther[index] ?? false) : allowOther
   const freeTextInput = freeTextInputs?.[index]
+  const fieldTakesFocus = q.options.length === 0 || undefined
   const acceptsEmpty = (qi: number): boolean =>
     freeTextInputs?.[qi]?.allowEmpty === true && prompt.questions[qi]?.options.length === 0
   const typedText = (qi: number, oth = otherText): string =>
@@ -329,6 +330,7 @@ export function NativeChatQuestionCard({
                       still be acted on. */}
                   {freeTextInput?.multiline ? (
                     <Textarea
+                      data-native-chat-prompt-card-focus-target={fieldTakesFocus}
                       disabled={isSubmitting}
                       value={otherText[index]}
                       onChange={(e) => setOther(index, e.target.value)}
@@ -338,6 +340,7 @@ export function NativeChatQuestionCard({
                   ) : (
                     <ImeInput
                       ref={answerInputRef}
+                      data-native-chat-prompt-card-focus-target={fieldTakesFocus}
                       disabled={isSubmitting}
                       value={otherText[index]}
                       onChange={(e) => setOther(index, e.target.value)}
