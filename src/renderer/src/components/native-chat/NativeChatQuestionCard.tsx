@@ -74,6 +74,9 @@ export function NativeChatQuestionCard({
   const questionAllowsOther = Array.isArray(allowOther) ? (allowOther[index] ?? false) : allowOther
   const freeTextInput = freeTextInputs?.[index]
   const fieldTakesFocus = q.options.length === 0 || undefined
+  const answerPlaceholder =
+    freeTextInput?.placeholder ??
+    translate('components.native-chat.question.otherPlaceholder', 'Type your answer')
   const acceptsEmpty = (qi: number): boolean =>
     freeTextInputs?.[qi]?.allowEmpty === true && prompt.questions[qi]?.options.length === 0
   const typedText = (qi: number, oth = otherText): string =>
@@ -335,7 +338,7 @@ export function NativeChatQuestionCard({
                       value={otherText[index]}
                       onChange={(e) => setOther(index, e.target.value)}
                       onClick={autoAdvance.cancel}
-                      placeholder={freeTextInput.placeholder}
+                      placeholder={answerPlaceholder}
                     />
                   ) : (
                     <ImeInput
@@ -358,13 +361,7 @@ export function NativeChatQuestionCard({
                           confirm(true)
                         }
                       }}
-                      placeholder={
-                        freeTextInput?.placeholder ??
-                        translate(
-                          'components.native-chat.question.otherPlaceholder',
-                          'Type your answer'
-                        )
-                      }
+                      placeholder={answerPlaceholder}
                       className={cn(
                         'min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60 disabled:cursor-default disabled:opacity-50',
                         currentTypedAnswerChosen || !otherText[index]
