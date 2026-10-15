@@ -52,7 +52,7 @@ export function useNativeChatPromptCardFocus(
       card &&
       shouldFocus &&
       isInNativeChatPaneOf(card, active) &&
-      !card.contains(active) &&
+      (active === card || !card.contains(active)) &&
       !active?.closest('[data-native-chat-find-bar], [data-queued-message-editor]')
     ) {
       focusPromptCard(card)
