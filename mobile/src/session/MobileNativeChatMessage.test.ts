@@ -189,26 +189,25 @@ describe('MobileNativeChatMessage', () => {
 
   it('draws a question call as the question awaited, then as asked, never as a raw tool line', () => {
     // A Claude terminal chat's AskUserQuestion call and its answer, as the host decoded them.
-    const call: NativeChatMessage = toolMessage([
-      {
-        type: 'tool-call',
-        name: 'AskUserQuestion',
-        input: {
-          questions: [
-            {
-              question: 'Do you prefer red or blue?',
-              header: 'Color',
-              multiSelect: false,
-              options: [
-                { label: 'Red', description: 'You prefer red.' },
-                { label: 'Blue', description: 'You prefer blue.' }
-              ]
-            }
-          ]
-        },
-        callId: 'toolu_01D2nEEE5zhVRVmAvtmLBz5T'
-      }
-    ])
+    const ask = {
+      type: 'tool-call' as const,
+      name: 'AskUserQuestion',
+      input: {
+        questions: [
+          {
+            question: 'Do you prefer red or blue?',
+            header: 'Color',
+            multiSelect: false,
+            options: [
+              { label: 'Red', description: 'You prefer red.' },
+              { label: 'Blue', description: 'You prefer blue.' }
+            ]
+          }
+        ]
+      },
+      callId: 'toolu_01D2nEEE5zhVRVmAvtmLBz5T'
+    }
+    const call = toolMessage([ask])
     const answer = {
       type: 'tool-result' as const,
       output:
@@ -219,6 +218,14 @@ describe('MobileNativeChatMessage', () => {
       'Awaiting user input: Do you prefer red or blue?'
     )
     expect(words(render({ ...call, blocks: [...call.blocks, answer] }).root).join('')).toBe(
+      'Asked: Do you prefer red or blue?'
+    )
+    // A native chat asks desktop's selector: in a live turn, only a running call is still awaited.
+    const live = { structuredActivityUi: true, activeTurnIsWorking: true }
+    expect(words(render(toolMessage([{ ...ask, state: 'running' }]), live).root).join('')).toBe(
+      'Awaiting user input: Do you prefer red or blue?'
+    )
+    expect(words(render(toolMessage([{ ...ask, state: 'completed' }]), live).root).join('')).toBe(
       'Asked: Do you prefer red or blue?'
     )
   })

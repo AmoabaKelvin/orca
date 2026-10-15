@@ -214,9 +214,11 @@ function MobileNativeChatMessageImpl({
     !turnExpanded &&
     !toolsExpanded
   const showToolRun = tools.length > 0 && !settledToolsHidden
-  // Without turn state (a terminal chat), a question with no answer yet is the one awaited.
-  const askPending =
-    unansweredAsks.length > 0 && (!structuredActivityUi || activeTurnIsWorking === true)
+  // A native chat asks desktop's selector whether the call is still live. A terminal chat has no
+  // turn state, so a question with no answer yet is the one awaited.
+  const askPending = structuredActivityUi
+    ? selectActiveToolCall(unansweredAsks, { activeTurnIsWorking }) !== null
+    : unansweredAsks.length > 0
   const askRow =
     asks.length > 0 && !settledToolsHidden ? (
       <MobileNativeChatAwaitingInputRow
