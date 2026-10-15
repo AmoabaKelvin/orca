@@ -3,7 +3,8 @@ import type { DiscoveredSkill, SkillDiscoverySource } from '../../../shared/skil
 import type { TuiAgent } from '../../../shared/tui-agent'
 import {
   getNativeChatAgentProfile,
-  readsSkillSource
+  readsSkillSource,
+  type NativeChatAgentProfile
 } from '../../../shared/native-chat-agent-profiles'
 import { ORCHESTRATION_SKILL_NAME } from '@/lib/agent-feature-install-commands'
 import { getAgentLabel } from '@/lib/agent-catalog'
@@ -34,15 +35,13 @@ function isOrchestrationSkill(skill: DiscoveredSkill): boolean {
   )
 }
 
-// Why: `native-chat-agent-profiles.ts` carries the same rule as `skillSourceOwner`;
-// keep the two in step when an agent starts reading another agent's roots.
-function getSkillSourceOwnerForAgent(agent: TuiAgent): AgentType {
-  // Why: both launch Claude Code and therefore consume Claude-owned skill roots.
-  if (agent === 'claude-agent-teams' || agent === 'openclaude') {
-    return 'claude'
-  }
-  // OpenCode 2.x reads OpenCode's skill folders.
-  return agent === 'opencode2' ? 'opencode' : agent
+// Why: an agent with a chat profile reads the roots its chats do; without one it reads its own,
+// and Claude Agent Teams launches Claude Code, so it reads Claude's.
+function skillReaderForAgent(
+  agent: TuiAgent
+): Pick<NativeChatAgentProfile, 'skillSourceOwner' | 'readsSkillFoldersOf'> {
+  const owner: AgentType = agent === 'claude-agent-teams' ? 'claude' : agent
+  return getNativeChatAgentProfile(agent) ?? { skillSourceOwner: owner }
 }
 
 /** `skills` and `sources` must come from the same discovery scan. */
@@ -51,10 +50,7 @@ export function agentHasOrchestrationSkill(
   skills: readonly DiscoveredSkill[],
   sources: readonly SkillDiscoverySource[]
 ): boolean {
-  const reader = {
-    skillSourceOwner: getSkillSourceOwnerForAgent(agent),
-    readsSkillFoldersOf: getNativeChatAgentProfile(agent)?.readsSkillFoldersOf
-  }
+  const reader = skillReaderForAgent(agent)
   return skills.some((skill) => {
     if (!isOrchestrationSkill(skill)) {
       return false

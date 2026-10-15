@@ -51,7 +51,6 @@ const NATIVE_CHAT_AGENT_PROFILES: Partial<Record<AgentType, NativeChatAgentProfi
     expandsSlashCommandsFromText: true
   },
   opencode: OPENCODE_PROFILE,
-  // OpenCode 2.x reads OpenCode's skill folders.
   opencode2: OPENCODE_PROFILE,
   grok: {
     skillPrefix: '/',

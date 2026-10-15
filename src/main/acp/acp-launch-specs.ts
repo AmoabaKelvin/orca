@@ -202,8 +202,8 @@ function openCodeLaunchSpec(
     ...row,
     // OpenCode has no bypass flag: full access answers each permission request yes.
     args: () => ['acp'],
-    // Applied last: the client name ACP sessions report, and no question tool, which ACP cannot
-    // answer (it would wait forever).
+    // Applied last: the client name ACP sessions report, and no question tool, since Orca shows no
+    // question form yet (1.x would wait on one forever; 2.x drops it).
     env: { OPENCODE_CLIENT: 'acp', OPENCODE_ENABLE_QUESTION_TOOL: 'false' },
     scrubEnvironment: scrubOpenCodeAcpEnvironment,
     dialect: OPENCODE_ACP_DIALECT,
