@@ -6,6 +6,7 @@ import {
 } from './acp-model-catalog-probe'
 import { AcpSessionRuntime } from './acp-session-runtime'
 import { AcpScriptedAgent } from './acp-scripted-agent.test-support'
+import { AgentModelCatalogListingDeferredError } from '../native-chat/agent-model-catalog/agent-model-catalog-failures'
 import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
 import { openCodeAcpAccountBinding } from '../opencode/opencode-structured-account-home'
 
@@ -242,19 +243,17 @@ describe('ACP model catalog probes', () => {
   // Every 2.x release rejects `--verbose`, and its own listings omit providers that report late.
   it('lists OpenCode 2.x from a session it opens and deletes, with no listing command', async () => {
     const { agent, deps, launches } = scriptedOpenCode2(true)
-    const success = await createAcpModelCatalogProbe(
-      OPENCODE,
-      deps
-    )({
-      kind: 'opencode',
-      locator: { kind: 'unmanaged' }
-    })
+    const success = await createAcpModelCatalogProbe(OPENCODE, deps)(
+      { kind: 'opencode', locator: { kind: 'unmanaged' } },
+      { workspacePath: '/work/project' }
+    )
     expect(agent.frames.map((frame) => frame.method)).toEqual([
       'initialize',
       'session/new',
       'session/delete'
     ])
-    expect(agent.frames[1]!.params).toMatchObject({ cwd: '/home/user' })
+    // In the asking chat's folder, so OpenCode records no project the person never opened.
+    expect(agent.frames[1]!.params).toMatchObject({ cwd: '/work/project' })
     expect(agent.frames[2]!.params).toEqual({ sessionId: 'probe-session' })
     expect(launches).toEqual([expect.objectContaining({ args: ['acp'] })])
     expect(deps.runListing).not.toHaveBeenCalled()
@@ -267,12 +266,24 @@ describe('ACP model catalog probes', () => {
   it('opens no session on an OpenCode 2.x that cannot delete one', async () => {
     const { agent, deps } = scriptedOpenCode2(false)
     await expect(
+      createAcpModelCatalogProbe(OPENCODE, deps)(
+        { kind: 'opencode', locator: { kind: 'unmanaged' } },
+        { workspacePath: '/work/project' }
+      )
+    ).rejects.toThrow(/cannot delete a session/)
+    expect(agent.frames.map((frame) => frame.method)).toEqual(['initialize'])
+  })
+
+  it('opens no session on OpenCode 2.x without a chat folder, as at a prewarm', async () => {
+    const { agent, deps, launches } = scriptedOpenCode2(true)
+    await expect(
       createAcpModelCatalogProbe(
         OPENCODE,
         deps
       )({ kind: 'opencode', locator: { kind: 'unmanaged' } })
-    ).rejects.toThrow(/cannot delete a session/)
-    expect(agent.frames.map((frame) => frame.method)).toEqual(['initialize'])
+    ).rejects.toBeInstanceOf(AgentModelCatalogListingDeferredError)
+    expect(launches).toEqual([])
+    expect(agent.frames).toEqual([])
   })
 
   it('lists nothing for a release that runs no structured chat', async () => {

@@ -8,6 +8,7 @@ import {
   runAgentModelCatalogListing,
   runAgentModelCatalogSession
 } from '../native-chat/agent-model-catalog/agent-model-catalog-probe-runner'
+import { AgentModelCatalogListingDeferredError } from '../native-chat/agent-model-catalog/agent-model-catalog-failures'
 import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
 import type { AgentSessionModelOption } from '../../shared/agent-session-wire'
 import { createAcpAgentConnection } from './acp-agent-connection'
@@ -96,9 +97,13 @@ export function createAcpModelCatalogProbe(
       )
       models = listing.parse(stdout)
     } else if (listing.kind === 'session') {
+      const workspace = options?.workspacePath
+      if (!workspace) {
+        throw new AgentModelCatalogListingDeferredError(`${spec.agent} lists in a chat's folder`)
+      }
       models = await runAgentModelCatalogSession(
         () => (deps.connectSession ?? createAcpAgentConnection)(launch),
-        (connection) => readSessionModels(spec, connection, cwd),
+        (connection) => readSessionModels(spec, connection, workspace),
         run
       )
     } else {
@@ -125,22 +130,20 @@ function listingFor(discovery: AcpModelListing, version: string | null): AcpMode
   if (version !== null && discovery.supportsVersion(version)) {
     return discovery
   }
-  return discovery.otherReleases === 'session'
-    ? { kind: 'session', listingNamesConfiguredModel: discovery.listingNamesConfiguredModel }
-    : null
+  return discovery.otherReleases ?? null
 }
 
-/** What a new chat in `cwd` offers, read from a session opened only to be deleted. */
+/** What a new chat in `workspace` offers, read from a session opened only to be deleted. */
 async function readSessionModels(
   spec: AcpLaunchSpec,
   connection: AcpModelCatalogSessionConnection,
-  cwd: string
+  workspace: string
 ): Promise<AgentSessionModelOption[]> {
   const initialized = await connection.initialize()
   if (!initialized.agentCapabilities?.sessionCapabilities?.delete) {
     throw new Error(`${spec.agent} cannot delete a session, so it lists its models only in chats`)
   }
-  const started = await connection.start({ cwd, mcpServers: [] })
+  const started = await connection.start({ cwd: workspace, mcpServers: [] })
   // A failed delete leaves one empty conversation behind; the models it listed are still right.
   await connection.deleteSession(started.sessionId).catch(() => undefined)
   const options = new AcpStructuredOptions(spec.dialect)
