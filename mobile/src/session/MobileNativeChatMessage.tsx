@@ -281,6 +281,7 @@ function MobileNativeChatMessageImpl({
               blocks={drawnProse}
               fontScale={fontScale}
               onOpenFile={onOpenFile}
+              onLongPress={onLongPress}
             />
           ) : null}
           {drawnProse.map((block, index) =>

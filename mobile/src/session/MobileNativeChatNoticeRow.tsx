@@ -30,11 +30,14 @@ function scaledType(size: number, fontScale: number, leading = 6) {
 export function MobileNativeChatNoticeRow({
   blocks,
   fontScale,
-  onOpenFile
+  onOpenFile,
+  onLongPress
 }: {
   blocks: readonly NativeChatBlock[]
   fontScale: number
   onOpenFile?: (relativePath: string) => void
+  /** Android only: a long press on a plan's link opens the row's actions sheet. */
+  onLongPress?: () => void
 }): React.JSX.Element | null {
   const notice = nativeChatNoticeBlock(blocks)
   // A system row with no notice of its own is an aside, a size under the agent's prose.
@@ -89,6 +92,7 @@ export function MobileNativeChatNoticeRow({
             rangeSelectable
             textScale={fontScale}
             onOpenFile={onOpenFile}
+            onLongPress={onLongPress}
           />
         </View>
       )
