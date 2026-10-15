@@ -52,7 +52,13 @@ export function MobileNativeChatResolutionReceipt({
   return (
     <View style={styles.receipt}>
       {body.kind === 'question' ? (
-        <MobileNativeChatAwaitingInputRow subject={subject} pending={false} fontScale={fontScale} />
+        <MobileNativeChatAwaitingInputRow
+          subject={subject}
+          pending={false}
+          fontScale={fontScale}
+          // An answered group already shows each question above its answer.
+          listsQuestions={answers.length === 0}
+        />
       ) : (
         <Text selectable={INLINE_TEXT_SELECTION} style={[text, styles.title]}>
           {body.displayName ?? body.title}

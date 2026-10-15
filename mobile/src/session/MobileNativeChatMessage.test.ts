@@ -171,6 +171,40 @@ describe('MobileNativeChatMessage', () => {
       ).fontSize
     expect(sizeOf('Asked:')).toBe(typography.bodySize * 1.5)
     expect(sizeOf('Coffee')).toBe(typography.metaSize * 1.5)
+    // The icon grows with its line, as the notice row's does, so it stays level with the words.
+    expect(tree.root.find((node) => String(node.type) === 'MessageSquareMore').props.size).toBe(
+      15 * 1.5
+    )
+  })
+
+  it("lists a group's questions once nobody can answer them here, as desktop does", () => {
+    const group = (state: 'pending' | 'cancelled'): NativeChatResolvedPrompt => ({
+      kind: 'question',
+      question: '2 grouped questions from Claude',
+      options: [],
+      questions: [
+        { id: 'q1', question: 'Which targets?', multiSelect: true, options: [] },
+        { id: 'q2', question: 'Proceed?', multiSelect: false, options: [] }
+      ],
+      resolution: { state, selectedOptionId: null, resolvedBy: null, resolvedAt: null }
+    })
+    const row: NativeChatMessage = {
+      id: 'grouped',
+      role: 'system',
+      blocks: [{ type: 'text', text: '2 grouped questions from Claude' }],
+      timestamp: 1,
+      source: 'transcript'
+    }
+    expect(words(render(row, { receipt: group('cancelled') }).root).join('')).toBe(
+      'Asked: 2 questions1. Which targets?2. Proceed?Cancelled'
+    )
+    expect(words(render(row, { receipt: group('pending'), awaiting: false }).root).join('')).toBe(
+      'Asked: 2 questions1. Which targets?2. Proceed?'
+    )
+    // While the host waits, the answer card shows them.
+    expect(words(render(row, { receipt: group('pending') }).root).join('')).toBe(
+      'Awaiting user input: 2 questions'
+    )
   })
 
   it('draws a pending question the host no longer waits on as asked, as desktop does', () => {

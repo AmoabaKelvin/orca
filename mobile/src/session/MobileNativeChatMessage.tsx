@@ -225,6 +225,7 @@ function MobileNativeChatMessageImpl({
         subject={nativeChatAskRunSubject(asks)}
         pending={askPending}
         fontScale={fontScale}
+        listsQuestions={false}
       />
     ) : null
   // Mount selection UI only for the message being copied.
