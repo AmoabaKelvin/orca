@@ -39,8 +39,9 @@ import { OPENCODE_TRANSCRIPT_IMPORT } from '../opencode/opencode-transcript-impo
 import { OMP_SESSION_HISTORY } from '../omp/omp-session-history'
 import { OMP_TRANSCRIPT_IMPORT } from '../omp/omp-transcript-import'
 
-/** How an agent lists its models without a session: from its `initialize` answer (plus extension
- *  requests), from a listing command, or not at all. Never `authenticate` or `session/new`. */
+/** How an agent lists its models before a chat: from its `initialize` answer (plus extension
+ *  requests), from a listing command, from a session it opens and deletes, or not at all. Never
+ *  `authenticate`. */
 export type AcpModelDiscovery =
   | {
       kind: 'initialize'
@@ -58,9 +59,17 @@ export type AcpModelDiscovery =
       args: readonly string[]
       parse(stdout: string): AgentSessionModelOption[]
       listingNamesConfiguredModel: boolean
-      /** The releases whose listing matches what their chats offer; any other runs none, and its
-       *  chats' own lists fill the catalog. Absent lists on every release. */
+      /** The releases whose listing matches what their chats offer; any other lists the way
+       *  `otherReleases` names, else not at all and its chats' own lists fill the catalog. Absent
+       *  lists on every release. */
       supportsVersion?(version: string): boolean
+      otherReleases?: 'session'
+    }
+  | {
+      /** What a new chat offers, read from a session the listing then deletes. An agent that
+       *  cannot delete one is not asked, so no empty conversation is left in its history. */
+      kind: 'session'
+      listingNamesConfiguredModel: boolean
     }
   | { kind: 'unavailable'; reason: string }
 
@@ -169,16 +178,16 @@ const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
     [OPENCODE_1X_LINE, OPENCODE_2X_LINE].some((line) => isStableCliVersionOnLine(version, line)),
   imagePrompts: true,
   readStoredUserMessages: openCodeStoredUserMessagesReader(),
-  // Its `initialize` names no models and `session/new` stores a session; the listing does neither.
+  // Its `initialize` names no models; 1.x lists them with a command, 2.x in a session it deletes.
   modelDiscovery: {
     kind: 'command',
     args: OPENCODE_MODEL_LISTING_ARGS,
     parse: parseOpenCodeModelListing,
     // The listing marks no default; a chat started with no pick names it.
     listingNamesConfiguredModel: false,
-    // 2.x rejects `--verbose`; its own listings are empty before 2.0.27 and then omit providers
-    // that report after startup.
-    supportsVersion: (version) => isStableCliVersionOnLine(version, OPENCODE_1X_LINE)
+    // 2.x rejects `--verbose`, and its own listings omit providers that report after startup.
+    supportsVersion: (version) => isStableCliVersionOnLine(version, OPENCODE_1X_LINE),
+    otherReleases: 'session'
   },
   visualsSkill: loadOpenCodeVisualsSkill,
   compaction: true,

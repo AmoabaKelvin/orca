@@ -11,12 +11,14 @@ import {
 import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
 import type { AgentSessionModelOption } from '../../shared/agent-session-wire'
 import { createAcpAgentConnection } from './acp-agent-connection'
-import type { AcpLaunchSpec } from './acp-launch-specs'
+import type { AcpLaunchSpec, AcpModelDiscovery } from './acp-launch-specs'
+import type { AcpSessionStarted, AcpSessionStartOptions } from './acp-session-setup'
 import {
   probeAcpLaunchVersion,
   resolveAcpLaunchInvocation,
   type AcpLaunchInvocationDeps
 } from './acp-structured-launch-resolution'
+import { AcpStructuredOptions } from './acp-structured-options'
 import type { InitializeResponse } from './generated/acp-protocol.generated'
 
 /** The part of an ACP connection a session-free listing may use: no session method is reachable. */
@@ -26,17 +28,27 @@ export type AcpModelCatalogConnection = {
   close(): Promise<unknown>
 }
 
+/** A connection that may open one session, to read what a new chat offers, and delete it. */
+export type AcpModelCatalogSessionConnection = Omit<
+  AcpModelCatalogConnection,
+  'requestSessionFreeExtension'
+> & {
+  start(options: AcpSessionStartOptions): Promise<AcpSessionStarted>
+  deleteSession(sessionId: string): Promise<unknown>
+}
+
 export type AcpModelCatalogProbeDeps = AcpLaunchInvocationDeps & {
   /** Test seams; production spawns through the shared supervised runner and ACP connection. */
   probeVersion?: typeof probeAgentCliVersion
   connect?: (launch: ProviderProcessLaunch) => AcpModelCatalogConnection
+  connectSession?: (launch: ProviderProcessLaunch) => AcpModelCatalogSessionConnection
   runListing?: typeof runAgentModelCatalogListing
 }
 
 /**
- * Lists an ACP agent's models without a session, under the binary, account and scrubbed
- * environment its chats launch with. A release that runs no structured chat lists nothing, nor does
- * one whose listing its chats' own lists do not match.
+ * Lists an ACP agent's models before a chat, under the binary, account and scrubbed environment its
+ * chats launch with. A release that runs no structured chat lists nothing, nor does one its
+ * discovery names no listing for.
  */
 export function createAcpModelCatalogProbe(
   spec: AcpLaunchSpec,
@@ -64,28 +76,36 @@ export function createAcpModelCatalogProbe(
     if (!release.supported) {
       throw new Error(`${spec.agent} at ${command} does not run structured chats`)
     }
-    if (listsVersion && (release.version === null || !listsVersion(release.version))) {
+    const listing = listingFor(discovery, release.version)
+    if (listing === null) {
       throw new Error(`${spec.agent} at ${command} lists its models only through its chats`)
     }
+    const launch = {
+      command,
+      args: spec.args({ fullAccess: false, pluginDir: null }),
+      cwd,
+      env,
+      envToDelete
+    }
+    const run = { label: spec.agent, signal: options?.signal }
     let models: AgentSessionModelOption[]
-    if (discovery.kind === 'command') {
+    if (listing.kind === 'command') {
       const stdout = await (deps.runListing ?? runAgentModelCatalogListing)(
-        { command, args: [...discovery.args], cwd, env, envToDelete },
+        { command, args: [...listing.args], cwd, env, envToDelete },
         { site: `${spec.agent}-model-catalog-probe`, signal: options?.signal }
       )
-      models = discovery.parse(stdout)
+      models = listing.parse(stdout)
+    } else if (listing.kind === 'session') {
+      models = await runAgentModelCatalogSession(
+        () => (deps.connectSession ?? createAcpAgentConnection)(launch),
+        (connection) => readSessionModels(spec, connection, cwd),
+        run
+      )
     } else {
-      const launch = {
-        command,
-        args: spec.args({ fullAccess: false, pluginDir: null }),
-        cwd,
-        env,
-        envToDelete
-      }
       models = await runAgentModelCatalogSession(
         () => (deps.connect ?? createAcpAgentConnection)(launch),
-        async (connection) => discovery.read(await connection.initialize(), connection),
-        { label: spec.agent, signal: options?.signal }
+        async (connection) => listing.read(await connection.initialize(), connection),
+        run
       )
     }
     if (models.length === 0) {
@@ -93,4 +113,37 @@ export function createAcpModelCatalogProbe(
     }
     return { models, origin: 'probe' }
   }
+}
+
+type AcpModelListing = Exclude<AcpModelDiscovery, { kind: 'unavailable' }>
+
+/** How `version` lists: its discovery, unless that is a command this release has no listing for. */
+function listingFor(discovery: AcpModelListing, version: string | null): AcpModelListing | null {
+  if (discovery.kind !== 'command' || !discovery.supportsVersion) {
+    return discovery
+  }
+  if (version !== null && discovery.supportsVersion(version)) {
+    return discovery
+  }
+  return discovery.otherReleases === 'session'
+    ? { kind: 'session', listingNamesConfiguredModel: discovery.listingNamesConfiguredModel }
+    : null
+}
+
+/** What a new chat in `cwd` offers, read from a session opened only to be deleted. */
+async function readSessionModels(
+  spec: AcpLaunchSpec,
+  connection: AcpModelCatalogSessionConnection,
+  cwd: string
+): Promise<AgentSessionModelOption[]> {
+  const initialized = await connection.initialize()
+  if (!initialized.agentCapabilities?.sessionCapabilities?.delete) {
+    throw new Error(`${spec.agent} cannot delete a session, so it lists its models only in chats`)
+  }
+  const started = await connection.start({ cwd, mcpServers: [] })
+  // A failed delete leaves one empty conversation behind; the models it listed are still right.
+  await connection.deleteSession(started.sessionId).catch(() => undefined)
+  const options = new AcpStructuredOptions(spec.dialect)
+  options.adoptSession(started.response, 'new')
+  return options.read().models
 }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { acpLaunchSpecFor, type AcpLaunchSpec } from './acp-launch-specs'
 import {
   createAcpModelCatalogProbe,
@@ -84,6 +84,67 @@ function scriptedGrok(initializeMeta: Record<string, unknown>): {
             closes++
             runtime.close()
           }
+        }
+      }
+    }
+  }
+}
+
+function scriptedOpenCode2(canDelete: boolean): {
+  agent: AcpScriptedAgent
+  launches: ProviderProcessLaunch[]
+  deps: AcpModelCatalogProbeDeps & {
+    runListing: Mock<NonNullable<AcpModelCatalogProbeDeps['runListing']>>
+  }
+} {
+  const agent = new AcpScriptedAgent()
+  agents.push(agent)
+  agent.on('initialize', (frame) =>
+    agent.reply(frame, {
+      protocolVersion: 1,
+      agentCapabilities: {
+        sessionCapabilities: canDelete ? { delete: {} } : {}
+      }
+    })
+  )
+  agent.on('session/new', (frame) =>
+    agent.reply(frame, {
+      sessionId: 'probe-session',
+      configOptions: [
+        {
+          id: 'model',
+          name: 'Model',
+          category: 'model',
+          type: 'select',
+          currentValue: 'opencode/exo-free',
+          options: [
+            { value: 'opencode/big-pickle', name: 'Big Pickle' },
+            { value: 'opencode/exo-free', name: 'Exo Free' }
+          ]
+        }
+      ]
+    })
+  )
+  agent.on('session/delete', (frame) => agent.reply(frame, {}))
+  const launches: ProviderProcessLaunch[] = []
+  return {
+    agent,
+    launches,
+    deps: {
+      resolveEnvironment: async () => ({ PATH: '/usr/bin', HOME: '/home/user' }),
+      resolveCommand: () => '/opt/opencode/bin/opencode',
+      probeVersion: async (_launch, supports) => supports('2.0.29'),
+      homePath: '/home/user',
+      dataDirectory: '/orca-data',
+      runListing: vi.fn<NonNullable<AcpModelCatalogProbeDeps['runListing']>>(),
+      connectSession: (launch) => {
+        launches.push(launch)
+        const runtime = new AcpSessionRuntime(agent.stdout, agent.stdin)
+        return {
+          initialize: () => runtime.initialize(),
+          start: (options) => runtime.start(options),
+          deleteSession: (sessionId) => runtime.deleteSession(sessionId),
+          close: async () => runtime.close()
         }
       }
     }
@@ -178,20 +239,40 @@ describe('ACP model catalog probes', () => {
     ])
   })
 
-  // Every 2.x release rejects `--verbose`, and its other listings miss what its chats offer.
-  it('runs no listing command on OpenCode 2.x, whose chats list its models', async () => {
-    const runListing = vi.fn(async () => '')
-    const probe = createAcpModelCatalogProbe(OPENCODE, {
-      resolveEnvironment: async () => ({ PATH: '/usr/bin', HOME: '/home/user' }),
-      resolveCommand: () => '/opt/opencode/bin/opencode',
-      probeVersion: async (_launch, supports) => supports('2.0.28'),
-      homePath: '/home/user',
-      runListing
+  // Every 2.x release rejects `--verbose`, and its own listings omit providers that report late.
+  it('lists OpenCode 2.x from a session it opens and deletes, with no listing command', async () => {
+    const { agent, deps, launches } = scriptedOpenCode2(true)
+    const success = await createAcpModelCatalogProbe(
+      OPENCODE,
+      deps
+    )({
+      kind: 'opencode',
+      locator: { kind: 'unmanaged' }
     })
-    await expect(probe({ kind: 'opencode', locator: { kind: 'unmanaged' } })).rejects.toThrow(
-      /lists its models only through its chats/
-    )
-    expect(runListing).not.toHaveBeenCalled()
+    expect(agent.frames.map((frame) => frame.method)).toEqual([
+      'initialize',
+      'session/new',
+      'session/delete'
+    ])
+    expect(agent.frames[1]!.params).toMatchObject({ cwd: '/home/user' })
+    expect(agent.frames[2]!.params).toEqual({ sessionId: 'probe-session' })
+    expect(launches).toEqual([expect.objectContaining({ args: ['acp'] })])
+    expect(deps.runListing).not.toHaveBeenCalled()
+    expect(success.models.map((model) => [model.id, model.label])).toEqual([
+      ['opencode/big-pickle', 'Big Pickle'],
+      ['opencode/exo-free', 'Exo Free']
+    ])
+  })
+
+  it('opens no session on an OpenCode 2.x that cannot delete one', async () => {
+    const { agent, deps } = scriptedOpenCode2(false)
+    await expect(
+      createAcpModelCatalogProbe(
+        OPENCODE,
+        deps
+      )({ kind: 'opencode', locator: { kind: 'unmanaged' } })
+    ).rejects.toThrow(/cannot delete a session/)
+    expect(agent.frames.map((frame) => frame.method)).toEqual(['initialize'])
   })
 
   it('lists nothing for a release that runs no structured chat', async () => {
