@@ -139,7 +139,6 @@ describe('MobileNativeChatMessage', () => {
     ).toHaveLength(1)
   })
 
-  // Every string drawn, nested spans included, in order.
   const words = (node: ReactTestInstance): string[] =>
     node.children.flatMap((child) => (typeof child === 'string' ? [child] : words(child)))
 
@@ -171,7 +170,6 @@ describe('MobileNativeChatMessage', () => {
       ).fontSize
     expect(sizeOf('Asked:')).toBe(typography.bodySize * 1.5)
     expect(sizeOf('Coffee')).toBe(typography.metaSize * 1.5)
-    // The icon grows with its line, as the notice row's does, so it stays level with the words.
     expect(tree.root.find((node) => String(node.type) === 'MessageSquareMore').props.size).toBe(
       15 * 1.5
     )
@@ -270,7 +268,7 @@ describe('MobileNativeChatMessage', () => {
     expect(words(render({ ...call, blocks: [...call.blocks, answer] }).root).join('')).toBe(
       'Asked: Do you prefer red or blue?'
     )
-    // A native chat asks desktop's selector: in a live turn, only a running call is still awaited.
+    // A native chat asks desktop's selector.
     const live = { structuredActivityUi: true, activeTurnIsWorking: true }
     expect(words(render(toolMessage([{ ...ask, state: 'running' }]), live).root).join('')).toBe(
       'Awaiting user input: Do you prefer red or blue?'

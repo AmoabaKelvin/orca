@@ -11,21 +11,18 @@ import { scaledType } from './mobile-native-chat-message-styles'
 
 const ICON_SIZE = 15
 
-/** The row a question draws in place of its raw tool call: the agent waits on the reader, so it
- *  says so and names what was asked. Desktop parity: `NativeChatAwaitingInputRow`. */
+/** Desktop parity: `NativeChatAwaitingInputRow`. */
 export function MobileNativeChatAwaitingInputRow({
   subject,
   pending,
-  fontScale = 1,
+  fontScale,
   listsQuestions = true
 }: {
-  /** Null when the call named no question; the label then reads alone. */
+  /** Null when the call named no question. */
   subject: NativeChatAskRowSubject | null
-  /** Still waiting on an answer; a settled prompt reports what was asked. */
   pending: boolean
-  /** The chat's pinch zoom. */
-  fontScale?: number
-  /** False when the caller already shows each question of a grouped prompt in full. */
+  fontScale: number
+  /** False when the caller already shows each question of a grouped prompt. */
   listsQuestions?: boolean
 }): React.JSX.Element {
   const label = !pending
@@ -33,7 +30,6 @@ export function MobileNativeChatAwaitingInputRow({
     : subject === null
       ? NATIVE_CHAT_ASK_ROW_COPY.awaitingUnnamed
       : NATIVE_CHAT_ASK_ROW_COPY.awaiting
-  // A grouped prompt names its count: quoting its first question would read as the only one.
   const text =
     subject === null
       ? null
@@ -44,10 +40,7 @@ export function MobileNativeChatAwaitingInputRow({
             String(subject.questions.length)
           )
   const type = scaledType(typography.bodySize, fontScale)
-  // A group's line names only a count. While it waits, its card shows the questions; once nobody
-  // can answer here, this row is the one place they still show, as desktop's list under the row.
-  const questions =
-    subject?.kind === 'questions' && listsQuestions && !pending ? subject.questions : null
+  const questions = subject?.kind === 'questions' && listsQuestions ? subject.questions : null
   return (
     <>
       <View style={styles.row} accessibilityLiveRegion={pending ? 'polite' : undefined}>
@@ -63,7 +56,6 @@ export function MobileNativeChatAwaitingInputRow({
         </Text>
       </View>
       {questions === null ? null : (
-        // Indented to the label, past the icon and its gap.
         <View style={{ paddingLeft: ICON_SIZE * fontScale + spacing.sm }}>
           {questions.map((question, index) => (
             <Text

@@ -154,8 +154,7 @@ export function useMobileStructuredAgentSession(args: {
     onSendError
   })
   const messages = useMemo(
-    // A message the host recorded and then rejected stays where it was sent, as not sent. A
-    // question draws as its ask row, as desktop draws it, never as the raw tool call.
+    // A message the host recorded and then rejected stays where it was sent, as not sent.
     () =>
       projectStructuredAgentSessionMessages(
         transcriptItems,

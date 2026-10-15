@@ -57,7 +57,7 @@ export function nativeChatReceiptAnswers(
   return [{ question: null, answer: option?.label ?? null }]
 }
 
-/** What a question receipt's ask row names; null for an approval, which shows its title instead. */
+/** Null for an approval, which shows its title instead. */
 export function nativeChatReceiptSubject(
   body: NativeChatResolvedPrompt
 ): NativeChatAskRowSubject | null {
@@ -82,17 +82,10 @@ export function nativeChatReceiptSubject(
 
 /** The question line above an answer, or null where the ask row already says it. */
 export function nativeChatReceiptAnswerHeading(
-  body: NativeChatResolvedPrompt,
+  subject: NativeChatAskRowSubject | null,
   answer: NativeChatReceiptAnswer
 ): string | null {
-  const subject = nativeChatReceiptSubject(body)
-  return answer.question &&
-    !(
-      body.kind === 'question' &&
-      body.questions?.length === 1 &&
-      subject?.kind === 'question' &&
-      answer.question === subject.text
-    )
+  return answer.question && !(subject?.kind === 'question' && answer.question === subject.text)
     ? answer.question
     : null
 }

@@ -79,7 +79,6 @@ describe('useMobileStructuredAgentSession transcript', () => {
     renderer = null
   })
 
-  /** The hook mounted on a client whose stream hands back `items` as the host's snapshot. */
   async function mount(agent: string, items: AgentJournalRenderItem[]) {
     let listener: ((value: unknown) => void) | null = null
     const client: Pick<RpcClient, 'sendRequest' | 'subscribe'> = {

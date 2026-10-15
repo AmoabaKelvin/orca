@@ -7,8 +7,7 @@ import { MobileNativeChatMessage } from './MobileNativeChatMessage'
 import { mobileNativeChatUnsentNotices } from './mobile-native-chat-unsent-notices'
 import type { useMobileNativeChatTurnDisclosure } from './use-mobile-native-chat-turn-disclosure'
 
-/** Draws one transcript row with what the structured lane knows about it: why it was not sent,
- *  and the receipt it draws in its place. Desktop parity: `NativeChatTranscriptRow`'s context. */
+/** Desktop parity: `NativeChatTranscriptRow`'s context. */
 export function useMobileNativeChatRowRenderer({
   toolsExpanded,
   fontScale,
@@ -28,7 +27,6 @@ export function useMobileNativeChatRowRenderer({
   turnJournal: NativeChatTurnJournal | null
   agent: string | null | undefined
   receipts: ReadonlyMap<string, NativeChatResolvedPrompt> | null
-  /** The pending prompts the host still waits on; undefined from a host too old to say. */
   actionablePromptIds: readonly string[] | undefined
 }): ({ item, index }: { item: NativeChatMessage; index: number }) => React.JSX.Element {
   const unsentNotices = useMemo(

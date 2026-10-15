@@ -12,18 +12,16 @@ import { colors, spacing, typography } from '../theme/mobile-theme'
 import { MobileNativeChatAwaitingInputRow } from './MobileNativeChatAwaitingInputRow'
 import { scaledType } from './mobile-native-chat-message-styles'
 
-/** What an approval or question left in the transcript once answered, and a question still
- *  waiting as its ask row. Desktop parity: `NativeChatResolutionReceipt`. */
+/** Desktop parity: `NativeChatResolutionReceipt`. */
 export function MobileNativeChatResolutionReceipt({
   body,
   awaiting = true,
-  fontScale = 1
+  fontScale
 }: {
   body: NativeChatResolvedPrompt
-  /** False when the agent that asked has ended: the row reports what was asked, not waiting. */
+  /** False once the agent that asked has ended. */
   awaiting?: boolean
-  /** The chat's pinch zoom. */
-  fontScale?: number
+  fontScale: number
 }): React.JSX.Element | null {
   const subject = nativeChatReceiptSubject(body)
   if (body.resolution.state === 'pending') {
@@ -32,17 +30,18 @@ export function MobileNativeChatResolutionReceipt({
         subject={subject}
         pending={awaiting}
         fontScale={fontScale}
+        // While the host waits, its answer card lists them.
+        listsQuestions={!awaiting}
       />
     ) : null
   }
   const { resolution } = body
+  const cancelled = resolution.state === 'cancelled'
   const answers = nativeChatReceiptAnswers(body)
   const outcome = [
-    resolution.state === 'cancelled'
-      ? NATIVE_CHAT_RECEIPT_COPY.cancelled
-      : NATIVE_CHAT_RECEIPT_COPY.resolved,
+    cancelled ? NATIVE_CHAT_RECEIPT_COPY.cancelled : NATIVE_CHAT_RECEIPT_COPY.resolved,
     resolution.resolvedBy
-      ? (resolution.state === 'cancelled'
+      ? (cancelled
           ? NATIVE_CHAT_RECEIPT_COPY.cancelledBy
           : NATIVE_CHAT_RECEIPT_COPY.resolver
         ).replace('{{device}}', resolution.resolvedBy)
@@ -70,7 +69,7 @@ export function MobileNativeChatResolutionReceipt({
         </Text>
       ) : null}
       {answers.map((answer, index) => {
-        const heading = nativeChatReceiptAnswerHeading(body, answer)
+        const heading = nativeChatReceiptAnswerHeading(subject, answer)
         return (
           <View
             key={body.kind === 'question' ? (body.questions?.[index]?.id ?? 'answer') : 'answer'}

@@ -178,9 +178,7 @@ function MobileNativeChatMessageImpl({
   onToggleReasoning?: (key: string) => void
   /** Why the host did not deliver this message, when it is drawn as not sent. */
   unsentNotice?: string
-  /** Structured lane: the answered prompt, or pending question, this row stands for. */
   receipt?: NativeChatResolvedPrompt
-  /** False when the host no longer waits on the pending question `receipt` stands for. */
   awaiting?: boolean
   /** The roster groups the reader opened, held by the transcript; only a roster row gets it. */
   subagentGroupsOpen?: ReadonlySet<string>
@@ -194,7 +192,6 @@ function MobileNativeChatMessageImpl({
   // tool calls fold into a collapsible run beneath. The user's own messages get
   // an inverted (filled accent) bubble so they stand apart from agent prose.
   const { prose, tools: blocksOfTools } = splitNativeChatBlocks(message.blocks)
-  // A question call draws as the row naming what was asked, never as a raw tool line.
   const { asks, unansweredAsks, work: tools } = nativeChatAskRunBlocks(blocksOfTools)
   // A roster draws as its group row, which replaces its frozen sentence.
   const drawnProse = withoutSubagentGroupTwins(prose)
@@ -214,8 +211,6 @@ function MobileNativeChatMessageImpl({
     !turnExpanded &&
     !toolsExpanded
   const showToolRun = tools.length > 0 && !settledToolsHidden
-  // A native chat asks desktop's selector whether the call is still live. A terminal chat has no
-  // turn state, so a question with no answer yet is the one awaited.
   const askPending = structuredActivityUi
     ? selectActiveToolCall(unansweredAsks, { activeTurnIsWorking }) !== null
     : unansweredAsks.length > 0

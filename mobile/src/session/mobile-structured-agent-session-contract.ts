@@ -26,9 +26,8 @@ export type StructuredMobileSession = ReturnType<typeof useMobileStructuredAgent
       attachments?: readonly StructuredMobileSendAttachment[]
     ) => Promise<MobileNativeChatSendOutcome>
     cancel: () => void
-    /** The answered prompts, and the pending question, by the transcript row each stands in for. */
     receipts: ReadonlyMap<string, NativeChatResolvedPrompt>
-    /** The pending prompts the host still waits on; undefined from a host too old to say. */
+    /** Undefined from a host too old to say. */
     actionablePromptIds: readonly string[] | undefined
     permission: MobileChatPermission | null
     question: MobileChatQuestion | null

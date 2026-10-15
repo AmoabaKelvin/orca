@@ -55,7 +55,7 @@ export function NativeChatResolutionReceipt({
         <p className="line-clamp-3 whitespace-pre-wrap break-words">{body.detail}</p>
       ) : null}
       {answers.map((answer, index) => {
-        const heading = nativeChatReceiptAnswerHeading(body, answer)
+        const heading = nativeChatReceiptAnswerHeading(subject, answer)
         return (
           <div
             key={body.kind === 'question' ? (body.questions?.[index]?.id ?? 'answer') : 'answer'}

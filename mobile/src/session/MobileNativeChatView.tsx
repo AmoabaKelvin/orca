@@ -80,9 +80,7 @@ type Props = ComposerTrayProps & {
   settledTurns?: NativeChatSettledTurns | null
   /** Structured lane: the journal that places each row in its turn. */
   turnJournal?: NativeChatTurnJournal | null
-  /** Structured lane: the receipt each answered prompt's row draws in its place. */
   receipts?: ReadonlyMap<string, NativeChatResolvedPrompt> | null
-  /** Structured lane: the pending prompts the host still waits on. */
   actionablePromptIds?: readonly string[]
   /** Interrupt the agent mid-turn (shown as a Stop button on the working bar). */
   /** Interrupt a provider turn. */

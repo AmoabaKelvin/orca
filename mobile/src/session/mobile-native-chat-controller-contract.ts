@@ -47,7 +47,6 @@ export type MobileNativeChatController = {
   nativeChatSettledTurns: NativeChatSettledTurns | null
   /** Structured lane: the journal that places each transcript row in its turn. */
   nativeChatTurnJournal: NativeChatTurnJournal | null
-  /** Structured lane: the answered prompts, and the pending question, drawn in their rows' places. */
   nativeChatReceipts: ReadonlyMap<string, NativeChatResolvedPrompt> | null
   nativeChatActionablePromptIds: readonly string[] | undefined
   /** What a refused command's line stands on. */
