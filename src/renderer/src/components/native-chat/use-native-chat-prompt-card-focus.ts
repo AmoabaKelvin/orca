@@ -16,7 +16,7 @@ export function focusNativeChatPromptCard(root: Element, keep: Element | null): 
   const card = Array.from(
     root.querySelectorAll<HTMLElement>(PROMPT_CARD_WANTS_FOCUS_SELECTOR)
   ).find((candidate) => !candidate.closest('[hidden], [inert]'))
-  if (!card || card.contains(keep)) {
+  if (!card || (keep !== card && card.contains(keep))) {
     return false
   }
   focusPromptCard(card)
