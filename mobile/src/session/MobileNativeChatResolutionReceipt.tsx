@@ -14,14 +14,17 @@ import { MobileNativeChatAwaitingInputRow } from './MobileNativeChatAwaitingInpu
 /** What an approval or question left in the transcript once answered, and a question still
  *  waiting as its ask row. Desktop parity: `NativeChatResolutionReceipt`. */
 export function MobileNativeChatResolutionReceipt({
-  body
+  body,
+  awaiting = true
 }: {
   body: NativeChatResolvedPrompt
+  /** False when the agent that asked has ended: the row reports what was asked, not waiting. */
+  awaiting?: boolean
 }): React.JSX.Element | null {
   const subject = nativeChatReceiptSubject(body)
   if (body.resolution.state === 'pending') {
     return body.kind === 'question' ? (
-      <MobileNativeChatAwaitingInputRow subject={subject} pending />
+      <MobileNativeChatAwaitingInputRow subject={subject} pending={awaiting} />
     ) : null
   }
   const { resolution } = body

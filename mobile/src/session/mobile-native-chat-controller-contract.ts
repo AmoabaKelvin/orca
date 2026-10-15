@@ -49,6 +49,7 @@ export type MobileNativeChatController = {
   nativeChatTurnJournal: NativeChatTurnJournal | null
   /** Structured lane: the answered prompts, and the pending question, drawn in their rows' places. */
   nativeChatReceipts: ReadonlyMap<string, NativeChatResolvedPrompt> | null
+  nativeChatActionablePromptIds: readonly string[] | undefined
   /** What a refused command's line stands on. */
   nativeChatCommandRefusalCauses: MobileNativeChatCommandRefusalCauses
   nativeChatCanStop: boolean

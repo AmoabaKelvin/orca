@@ -146,6 +146,7 @@ function MobileNativeChatMessageImpl({
   onToggleReasoning,
   unsentNotice,
   receipt,
+  awaiting,
   subagentGroupsOpen,
   onToggleSubagentGroup
 }: {
@@ -179,6 +180,8 @@ function MobileNativeChatMessageImpl({
   unsentNotice?: string
   /** Structured lane: the answered prompt, or pending question, this row stands for. */
   receipt?: NativeChatResolvedPrompt
+  /** False when the host no longer waits on the pending question `receipt` stands for. */
+  awaiting?: boolean
   /** The roster groups the reader opened, held by the transcript; only a roster row gets it. */
   subagentGroupsOpen?: ReadonlySet<string>
   onToggleSubagentGroup?: (groupId: string) => void
@@ -247,7 +250,7 @@ function MobileNativeChatMessageImpl({
       <>
         {turnStatusAbove ? statusRow : null}
         <View style={styles.row}>
-          <MobileNativeChatResolutionReceipt body={receipt} />
+          <MobileNativeChatResolutionReceipt body={receipt} awaiting={awaiting} />
         </View>
         {turnStatusAbove ? null : statusRow}
       </>

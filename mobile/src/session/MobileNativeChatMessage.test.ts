@@ -103,6 +103,7 @@ describe('MobileNativeChatMessage', () => {
       reasoningIsLive?: boolean
       unsentNotice?: string
       receipt?: NativeChatResolvedPrompt
+      awaiting?: boolean
     } = {}
   ): ReactTestRenderer {
     act(() => {
@@ -154,6 +155,36 @@ describe('MobileNativeChatMessage', () => {
       ),
       'Asked: Do you prefer tea or coffee?CoffeeResolved · Answered on desktop-renderer'
     ])
+  })
+
+  it('draws a pending question the host no longer waits on as asked, as desktop does', () => {
+    // The same journal, with the agent ended before the question was answered.
+    const { messages, receipts } = structuredQuestionTranscript(
+      ANSWERED_PROMPT_ITEMS.map((item) =>
+        item.body.kind === 'question'
+          ? {
+              ...item,
+              body: {
+                ...item.body,
+                resolution: {
+                  state: 'pending',
+                  selectedOptionId: null,
+                  resolvedBy: null,
+                  resolvedAt: null
+                }
+              }
+            }
+          : item
+      )
+    )
+    const row = messages.find((message) => receipts.get(message.id)?.kind === 'question')!
+    const receipt = receipts.get(row.id)
+    expect(words(render(row, { receipt }).root).join('')).toBe(
+      'Awaiting user input: Do you prefer tea or coffee?'
+    )
+    expect(words(render(row, { receipt, awaiting: false }).root).join('')).toBe(
+      'Asked: Do you prefer tea or coffee?'
+    )
   })
 
   it('draws a question call as the question awaited, then as asked, never as a raw tool line', () => {

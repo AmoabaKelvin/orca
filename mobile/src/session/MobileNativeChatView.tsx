@@ -49,9 +49,8 @@ import { NO_COMPOSER_TRAY, type ComposerTrayProps } from './use-mobile-native-ch
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 import type { MobileChatQuestion } from './mobile-native-chat-question'
 import type { MobileNativeChatSessionOptionPickersProps } from './MobileNativeChatSessionOptionPickers'
-import { MobileNativeChatMessage } from './MobileNativeChatMessage'
 import { MobileNativeChatScrollHold } from './MobileNativeChatScrollHold'
-import { mobileNativeChatUnsentNotices } from './mobile-native-chat-unsent-notices'
+import { useMobileNativeChatRowRenderer } from './use-mobile-native-chat-row-renderer'
 import type { MobileNativeChatStatus } from './use-mobile-native-chat-session'
 
 /** Why the composer input is locked: the transport is disconnected, or the
@@ -83,6 +82,8 @@ type Props = ComposerTrayProps & {
   turnJournal?: NativeChatTurnJournal | null
   /** Structured lane: the receipt each answered prompt's row draws in its place. */
   receipts?: ReadonlyMap<string, NativeChatResolvedPrompt> | null
+  /** Structured lane: the pending prompts the host still waits on. */
+  actionablePromptIds?: readonly string[]
   /** Interrupt the agent mid-turn (shown as a Stop button on the working bar). */
   /** Interrupt a provider turn. */
   onStop?: () => void
@@ -175,6 +176,7 @@ export function MobileNativeChatView({
   settledTurns,
   turnJournal = null,
   receipts = null,
+  actionablePromptIds,
   onStop,
   streaming,
   hasMore,
@@ -304,26 +306,17 @@ export function MobileNativeChatView({
     scopeKey: sendSurfaceId
   })
 
-  const unsentNotices = useMemo(
-    () => mobileNativeChatUnsentNotices(turnJournal, agent),
-    [turnJournal, agent]
-  )
-  const renderItem = useCallback(
-    ({ item, index }: { item: NativeChatMessage; index: number }) => (
-      <MobileNativeChatMessage
-        message={item}
-        toolsExpanded={toolsExpanded}
-        fontScale={fontScale}
-        onOpenFile={onOpenFile}
-        structuredActivityUi={structuredActivityUi}
-        onToggleTurn={turns.onToggleTurn}
-        unsentNotice={item.unsent ? unsentNotices.get(item.id) : undefined}
-        receipt={receipts?.get(item.id)}
-        {...turns.resolveRow(index, item)}
-      />
-    ),
-    [toolsExpanded, fontScale, onOpenFile, structuredActivityUi, turns, unsentNotices, receipts]
-  )
+  const renderItem = useMobileNativeChatRowRenderer({
+    toolsExpanded,
+    fontScale,
+    onOpenFile,
+    structuredActivityUi,
+    turns,
+    turnJournal,
+    agent,
+    receipts,
+    actionablePromptIds
+  })
 
   const history = useMobileNativeChatPageHistory(turns.listMessages, renderItem)
 
