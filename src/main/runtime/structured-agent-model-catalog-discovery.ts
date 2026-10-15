@@ -64,9 +64,12 @@ export function acpModelCatalogDiscovery(
   if (discovery.kind === 'unavailable') {
     return { kind: 'unavailable', reason: discovery.reason }
   }
+  const listsInSession =
+    discovery.kind === 'session' || (discovery.kind === 'command' && discovery.otherReleases)
   return {
     kind: 'probe',
     listingNamesConfiguredModel: discovery.listingNamesConfiguredModel,
+    ...(listsInSession ? { listsInChatFolder: true as const } : {}),
     probe: createAcpModelCatalogProbe(spec, {
       resolveEnvironment: environment.resolveBaseEnvironment,
       refreshEnvironmentAfterMiss: environment.refreshAfterMissingProgram,

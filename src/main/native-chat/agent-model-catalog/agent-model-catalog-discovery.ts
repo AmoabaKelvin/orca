@@ -13,5 +13,8 @@ export type AgentModelCatalogDiscovery =
       /** The listing marks the model the account is configured to run as its default, so a new
        *  chat launches the listed default. False where the agent's own settings may pick another. */
       listingNamesConfiguredModel: boolean
+      /** The listing opens a session in the asking chat's folder, so a prewarm, which has no chat,
+       *  never runs it and a picker never waits on one that cannot list. */
+      listsInChatFolder?: true
     }
   | { kind: 'unavailable'; reason: string }
