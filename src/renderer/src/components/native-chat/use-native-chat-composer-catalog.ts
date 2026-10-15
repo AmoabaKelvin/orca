@@ -1,6 +1,9 @@
 import { useMemo } from 'react'
 import type { AgentType } from '../../../../shared/agent-status-types'
-import { getVerifiedNativeChatCommands } from '../../../../shared/native-chat-agent-profiles'
+import {
+  getNativeChatAgentProfile,
+  getVerifiedNativeChatCommands
+} from '../../../../shared/native-chat-agent-profiles'
 import {
   sessionReportedSkillNames,
   sessionSlashCommandSuggestions,
@@ -28,18 +31,26 @@ export function useNativeChatComposerCatalog(
   const structured = Boolean(structuredTransport)
   const reported = structuredTransport?.sessionCommands
   const conversationCommands = structuredTransport?.conversationCommands
-  const agentCommands = useMemo(
-    () =>
-      !structured
-        ? getVerifiedNativeChatCommands(agent)
-        : reported !== undefined
-          ? sessionSlashCommandSuggestions(agent, reported)
-          : structuredSlashCommands(conversationCommands, agent),
-    [agent, conversationCommands, reported, structured]
-  )
+  const keepsScannedSkills = getNativeChatAgentProfile(agent)?.keepsScannedSkills === true
+  const agentCommands = useMemo(() => {
+    if (!structured) {
+      return getVerifiedNativeChatCommands(agent)
+    }
+    if (reported === undefined) {
+      return structuredSlashCommands(conversationCommands, agent)
+    }
+    const commands = sessionSlashCommandSuggestions(agent, reported)
+    // The report cannot say which of its names are skills; a scanned one shows as the skill.
+    return keepsScannedSkills
+      ? commands.map((command) => ({ ...command, kindUnspecified: true as const }))
+      : commands
+  }, [agent, conversationCommands, keepsScannedSkills, reported, structured])
   const sessionSkillNames = useMemo(
-    () => (reported !== undefined ? sessionReportedSkillNames(reported) : undefined),
-    [reported]
+    () =>
+      reported !== undefined && !keepsScannedSkills
+        ? sessionReportedSkillNames(reported)
+        : undefined,
+    [keepsScannedSkills, reported]
   )
   return { agentCommands, sessionSkillNames }
 }

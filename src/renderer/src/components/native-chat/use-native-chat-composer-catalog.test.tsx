@@ -8,6 +8,7 @@ import type { NativeChatStructuredComposerTransport } from './native-chat-compos
 import { getVerifiedNativeChatCommands } from '../../../../shared/native-chat-agent-profiles'
 import { sessionSlashCommandSuggestions } from '../../../../shared/native-chat-slash-commands'
 import { structuredSlashCommands } from '../../../../shared/structured-agent-session-composer'
+import type { DiscoveredSkill } from '../../../../shared/skills'
 
 function transport(sessionCommands?: NativeChatStructuredComposerTransport['sessionCommands']) {
   return { sessionCommands } as NativeChatStructuredComposerTransport
@@ -156,4 +157,43 @@ it('Enter completes a known pre-init skill while still dispatching a built-in co
   rerender({ activeSuggestion: 0 })
   result.current(enter)
   expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ name: 'clear', kind: 'command' }))
+})
+
+describe('OpenCode chat skills', () => {
+  const scanned: DiscoveredSkill = {
+    id: 'release-notes',
+    name: 'release-notes',
+    description: 'Write release notes',
+    providers: ['agent-skills'],
+    sourceKind: 'home',
+    sourceLabel: 'OpenCode home',
+    rootPath: '/Users/test/.config/opencode/skills',
+    directoryPath: '/Users/test/.config/opencode/skills/release-notes',
+    skillFilePath: '/Users/test/.config/opencode/skills/release-notes/SKILL.md',
+    installed: true,
+    updatedAt: null
+  }
+  function rows(agent: 'opencode' | 'opencode2', reportedNames: string[]): string[] {
+    const reported = reportedNames.map((name) => ({ name, kind: 'command' as const }))
+    const { result } = renderHook(() => useNativeChatComposerCatalog(agent, transport(reported)))
+    return buildNativeChatPickerItems(
+      result.current.agentCommands,
+      [scanned],
+      '',
+      '/',
+      result.current.sessionSkillNames
+    ).map((item) => `${item.kind}:${item.name}`)
+  }
+
+  // 2.x reports only these commands, so its running chats listed no skills at all.
+  it('keeps the scanned skills once an OpenCode 2.x chat reports its commands', () => {
+    expect(rows('opencode2', ['init', 'review', 'compact'])).toContain('skill:release-notes')
+  })
+
+  // 1.x reports each skill as a command too.
+  it('shows a skill OpenCode 1.x also reports as a command once, as the skill', () => {
+    expect(
+      rows('opencode', ['init', 'release-notes']).filter((row) => row.endsWith(':release-notes'))
+    ).toEqual(['skill:release-notes'])
+  })
 })

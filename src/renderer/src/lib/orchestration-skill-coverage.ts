@@ -1,6 +1,10 @@
 import type { AgentType } from '../../../shared/agent-status-types'
 import type { DiscoveredSkill, SkillDiscoverySource } from '../../../shared/skills'
 import type { TuiAgent } from '../../../shared/tui-agent'
+import {
+  getNativeChatAgentProfile,
+  readsSkillSource
+} from '../../../shared/native-chat-agent-profiles'
 import { ORCHESTRATION_SKILL_NAME } from '@/lib/agent-feature-install-commands'
 import { getAgentLabel } from '@/lib/agent-catalog'
 import { TUI_AGENT_AUTO_PICK_ORDER } from '../../../shared/tui-agent-selection'
@@ -47,7 +51,10 @@ export function agentHasOrchestrationSkill(
   skills: readonly DiscoveredSkill[],
   sources: readonly SkillDiscoverySource[]
 ): boolean {
-  const owner = getSkillSourceOwnerForAgent(agent)
+  const reader = {
+    skillSourceOwner: getSkillSourceOwnerForAgent(agent),
+    readsSkillFoldersOf: getNativeChatAgentProfile(agent)?.readsSkillFoldersOf
+  }
   return skills.some((skill) => {
     if (!isOrchestrationSkill(skill)) {
       return false
@@ -62,7 +69,7 @@ export function agentHasOrchestrationSkill(
         (source) =>
           source.path === rootPath &&
           source.sourceKind !== 'repo' &&
-          (source.owner === null || source.owner === owner)
+          readsSkillSource(reader, source)
       )
     )
   })
