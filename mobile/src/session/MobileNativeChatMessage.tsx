@@ -224,6 +224,7 @@ function MobileNativeChatMessageImpl({
       <MobileNativeChatAwaitingInputRow
         subject={nativeChatAskRunSubject(asks)}
         pending={askPending}
+        fontScale={fontScale}
       />
     ) : null
   // Mount selection UI only for the message being copied.
@@ -252,7 +253,11 @@ function MobileNativeChatMessageImpl({
       <>
         {turnStatusAbove ? statusRow : null}
         <View style={styles.row}>
-          <MobileNativeChatResolutionReceipt body={receipt} awaiting={awaiting} />
+          <MobileNativeChatResolutionReceipt
+            body={receipt}
+            awaiting={awaiting}
+            fontScale={fontScale}
+          />
         </View>
         {turnStatusAbove ? null : statusRow}
       </>

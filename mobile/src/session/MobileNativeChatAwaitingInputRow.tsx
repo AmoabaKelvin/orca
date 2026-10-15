@@ -7,17 +7,21 @@ import {
 import { MobileSelectableText as Text } from '../components/MobileSelectableText'
 import { INLINE_TEXT_SELECTION } from '../components/inline-text-selection'
 import { colors, spacing, typography } from '../theme/mobile-theme'
+import { scaledType } from './mobile-native-chat-message-styles'
 
 /** The row a question draws in place of its raw tool call: the agent waits on the reader, so it
  *  says so and names what was asked. Desktop parity: `NativeChatAwaitingInputRow`. */
 export function MobileNativeChatAwaitingInputRow({
   subject,
-  pending
+  pending,
+  fontScale = 1
 }: {
   /** Null when the call named no question; the label then reads alone. */
   subject: NativeChatAskRowSubject | null
   /** Still waiting on an answer; a settled prompt reports what was asked. */
   pending: boolean
+  /** The chat's pinch zoom. */
+  fontScale?: number
 }): React.JSX.Element {
   const label = !pending
     ? NATIVE_CHAT_ASK_ROW_COPY.asked
@@ -34,12 +38,13 @@ export function MobileNativeChatAwaitingInputRow({
             '{{value0}}',
             String(subject.questions.length)
           )
+  const type = scaledType(typography.bodySize, fontScale)
   return (
     <View style={styles.row} accessibilityLiveRegion={pending ? 'polite' : undefined}>
       <MessageSquareMore size={15} color={colors.textMuted} strokeWidth={2} style={styles.icon} />
-      <Text selectable={INLINE_TEXT_SELECTION} style={styles.label}>
+      <Text selectable={INLINE_TEXT_SELECTION} style={[styles.label, type]}>
         {label}
-        {text === null ? null : <Text style={styles.question}> {text}</Text>}
+        {text === null ? null : <Text style={[styles.question, type]}> {text}</Text>}
       </Text>
     </View>
   )
@@ -57,13 +62,9 @@ const styles = StyleSheet.create({
   },
   label: {
     flex: 1,
-    color: colors.textMuted,
-    fontSize: typography.bodySize,
-    lineHeight: typography.bodySize + 6
+    color: colors.textMuted
   },
   question: {
-    color: colors.textPrimary,
-    fontSize: typography.bodySize,
-    lineHeight: typography.bodySize + 6
+    color: colors.textPrimary
   }
 })

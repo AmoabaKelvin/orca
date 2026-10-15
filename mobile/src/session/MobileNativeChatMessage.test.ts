@@ -19,7 +19,7 @@ import {
 import { agentSessionFailureWords } from '../../../src/shared/agent-session-failure-words'
 import { structuredQuestionTranscript } from '../../../src/shared/structured-agent-question-projection'
 import type { NativeChatResolvedPrompt } from '../../../src/shared/native-chat-resolution-receipt'
-import { colors } from '../theme/mobile-theme'
+import { colors, typography } from '../theme/mobile-theme'
 import { ANSWERED_PROMPT_ITEMS } from './mobile-native-chat-answered-prompts.test-fixture'
 import { styles } from './mobile-native-chat-message-styles'
 
@@ -155,6 +155,22 @@ describe('MobileNativeChatMessage', () => {
       ),
       'Asked: Do you prefer tea or coffee?CoffeeResolved · Answered on desktop-renderer'
     ])
+  })
+
+  it('zooms a receipt with the chat, as its words were before it became a receipt', () => {
+    const { messages, receipts } = structuredQuestionTranscript(ANSWERED_PROMPT_ITEMS)
+    const question = messages.find((message) => receipts.get(message.id)?.kind === 'question')!
+    const tree = render(question, { receipt: receipts.get(question.id), fontScale: 1.5 })
+    const sizeOf = (first: string) =>
+      Object.assign(
+        {},
+        ...[
+          tree.root.find((node) => String(node.type) === 'Text' && node.children[0] === first).props
+            .style
+        ].flat()
+      ).fontSize
+    expect(sizeOf('Asked:')).toBe(typography.bodySize * 1.5)
+    expect(sizeOf('Coffee')).toBe(typography.metaSize * 1.5)
   })
 
   it('draws a pending question the host no longer waits on as asked, as desktop does', () => {

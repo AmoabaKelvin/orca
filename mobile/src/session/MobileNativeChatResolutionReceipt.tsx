@@ -10,21 +10,29 @@ import { MobileSelectableText as Text } from '../components/MobileSelectableText
 import { INLINE_TEXT_SELECTION } from '../components/inline-text-selection'
 import { colors, spacing, typography } from '../theme/mobile-theme'
 import { MobileNativeChatAwaitingInputRow } from './MobileNativeChatAwaitingInputRow'
+import { scaledType } from './mobile-native-chat-message-styles'
 
 /** What an approval or question left in the transcript once answered, and a question still
  *  waiting as its ask row. Desktop parity: `NativeChatResolutionReceipt`. */
 export function MobileNativeChatResolutionReceipt({
   body,
-  awaiting = true
+  awaiting = true,
+  fontScale = 1
 }: {
   body: NativeChatResolvedPrompt
   /** False when the agent that asked has ended: the row reports what was asked, not waiting. */
   awaiting?: boolean
+  /** The chat's pinch zoom. */
+  fontScale?: number
 }): React.JSX.Element | null {
   const subject = nativeChatReceiptSubject(body)
   if (body.resolution.state === 'pending') {
     return body.kind === 'question' ? (
-      <MobileNativeChatAwaitingInputRow subject={subject} pending={awaiting} />
+      <MobileNativeChatAwaitingInputRow
+        subject={subject}
+        pending={awaiting}
+        fontScale={fontScale}
+      />
     ) : null
   }
   const { resolution } = body
@@ -40,17 +48,18 @@ export function MobileNativeChatResolutionReceipt({
         ).replace('{{device}}', resolution.resolvedBy)
       : null
   ]
+  const text = [styles.text, scaledType(typography.metaSize, fontScale, 5)]
   return (
     <View style={styles.receipt}>
       {body.kind === 'question' ? (
-        <MobileNativeChatAwaitingInputRow subject={subject} pending={false} />
+        <MobileNativeChatAwaitingInputRow subject={subject} pending={false} fontScale={fontScale} />
       ) : (
-        <Text selectable={INLINE_TEXT_SELECTION} style={[styles.text, styles.title]}>
+        <Text selectable={INLINE_TEXT_SELECTION} style={[text, styles.title]}>
           {body.displayName ?? body.title}
         </Text>
       )}
       {body.kind === 'approval' && body.detail ? (
-        <Text selectable={INLINE_TEXT_SELECTION} style={styles.text} numberOfLines={3}>
+        <Text selectable={INLINE_TEXT_SELECTION} style={text} numberOfLines={3}>
           {body.detail}
         </Text>
       ) : null}
@@ -60,8 +69,8 @@ export function MobileNativeChatResolutionReceipt({
           <View
             key={body.kind === 'question' ? (body.questions?.[index]?.id ?? 'answer') : 'answer'}
           >
-            {heading ? <Text style={styles.text}>{heading}</Text> : null}
-            <Text selectable={INLINE_TEXT_SELECTION} style={styles.text} numberOfLines={3}>
+            {heading ? <Text style={text}>{heading}</Text> : null}
+            <Text selectable={INLINE_TEXT_SELECTION} style={text} numberOfLines={3}>
               {answer.answer === ''
                 ? NATIVE_CHAT_RECEIPT_COPY.emptyAnswer
                 : (answer.answer ?? NATIVE_CHAT_RECEIPT_COPY.unavailable)}
@@ -69,7 +78,7 @@ export function MobileNativeChatResolutionReceipt({
           </View>
         )
       })}
-      <Text style={styles.text}>{outcome.filter(Boolean).join(' · ')}</Text>
+      <Text style={text}>{outcome.filter(Boolean).join(' · ')}</Text>
     </View>
   )
 }
@@ -82,9 +91,7 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.borderSubtle
   },
   text: {
-    color: colors.textMuted,
-    fontSize: typography.metaSize,
-    lineHeight: typography.metaSize + 5
+    color: colors.textMuted
   },
   title: {
     fontWeight: '600'
