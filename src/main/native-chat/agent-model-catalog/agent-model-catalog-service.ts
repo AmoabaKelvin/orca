@@ -37,6 +37,8 @@ export type AgentModelCatalogServiceDeps = {
   probes?: Readonly<Partial<Record<string, AgentModelCatalogProbe>>>
   /** Agents whose listing marks the model the account is configured to run as its default. */
   listingNamesConfiguredModel?: ReadonlySet<string>
+  /** Agents whose listing runs in the asking chat's folder; a prewarm skips them. */
+  listsInChatFolder?: ReadonlySet<string>
   /** Where a session's provider runs, for deciding whether its own config scope is the account's. */
   recordWorkspacePath?: (record: AgentSessionRecord) => Promise<string | null>
   /** False for an agent whose model no project config can pick; its default holds everywhere. */
@@ -346,7 +348,9 @@ export function createAgentModelCatalogService(
       const probes = deps.probes ?? {}
       // An agent never used here waits for its first chat, which shows the quiet placeholder.
       const used = Object.keys(probes).filter(
-        (agent) => deps.store.hasEntryForAgent(agent) || deps.hasChatRecords?.(agent) === true
+        (agent) =>
+          !deps.listsInChatFolder?.has(agent) &&
+          (deps.store.hasEntryForAgent(agent) || deps.hasChatRecords?.(agent) === true)
       )
       await runBounded(used, PREWARM_CONCURRENCY, lifetime.signal, async (agent) => {
         const probe = probes[agent]

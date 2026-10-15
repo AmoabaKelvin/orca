@@ -134,6 +134,47 @@ describe('model catalog prewarm', () => {
     expect(read.origin).toBe('probe')
   })
 
+  // A picker that joined a prewarm listing with no chat folder was answered nothing at all.
+  it('never prewarms a listing that runs in a chat folder, so a picker lists in its own', async () => {
+    const store = new AgentModelCatalogStore()
+    const versionChecked = deferred<void>()
+    const probe = vi.fn(
+      async (_home: AgentSessionAccountHome, options?: { workspacePath?: string }) => {
+        await versionChecked.promise
+        if (!options?.workspacePath) {
+          throw new AgentModelCatalogListingDeferredError('lists in a chat folder')
+        }
+        return listing('big-pickle')
+      }
+    )
+    const service = createAgentModelCatalogService({
+      store,
+      getRecord: () => undefined,
+      drivesRecord: () => true,
+      hasChatRecords: () => true,
+      resolveAccountHome: async () => HOME('OPENCODE_HOME', '/homes/a'),
+      probes: { opencode2: probe },
+      listsInChatFolder: new Set(['opencode2'])
+    })
+
+    const prewarmed = service.prewarm()
+    const opened = await service.read({ agent: 'opencode2', workspacePath: '/work/project' })
+    const waited = service.read({
+      agent: 'opencode2',
+      workspacePath: '/work/project',
+      waitForListing: true
+    })
+    versionChecked.resolve()
+    await prewarmed
+    expect(opened).toEqual({ origin: 'unknown', listingInProgress: true })
+    expect((await waited).origin).toBe('probe')
+    expect(probe).toHaveBeenCalledTimes(1)
+    expect(probe).toHaveBeenCalledWith(HOME('OPENCODE_HOME', '/homes/a'), {
+      signal: expect.any(AbortSignal),
+      workspacePath: '/work/project'
+    })
+  })
+
   it('lists the new account after a switch and leaves the old account’s catalog alone', async () => {
     const store = new AgentModelCatalogStore()
     let selected = '/homes/a'
