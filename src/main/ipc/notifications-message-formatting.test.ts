@@ -181,7 +181,10 @@ describe('registerNotificationHandlers', () => {
     )
   })
 
-  it('names OpenCode 2 in the title', async () => {
+  it.each([
+    { agentType: 'opencode2', label: 'OpenCode 2' },
+    { agentType: 'copilot', label: 'GitHub Copilot' }
+  ])('names $agentType the way the app does', async ({ agentType, label }) => {
     registerNotificationHandlers({
       getSettings: () => ({
         notifications: {
@@ -199,15 +202,15 @@ describe('registerNotificationHandlers', () => {
         source: 'agent-task-complete',
         worktreeId: 'repo::wt1',
         worktreeLabel: 'feat/notis',
-        agentType: 'opencode2',
+        agentType,
         agentState: 'done'
       }
     )
 
     expect(notificationCtorMock).toHaveBeenCalledWith(
       expectedNativeNotificationOptions({
-        title: 'feat/notis - OpenCode 2 finished',
-        body: 'OpenCode 2 finished.'
+        title: `feat/notis - ${label} finished`,
+        body: `${label} finished.`
       })
     )
   })
