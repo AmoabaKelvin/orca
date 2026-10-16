@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render } from '@testing-library/react'
 import { useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { captureInsertionTarget } from '../dictation/dictation-insertion-target'
 import type { NativeChatComposerHandle } from './native-chat-composer-types'
 import { useNativeChatRootInputRouting } from './use-native-chat-root-input-routing'
 
@@ -20,9 +21,26 @@ const composer: NativeChatComposerHandle = {
   contains: () => false
 }
 
-function Chat({ revealed }: { revealed: boolean }): React.JSX.Element {
+function Chat({
+  revealed,
+  question = false
+}: {
+  revealed: boolean
+  question?: boolean
+}): React.JSX.Element {
   const rootRef = useRef<HTMLDivElement>(null)
-  const composerRef = useRef<NativeChatComposerHandle | null>(composer)
+  const messageRef = useRef<HTMLTextAreaElement>(null)
+  const composerRef = useRef<NativeChatComposerHandle | null>(
+    question
+      ? null
+      : {
+          ...composer,
+          focus: () => {
+            messageRef.current?.focus()
+            return true
+          }
+        }
+  )
   const answerRef = useRef<HTMLInputElement | null>(null)
   const routing = useNativeChatRootInputRouting({
     tabId: 'chat-tab',
@@ -47,6 +65,11 @@ function Chat({ revealed }: { revealed: boolean }): React.JSX.Element {
         Option
       </div>
       <div data-native-chat-code-content tabIndex={0} data-testid="code" />
+      {question ? (
+        <input ref={answerRef} aria-label="Answer" />
+      ) : (
+        <textarea ref={messageRef} aria-label="Message" />
+      )}
       {createPortal(
         <div role="dialog">
           <button type="button">Close preview</button>
@@ -143,5 +166,31 @@ describe('useNativeChatRootInputRouting', () => {
     fireEvent.keyDown(list, { key: 'b' })
 
     expect(insertTypedText).not.toHaveBeenCalled()
+  })
+
+  it('gives dictation started from the transcript or with nothing focused to the chat input', () => {
+    const view = render(<Chat revealed />)
+    const message = view.getByRole('textbox', { name: 'Message' })
+    fireEvent.pointerDown(view.getByTestId('transcript'))
+    expect(captureInsertionTarget()).toEqual({ kind: 'text', element: message })
+
+    message.blur()
+    expect(captureInsertionTarget()).toEqual({ kind: 'text', element: message })
+
+    view.unmount()
+    const answer = render(<Chat revealed question />).getByRole('textbox', { name: 'Answer' })
+    expect(captureInsertionTarget()).toEqual({ kind: 'text', element: answer })
+  })
+
+  it('leaves dictation with a focused field or a control outside the chat', () => {
+    render(<Chat revealed />)
+    const field = document.createElement('input')
+    const button = document.createElement('button')
+    document.body.append(field, button)
+    field.focus()
+    expect(captureInsertionTarget()).toEqual({ kind: 'text', element: field })
+
+    button.focus()
+    expect(captureInsertionTarget()).toBeNull()
   })
 })
