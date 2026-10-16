@@ -17,7 +17,7 @@ import {
   queuedMessageWithEditedText
 } from '../../../../shared/queued-message-text-edit'
 import { appendNativeChatDraftCache } from './native-chat-draft-cache'
-import { stripImagePromptMarker } from '../../../../shared/native-chat-image-transcript-markers'
+import { stripSentImagePromptMarkers } from '../../../../shared/native-chat-image-transcript-markers'
 import { queuedEditNotice } from './queued-message-edit-notices'
 import { structuredSessionOperationId } from './structured-agent-session-operation-id'
 import {
@@ -64,7 +64,7 @@ type Edit = {
 
 /** Unsaved typing goes to the chat box without the card's images, so no marker may name one. */
 function handOffEditText(edit: Edit): void {
-  appendNativeChatDraftCache(edit.draftKey, stripImagePromptMarker(edit.text))
+  appendNativeChatDraftCache(edit.draftKey, stripSentImagePromptMarkers(edit.text))
 }
 
 export function useStructuredAgentSessionQueuedEdit(args: {

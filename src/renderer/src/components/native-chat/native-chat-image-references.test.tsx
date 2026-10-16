@@ -267,6 +267,17 @@ describe('composer image chips', () => {
     expect(promptValue(composer.textbox())).toBe(`look ${chip('missing')}`)
   })
 
+  it('leaves a file path that reads like a marker as typed when a message comes back', () => {
+    const scope = structuredAgentSessionDraftScopeKey('s1')
+    const file = formatNativeChatFileReference('/repo/[Image #1].md')
+    handBackStructuredAgentSessionMessage(
+      's1',
+      'm1',
+      message(`see ${file} and [Image #1]`, ['/up/a.png'])
+    )
+    expect(readNativeChatComposerDraft(scope).text).toBe(`see ${file} and ${chip('returned-m1-1')}`)
+  })
+
   it('adds a message recovered twice once', () => {
     const scope = structuredAgentSessionDraftScopeKey('s1')
     const returned = message('see [Image #1]', ['/up/a.png'])

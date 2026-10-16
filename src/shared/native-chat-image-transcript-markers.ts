@@ -5,11 +5,16 @@ import {
 } from './ansi-escape-sequences'
 import { isTextBlock, type NativeChatBlock, type NativeChatMessage } from './native-chat-types'
 import { imageReferenceToken, replaceImageReferences } from './native-chat-image-reference'
+import { NATIVE_CHAT_QUOTED_FILE_REFERENCE } from './agent-image-paste'
 
 const IMAGE_SOURCE_MARKER = /^\[Image:\s*source:\s*(.+?)\]\s*$/
 const IMAGE_PROMPT_MARKER = /\[Image #\d+\]/
 const IMAGE_PROMPT_MARKERS = /\[Image #\d+\]/g
-const IMAGE_PROMPT_MARKER_NUMBERS = /\[Image #(\d+)\]/g
+// A quoted file reference is matched whole, so a path that reads like a marker is left as typed.
+const IMAGE_PROMPT_MARKER_NUMBERS_OUTSIDE_FILE_REFERENCES = new RegExp(
+  `(${NATIVE_CHAT_QUOTED_FILE_REFERENCE.source})|\\[Image #(\\d+)\\]`,
+  'g'
+)
 const IMAGE_PROMPT_MARKER_AT_START = /^[^\S\r\n]*\[Image #\d+\]/
 const IMAGE_PROMPT_MARKER_AT_END = /\[Image #\d+\][^\S\r\n]*$/
 const HORIZONTAL_WHITESPACE_START = /^[^\S\r\n]+/
@@ -61,17 +66,39 @@ export function imageReferencesToPromptMarkers(
   })
 }
 
+function replaceSentImagePromptMarkers(
+  text: string,
+  replace: (number: number, marker: string) => string
+): string {
+  return text.replace(
+    IMAGE_PROMPT_MARKER_NUMBERS_OUTSIDE_FILE_REFERENCES,
+    (match, fileReference: string | undefined, number: string) =>
+      fileReference === undefined ? replace(Number(number), match) : match
+  )
+}
+
 /** The inverse, for a sent message put back in the composer: `[Image #k]` becomes a chip for its
  *  k-th image. A number past its images is left as typed. */
 export function promptMarkersToImageReferences(text: string, imageIds: readonly string[]): string {
-  return text.replace(IMAGE_PROMPT_MARKER_NUMBERS, (marker, number: string) => {
-    const attachmentId = imageIds[Number(number) - 1]
+  return replaceSentImagePromptMarkers(text, (number, marker) => {
+    const attachmentId = imageIds[number - 1]
     return attachmentId === undefined ? marker : imageReferenceToken(attachmentId)
   })
 }
 
+/** A structured chat's sent text without the `[Image #k]` markers its send added. */
+export function stripSentImagePromptMarkers(text: string): string {
+  return withoutStrippedMarkerSpace(
+    text,
+    replaceSentImagePromptMarkers(text, () => '')
+  )
+}
+
 export function stripImagePromptMarker(text: string): string {
-  const stripped = text.replace(IMAGE_PROMPT_MARKERS, '')
+  return withoutStrippedMarkerSpace(text, text.replace(IMAGE_PROMPT_MARKERS, ''))
+}
+
+function withoutStrippedMarkerSpace(text: string, stripped: string): string {
   if (stripped === text) {
     return text
   }
