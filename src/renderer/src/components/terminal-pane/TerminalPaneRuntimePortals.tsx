@@ -70,6 +70,7 @@ export function TerminalPaneCodexRestartPortals({
               ptyId={ptyId}
               tabId={tabId}
               leafId={pane.leafId}
+              container={pane.container}
             />
             <NewerDaemonHoldBanner
               key={`newer-daemon-hold-${pane.id}-${ptyId}`}

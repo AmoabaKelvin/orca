@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
+import { resolveClaudeGlobalConfigFile } from './claude-folder-trust-file'
 import { claudeVersionReaches } from './claude-hook-event-versions'
 
 /** The Claude Code release whose `/diff` panel opens by itself beside the transcript. */
@@ -18,14 +19,6 @@ const DIFF_PANEL_PLUGIN_ID = 'cc-plugin-diff@builtin'
 export function claudeDiffPanelStorePath(configDir: string): string {
   const hash = createHash('sha256').update(DIFF_PANEL_PLUGIN_ID).digest('hex').slice(0, 12)
   return join(configDir, 'plugins', 'store', `cc-plugin-diff_builtin-${hash}.json`)
-}
-
-/** Claude's global config: beside `~/.claude` by default, inside any other config dir. */
-export function claudeGlobalConfigPath(configDir: string, home = homedir()): string {
-  const colocated = join(configDir, '.claude.json')
-  return resolve(configDir) !== resolve(join(home, '.claude')) || existsSync(colocated)
-    ? colocated
-    : join(home, '.claude.json')
 }
 
 async function readJsonObject(path: string): Promise<Record<string, unknown> | null> {
@@ -44,27 +37,36 @@ function asBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined
 }
 
-/** The user's saved panel choice; undefined when Claude has never recorded one. */
-export async function readClaudeDiffPanelPreference(
-  configDir: string,
-  home = homedir()
-): Promise<boolean | undefined> {
-  const store = await readJsonObject(claudeDiffPanelStorePath(configDir))
-  // Why the fallback: releases before the plugin pane kept the choice in the global config,
-  // and the pane copies that value into its store only when it has none of its own.
-  return (
-    asBoolean(store?.open) ??
-    asBoolean((await readJsonObject(claudeGlobalConfigPath(configDir, home)))?.diffSidebarOpen)
-  )
-}
-
 export type ClaudeDiffPanelAutoOpenInput = {
-  configDir: string
+  /** The pane's explicit CLAUDE_CONFIG_DIR; undefined when Claude runs on its default. */
+  configDirEnv: string | undefined
   /** The pane's Claude CLI version; null when unknown, which answers false. */
   version: string | null
   /** The pane's columns; null when unknown, which skips the width gate. */
   cols: number | null
   home?: string
+  platform?: NodeJS.Platform
+}
+
+/** The user's saved panel choice; undefined when Claude has never recorded one. */
+export async function readClaudeDiffPanelPreference(
+  input: Pick<ClaudeDiffPanelAutoOpenInput, 'configDirEnv' | 'home' | 'platform'>
+): Promise<boolean | undefined> {
+  const home = input.home ?? homedir()
+  const configDir = input.configDirEnv ?? join(home, '.claude')
+  const store = await readJsonObject(claudeDiffPanelStorePath(configDir))
+  // Why the fallback: releases before the plugin pane kept the choice in the global config,
+  // and the pane copies that value into its store only when it has none of its own.
+  const globalConfig = resolveClaudeGlobalConfigFile({
+    env: {
+      CLAUDE_CONFIG_DIR: input.configDirEnv,
+      CLAUDE_CODE_CUSTOM_OAUTH_URL: process.env.CLAUDE_CODE_CUSTOM_OAUTH_URL
+    },
+    homeDir: home,
+    style: (input.platform ?? process.platform) === 'win32' ? 'win32' : 'posix',
+    exists: existsSync
+  })
+  return asBoolean(store?.open) ?? asBoolean((await readJsonObject(globalConfig))?.diffSidebarOpen)
 }
 
 /** Whether Claude in this pane may open its diff panel unasked, judged from its saved config. */
@@ -74,12 +76,13 @@ export async function claudeDiffPanelMayAutoOpen(
   if (!claudeVersionReaches(input.version, CLAUDE_DIFF_PANEL_FIRST_VERSION)) {
     return false
   }
-  const settings = await readJsonObject(join(input.configDir, 'settings.json'))
+  const configDir = input.configDirEnv ?? join(input.home ?? homedir(), '.claude')
+  const settings = await readJsonObject(join(configDir, 'settings.json'))
   // Why: the panel exists only in the fullscreen renderer, which this setting opts out of.
   if (settings?.tui === 'default') {
     return false
   }
-  const preference = await readClaudeDiffPanelPreference(input.configDir, input.home)
+  const preference = await readClaudeDiffPanelPreference(input)
   if (preference === false) {
     return false
   }

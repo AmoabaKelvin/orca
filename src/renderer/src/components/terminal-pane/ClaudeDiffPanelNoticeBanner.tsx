@@ -6,7 +6,14 @@ import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { paneClaudeTarget } from './terminal-pane-claude-target'
 import { PaneTopWarningBanner } from './PaneTopWarningBanner'
 
-function useClaudeDiffPanelMayAutoOpen(ptyId: string, tabId: string, wanted: boolean): boolean {
+const RESIZE_RECHECK_MS = 300
+
+function useClaudeDiffPanelMayAutoOpen(
+  ptyId: string,
+  tabId: string,
+  container: HTMLElement,
+  wanted: boolean
+): boolean {
   const [mayAutoOpen, setMayAutoOpen] = useState(false)
   useEffect(() => {
     const target = wanted ? paneClaudeTarget(tabId) : null
@@ -14,19 +21,36 @@ function useClaudeDiffPanelMayAutoOpen(ptyId: string, tabId: string, wanted: boo
       return
     }
     let cancelled = false
-    void window.api.pty
-      .claudeDiffPanelMayAutoOpen(ptyId, target)
-      .catch(() => false)
-      .then((answer) => {
-        if (!cancelled) {
-          setMayAutoOpen(answer)
-        }
-      })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const ask = (): void => {
+      void window.api.pty
+        .claudeDiffPanelMayAutoOpen(ptyId, target)
+        .catch(() => false)
+        .then((answer) => {
+          if (!cancelled) {
+            setMayAutoOpen(answer)
+          }
+        })
+    }
+    ask()
+    // Why re-ask on resize: main judges the panel's width gate from the pane's current columns.
+    let initialNotification = true
+    const observer = new ResizeObserver(() => {
+      if (initialNotification) {
+        initialNotification = false
+        return
+      }
+      clearTimeout(timer)
+      timer = setTimeout(ask, RESIZE_RECHECK_MS)
+    })
+    observer.observe(container)
     return () => {
       cancelled = true
+      clearTimeout(timer)
+      observer.disconnect()
       setMayAutoOpen(false)
     }
-  }, [wanted, ptyId, tabId])
+  }, [wanted, ptyId, tabId, container])
   return mayAutoOpen
 }
 
@@ -35,11 +59,14 @@ function useClaudeDiffPanelMayAutoOpen(ptyId: string, tabId: string, wanted: boo
 export function ClaudeDiffPanelNoticeBanner({
   ptyId,
   tabId,
-  leafId
+  leafId,
+  container
 }: {
   ptyId: string
   tabId: string
   leafId: string
+  /** The pane element, watched for width changes. */
+  container: HTMLElement
 }): React.JSX.Element | null {
   const paneKey = makePaneKey(tabId, leafId)
   const seen = useAppStore((state) => state.claudeDiffPanelNoticeSeen)
@@ -50,7 +77,7 @@ export function ClaudeDiffPanelNoticeBanner({
       state.paneForegroundAgentByPaneKey[paneKey]?.agent === 'claude' ||
       state.agentStatusByPaneKey[paneKey]?.agentType === 'claude'
   )
-  const mayAutoOpen = useClaudeDiffPanelMayAutoOpen(ptyId, tabId, claudeInPane && !seen)
+  const mayAutoOpen = useClaudeDiffPanelMayAutoOpen(ptyId, tabId, container, claudeInPane && !seen)
   if (seen || !mayAutoOpen) {
     return null
   }

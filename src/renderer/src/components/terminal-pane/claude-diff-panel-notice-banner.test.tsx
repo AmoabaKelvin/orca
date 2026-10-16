@@ -33,9 +33,22 @@ let root: Root
 let mayAutoOpen: ReturnType<typeof vi.fn<(id: string, target: unknown) => Promise<boolean>>>
 let uiSet: ReturnType<typeof vi.fn<(patch: unknown) => Promise<void>>>
 
+const resizeCallbacks: ResizeObserverCallback[] = []
+
 class ResizeObserverStub {
+  constructor(callback: ResizeObserverCallback) {
+    resizeCallbacks.push(callback)
+  }
   observe(): void {}
   disconnect(): void {}
+}
+
+/** Fires every live observer the way a real one would after a layout change. */
+function resizePane(): void {
+  for (const callback of resizeCallbacks) {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the hook never reads the entries.
+    callback([] as ResizeObserverEntry[], {} as ResizeObserver)
+  }
 }
 
 function setState(agent: 'claude' | 'codex', seen = false): void {
@@ -49,11 +62,19 @@ function setState(agent: 'claude' | 'codex', seen = false): void {
 
 async function renderBanner(): Promise<void> {
   await act(async () => {
-    root.render(<ClaudeDiffPanelNoticeBanner ptyId={PTY_ID} tabId={TAB_ID} leafId={LEAF_ID} />)
+    root.render(
+      <ClaudeDiffPanelNoticeBanner
+        ptyId={PTY_ID}
+        tabId={TAB_ID}
+        leafId={LEAF_ID}
+        container={paneElement}
+      />
+    )
   })
 }
 
 beforeEach(() => {
+  resizeCallbacks.length = 0
   vi.stubGlobal('ResizeObserver', ResizeObserverStub)
   useAppStore.setState(useAppStore.getInitialState(), true)
   paneElement = document.createElement('div')
@@ -99,6 +120,34 @@ describe('ClaudeDiffPanelNoticeBanner', () => {
     setState('codex')
     await renderBanner()
     expect(mayAutoOpen).not.toHaveBeenCalled()
+  })
+
+  it('asks again once the pane has been resized, so a widened pane can still get the notice', async () => {
+    vi.useFakeTimers()
+    try {
+      mayAutoOpen.mockResolvedValueOnce(false)
+      setState('claude')
+      await renderBanner()
+      expect(mayAutoOpen).toHaveBeenCalledTimes(1)
+      expect(paneElement.textContent).toBe('')
+
+      // The observer's first notification describes the current size, not a change.
+      resizePane()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000)
+      })
+      expect(mayAutoOpen).toHaveBeenCalledTimes(1)
+
+      resizePane()
+      resizePane()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000)
+      })
+      expect(mayAutoOpen).toHaveBeenCalledTimes(2)
+      expect(paneElement.textContent).toContain(TITLE)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("stays hidden when Claude's saved config already keeps the panel closed", async () => {

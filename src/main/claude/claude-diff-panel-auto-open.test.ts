@@ -2,11 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  claudeDiffPanelMayAutoOpen,
-  claudeDiffPanelStorePath,
-  claudeGlobalConfigPath
-} from './claude-diff-panel-auto-open'
+import { claudeDiffPanelMayAutoOpen, claudeDiffPanelStorePath } from './claude-diff-panel-auto-open'
 
 let home: string
 let configDir: string
@@ -16,8 +12,17 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, JSON.stringify(value))
 }
 
-function mayAutoOpen(cols: number | null, version: string | null = '2.1.301'): Promise<boolean> {
-  return claudeDiffPanelMayAutoOpen({ configDir, version, cols, home })
+function mayAutoOpen(
+  cols: number | null,
+  options: { version?: string | null; configDirEnv?: string } = {}
+): Promise<boolean> {
+  return claudeDiffPanelMayAutoOpen({
+    configDirEnv: options.configDirEnv,
+    version: 'version' in options ? (options.version ?? null) : '2.1.301',
+    cols,
+    home,
+    platform: 'linux'
+  })
 }
 
 beforeEach(async () => {
@@ -33,22 +38,15 @@ afterEach(async () => {
 describe('claudeDiffPanelMayAutoOpen', () => {
   it('names the store file the way Claude 2.1.301 does', () => {
     // Observed on a real machine: ~/.claude/plugins/store/cc-plugin-diff_builtin-3903e77c01b1.json
-    expect(claudeDiffPanelStorePath('/home/me/.claude')).toBe(
-      '/home/me/.claude/plugins/store/cc-plugin-diff_builtin-3903e77c01b1.json'
-    )
-  })
-
-  it('keeps the global config beside the default dir and inside any other one', () => {
-    expect(claudeGlobalConfigPath(configDir, home)).toBe(join(home, '.claude.json'))
-    expect(claudeGlobalConfigPath(join(home, 'work'), home)).toBe(
-      join(home, 'work', '.claude.json')
+    expect(claudeDiffPanelStorePath(configDir)).toBe(
+      join(configDir, 'plugins', 'store', 'cc-plugin-diff_builtin-3903e77c01b1.json')
     )
   })
 
   it('answers false for a Claude older than the panel, or an unknown version', async () => {
-    expect(await mayAutoOpen(200, '2.1.259')).toBe(false)
-    expect(await mayAutoOpen(200, null)).toBe(false)
-    expect(await mayAutoOpen(200, '2.1.260')).toBe(true)
+    expect(await mayAutoOpen(200, { version: '2.1.259' })).toBe(false)
+    expect(await mayAutoOpen(200, { version: null })).toBe(false)
+    expect(await mayAutoOpen(200, { version: '2.1.260' })).toBe(true)
   })
 
   it('opens unasked only from 144 columns when the user never chose', async () => {
@@ -71,6 +69,21 @@ describe('claudeDiffPanelMayAutoOpen', () => {
     await rm(claudeDiffPanelStorePath(configDir))
     await writeJson(join(home, '.claude.json'), { diffSidebarOpen: false })
     expect(await mayAutoOpen(200)).toBe(false)
+
+    // The legacy `.config.json` wins over `.claude.json`, as it does for Claude itself.
+    await writeJson(join(home, '.claude.json'), { diffSidebarOpen: true })
+    await writeJson(join(configDir, '.config.json'), { diffSidebarOpen: false })
+    expect(await mayAutoOpen(200)).toBe(false)
+  })
+
+  it('reads an explicit CLAUDE_CONFIG_DIR, whose global config sits inside it', async () => {
+    const account = join(home, 'accounts', 'a')
+    await writeJson(join(account, '.claude.json'), { diffSidebarOpen: false })
+    expect(await mayAutoOpen(200, { configDirEnv: account })).toBe(false)
+    // The default dir's choice does not leak into the account's.
+    await writeJson(join(home, '.claude.json'), { diffSidebarOpen: false })
+    await rm(join(account, '.claude.json'))
+    expect(await mayAutoOpen(200, { configDirEnv: account })).toBe(true)
   })
 
   it('lets the store win over the global config, and ignores malformed files', async () => {

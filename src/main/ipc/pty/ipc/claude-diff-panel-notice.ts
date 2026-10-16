@@ -4,7 +4,6 @@ import { getPtyIpc } from '../../pty-host-bindings'
 import { parseAppSshPtyId } from '../../../providers/ssh-pty-id'
 import { claudeDiffPanelMayAutoOpen } from '../../../claude/claude-diff-panel-auto-open'
 import { probeRecentClaudeCliVersion } from '../../../claude/claude-hook-event-versions'
-import { defaultClaudeConfigDir } from '../../../claude/claude-config-dir-pin'
 import { getClaudeProfileRouter } from '../../../claude-accounts/claude-profile-installed-router'
 import { resolveClaudeCommand } from '../../../codex-cli/command'
 import { ptyOwnership } from '../provider/ownership-state'
@@ -12,10 +11,13 @@ import { tryGetProviderForPty } from '../provider/registry'
 
 type Deps = { getLocalPtyProviderStartupPromise: () => Promise<void> | undefined }
 
-/** The Claude home a host pane's `claude` reads: the selected account's, else System default's. */
-function hostPaneClaudeConfigDir(): string {
+/** The CLAUDE_CONFIG_DIR a host pane's `claude` sees: the selected account's home, else the
+ *  user's own; undefined when it runs on the CLI default. */
+function hostPaneClaudeConfigDirEnv(): string | undefined {
   const router = getClaudeProfileRouter()
-  return router ? (router.routedHome() ?? router.systemDefaultHome()) : defaultClaudeConfigDir()
+  return router
+    ? (router.routedHome() ?? router.userConfigDir())
+    : process.env.CLAUDE_CONFIG_DIR?.trim() || undefined
 }
 
 /** Whether Claude in a local host pane may open its diff panel unasked; false for any other pane. */
@@ -42,7 +44,7 @@ export function installPtyClaudeDiffPanelNoticeIpcHandler(deps: Deps): void {
           tryGetProviderForPty(id)?.getAppliedSize?.(id) ?? null
         ])
         return await claudeDiffPanelMayAutoOpen({
-          configDir: hostPaneClaudeConfigDir(),
+          configDirEnv: hostPaneClaudeConfigDirEnv(),
           version,
           cols: size?.cols ?? null
         })

@@ -9,6 +9,7 @@ type Mocks = {
   version: string | null
   size: { cols: number; rows: number } | null
   routedHome: string | null
+  userConfigDir: string | undefined
   mayAutoOpen: ReturnType<typeof vi.fn<(input: unknown) => Promise<boolean>>>
 }
 
@@ -19,6 +20,7 @@ const mocks = vi.hoisted((): Mocks => ({
   version: 'unprobed',
   size: { cols: 180, rows: 40 },
   routedHome: '/accounts/a/home',
+  userConfigDir: '/home/me/claude-config',
   mayAutoOpen: vi.fn<(input: unknown) => Promise<boolean>>()
 }))
 vi.mock('../../pty-host-bindings', () => ({
@@ -37,7 +39,7 @@ vi.mock('../../../codex-cli/command', () => ({ resolveClaudeCommand: () => '/bin
 vi.mock('../../../claude-accounts/claude-profile-installed-router', () => ({
   getClaudeProfileRouter: () => ({
     routedHome: () => mocks.routedHome,
-    systemDefaultHome: () => '/home/me/.claude'
+    userConfigDir: () => mocks.userConfigDir
   })
 }))
 vi.mock('../../../claude/claude-diff-panel-auto-open', () => ({
@@ -55,6 +57,7 @@ beforeEach(() => {
   mocks.version = '2.1.301'
   mocks.size = { cols: 180, rows: 40 }
   mocks.routedHome = '/accounts/a/home'
+  mocks.userConfigDir = '/home/me/claude-config'
   mocks.mayAutoOpen.mockReset().mockResolvedValue(true)
   installPtyClaudeDiffPanelNoticeIpcHandler({ getLocalPtyProviderStartupPromise: mocks.startup })
 })
@@ -63,20 +66,28 @@ function ask(id: unknown, target: unknown = HOST): Promise<boolean> {
   return mocks.handlers.get('pty:claudeDiffPanelMayAutoOpen')!({}, { id, target })
 }
 
-it("judges a host pane by the selected account's home, its Claude version and its width", async () => {
+it('judges a host pane by the config dir its claude sees, its Claude version and its width', async () => {
   expect(await ask('pty-1')).toBe(true)
   expect(mocks.startup).toHaveBeenCalled()
   expect(mocks.mayAutoOpen).toHaveBeenCalledWith({
-    configDir: '/accounts/a/home',
+    configDirEnv: '/accounts/a/home',
     version: '2.1.301',
     cols: 180
   })
 
+  // System default runs on the user's own CLAUDE_CONFIG_DIR, or on the CLI default without one.
   mocks.routedHome = null
   mocks.size = null
   await ask('pty-1')
   expect(mocks.mayAutoOpen).toHaveBeenLastCalledWith({
-    configDir: '/home/me/.claude',
+    configDirEnv: '/home/me/claude-config',
+    version: '2.1.301',
+    cols: null
+  })
+  mocks.userConfigDir = undefined
+  await ask('pty-1')
+  expect(mocks.mayAutoOpen).toHaveBeenLastCalledWith({
+    configDirEnv: undefined,
     version: '2.1.301',
     cols: null
   })
