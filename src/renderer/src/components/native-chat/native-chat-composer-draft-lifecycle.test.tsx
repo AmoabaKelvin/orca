@@ -143,6 +143,7 @@ function composer(
     const attachments = hooks.attachmentsHook.useNativeChatComposerAttachments({
       attachmentScopeKey: scopeKey,
       allowWithoutTarget: true,
+      imageReferences: true,
       caret: 0,
       disabled: false,
       isComposing: () => false,
@@ -452,7 +453,11 @@ describe('native-chat composer draft lifecycle', () => {
       { path: '/repo/x.png', pending: undefined },
       { path: '', pending: true }
     ])
-    await act(async () => second.api?.attachments.clearImageAttachments())
+    // Sent: the prompt is emptied, then its images.
+    await act(async () => {
+      second.api?.setDraft('')
+      second.api?.attachments.clearImageAttachments()
+    })
     await unmount()
 
     // The paste's save fails late in the replaced composer, which drops its placeholder.

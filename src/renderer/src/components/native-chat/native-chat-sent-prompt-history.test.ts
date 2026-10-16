@@ -42,15 +42,20 @@ describe('nativeChatSentPrompts', () => {
     ])
   })
 
-  it('recalls a prompt without the markers of images recall cannot bring back', () => {
+  it('recalls a structured prompt without the markers of images recall cannot bring back', () => {
     const image = { type: 'image-ref' as const, path: '/tmp/a.png' }
-    const prompts = nativeChatSentPrompts({
-      messages: [
-        message('1', 'user', '', { blocks: [image, { type: 'text', text: '[Image #1] ' }] }),
-        message('2', 'user', '', { blocks: [image, { type: 'text', text: 'fix [Image #1]' }] })
-      ]
-    })
-    expect(prompts).toEqual([{ id: '2', prompt: 'fix' }])
+    const messages = [
+      message('1', 'user', '', { blocks: [image, { type: 'text', text: '[Image #1] ' }] }),
+      message('2', 'user', '', { blocks: [image, { type: 'text', text: 'fix [Image #1]' }] })
+    ]
+    expect(nativeChatSentPrompts({ messages, withoutImageMarkers: true })).toEqual([
+      { id: '2', prompt: 'fix' }
+    ])
+    // A terminal chat's transcript text is the agent's own, markers included.
+    expect(nativeChatSentPrompts({ messages }).map(({ prompt }) => prompt)).toEqual([
+      '[Image #1]',
+      'fix [Image #1]'
+    ])
   })
 
   it('collapses a prompt sent back to back into its newest copy', () => {

@@ -14,6 +14,8 @@ export type NativeChatRecallSource = {
   messages: readonly NativeChatMessage[]
   /** Commands sent from this pane that the transcript holds no user turn for. */
   commands?: readonly NativeChatCommandMarker[]
+  /** A structured chat's sends carry `[Image #k]` markers for images recall can't bring back. */
+  withoutImageMarkers?: boolean
 }
 
 export type NativeChatSentPrompt = { id: string; prompt: string }
@@ -73,8 +75,8 @@ export function nativeChatSentPrompts(source: NativeChatRecallSource): NativeCha
       const command = commands[nextCommand++]
       push(`command:${command.id}`, command.command)
     }
-    // Recall brings back the text alone, so no marker may name an image that is not attached.
-    push(message.id, stripImagePromptMarker(deriveNativeChatRowContent(message.blocks).markdown))
+    const text = deriveNativeChatRowContent(message.blocks).markdown
+    push(message.id, source.withoutImageMarkers ? stripImagePromptMarker(text) : text)
   }
   for (const command of commands.slice(nextCommand)) {
     push(`command:${command.id}`, command.command)

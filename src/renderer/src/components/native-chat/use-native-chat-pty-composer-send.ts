@@ -22,7 +22,6 @@ import {
   answerNativeChatCommandInComposer,
   type NativeChatLocalCommandAnswer
 } from './use-native-chat-local-command-answer'
-import { imageReferencesToPromptMarkers } from '../../../../shared/native-chat-image-transcript-markers'
 
 export function useNativeChatPtyComposerSend(args: {
   agent: AgentType
@@ -50,8 +49,7 @@ export function useNativeChatPtyComposerSend(args: {
   setNotice: (notice: string | null) => void
 }): () => void {
   return useCallback(() => {
-    // A TUI numbers the images it is given itself, so the chips carry nothing it could read.
-    const text = imageReferencesToPromptMarkers(args.draft, [])
+    const text = args.draft
     const imagePaths = args.imageAttachments.map((attachment) => attachment.path)
     if ((text.trim() === '' && imagePaths.length === 0) || args.disabled) {
       return

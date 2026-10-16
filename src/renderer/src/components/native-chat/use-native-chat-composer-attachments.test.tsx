@@ -50,6 +50,7 @@ function Probe({
   const api = useNativeChatComposerAttachments({
     attachmentScopeKey: scopeKey,
     allowWithoutTarget: structured,
+    imageReferences: structured,
     caret,
     disabled,
     isComposing,
@@ -171,6 +172,25 @@ describe('useNativeChatComposerAttachments', () => {
     ])
     act(() => second.root.unmount())
   })
+
+  it.each([false, true])(
+    'marks each image in the prompt only in a structured chat (structured=%s)',
+    async (structured) => {
+      const scope = structured ? 'structured-1' : 'pty-1'
+      const probe = await renderProbe(scope, structured)
+      await act(async () => probe.latest().attachResolvedPaths(['/tmp/attached.png']))
+      act(() => {
+        probe.latest().beginPendingImageAttachment()
+      })
+
+      const ids = probe.latest().imageAttachments.map(({ id }) => id)
+      expect(ids).toHaveLength(2)
+      expect(readNativeChatDraftCache(scope)).toBe(
+        structured ? ids.map(imageReferenceToken).join('\n\n') : ''
+      )
+      act(() => probe.root.unmount())
+    }
+  )
 
   it('accepts host-readable image paths without a PTY for structured transport', async () => {
     const probe = await renderProbe('structured-session-1', true)
@@ -498,9 +518,8 @@ describe('useNativeChatComposerAttachments', () => {
     expect(readNativeChatAttachmentCache('pty-gone')).toEqual([
       { id: image, path: '/srv/agent-session-attachments/u1/shot.png' }
     ])
-    // The removed image's chip went with it; the kept one's stays bound to it.
     expect(readNativeChatDraftCache('pty-gone')).toBe(
-      `${imageReferenceToken(image)}\n\n@/srv/agent-session-attachments/u3/notes.pdf`
+      '@/srv/agent-session-attachments/u3/notes.pdf'
     )
     const back = await renderProbe('pty-gone')
     expect(back.latest().imageAttachments).toMatchObject([

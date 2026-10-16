@@ -45,6 +45,7 @@ function Composer({
   const api = useNativeChatComposerAttachments({
     attachmentScopeKey: scopeKey,
     allowWithoutTarget: true,
+    imageReferences: true,
     caret: 0,
     disabled: false,
     isComposing: () => false,

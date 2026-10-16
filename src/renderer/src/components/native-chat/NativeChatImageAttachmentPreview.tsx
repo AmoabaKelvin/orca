@@ -18,8 +18,9 @@ import { nativeChatImageNumberLabel } from './NativeChatImageReferencePill'
 
 type Props = {
   attachment: NativeChatComposerImageAttachment
-  /** Its place in the row, which numbers its chips in the prompt and its marker at send. */
-  number: number
+  /** Its place in the row, which numbers its chips in the prompt and its marker at send; only a
+   *  structured chat has chips, so only it numbers its images. */
+  number?: number
   /** The paired server the chat runs on; a file stored there is read back through it. */
   hostEnvironmentId?: string
   onRemove: (id: string) => void
@@ -53,7 +54,10 @@ export function NativeChatImageAttachmentPreview({
 }
 
 /** The thumbnail's number, as its chips in the prompt read; its label names it for readers. */
-function ImageNumberBadge({ number }: { number: number }): React.JSX.Element {
+function ImageNumberBadge({ number }: { number?: number }): React.JSX.Element | null {
+  if (number === undefined) {
+    return null
+  }
   return (
     <span
       aria-hidden
@@ -62,6 +66,10 @@ function ImageNumberBadge({ number }: { number: number }): React.JSX.Element {
       #{number}
     </span>
   )
+}
+
+function numberedLabel(number: number | undefined, label: string): string {
+  return number === undefined ? label : `${nativeChatImageNumberLabel(number)}: ${label}`
 }
 
 function attachmentLabel(path: string): string {
@@ -96,7 +104,7 @@ function NativeChatUnavailableImageChip({
 }: {
   id: string
   name: string
-  number: number
+  number?: number
   onRemove: (id: string) => void
 }): React.JSX.Element {
   const pasted = isNativeChatPastedImagePath(name)
@@ -118,7 +126,7 @@ function NativeChatUnavailableImageChip({
     <div className="relative h-14 max-w-40 shrink-0">
       <div
         role="img"
-        aria-label={`${nativeChatImageNumberLabel(number)}: ${explanation}`}
+        aria-label={numberedLabel(number, explanation)}
         title={explanation}
         className="flex h-full items-center gap-2 rounded-md border border-dashed border-border bg-background px-2"
       >
@@ -212,11 +220,12 @@ function NativeChatImageThumbnail({
       <div ref={thumbnailRef} className="relative size-14 shrink-0">
         <button
           type="button"
-          aria-label={`${nativeChatImageNumberLabel(number)}: ${
+          aria-label={numberedLabel(
+            number,
             isPending
               ? pendingLabel
               : `${translate('components.native-chat.composer.viewAttachment', 'View image')}: ${label}`
-          }`}
+          )}
           aria-busy={isPending}
           title={label}
           data-native-chat-copy-image-src={copySrc}

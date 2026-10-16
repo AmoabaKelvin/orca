@@ -39,6 +39,8 @@ export type UseNativeChatComposerAttachmentsArgs = {
   attachmentScopeKey: string
   /** False when the agent takes no image input; see `useNativeChatResolvedPathAttachments`. */
   acceptsImages?: boolean
+  /** Structured chats only: each image gets a chip in the prompt where it was attached. */
+  imageReferences?: boolean
   allowWithoutTarget?: boolean
   caret: number
   disabled: boolean
@@ -53,6 +55,7 @@ export type UseNativeChatComposerAttachmentsArgs = {
 export function useNativeChatComposerAttachments({
   attachmentScopeKey,
   acceptsImages = true,
+  imageReferences = false,
   allowWithoutTarget = false,
   caret,
   disabled,
@@ -142,6 +145,9 @@ export function useNativeChatComposerAttachments({
         ...(connectionId ? { connectionId } : {})
       }))
       appendNativeChatAttachmentsAfterPending(attachmentScopeKey, images, { fromUser: true })
+      if (!imageReferences) {
+        return
+      }
       // One that took an unavailable image's place keeps that image's id, and so its chips.
       const row = nativeChatImageRowIds(attachmentScopeKey)
       insertImageReferences(
@@ -150,7 +156,7 @@ export function useNativeChatComposerAttachments({
         images.flatMap(({ id }) => (row.includes(id) ? [id] : []))
       )
     },
-    [attachmentScopeKey, nextAttachmentId, scopeEditor]
+    [attachmentScopeKey, imageReferences, nextAttachmentId, scopeEditor]
   )
 
   const { attachResolvedPaths, disabledRef, flushPendingAttachments } =
@@ -192,7 +198,11 @@ export function useNativeChatComposerAttachments({
       })
       setPreview(id, previewUrl)
       // A dropped file's kind shows in its name; a clipboard paste is always an image.
-      if (acceptsImages && (!pendingName || isNativeChatImageAttachmentPath(pendingName))) {
+      if (
+        imageReferences &&
+        acceptsImages &&
+        (!pendingName || isNativeChatImageAttachmentPath(pendingName))
+      ) {
         insertImageReferences(attachmentScopeKey, scopeEditor(), [id])
       }
       return id
@@ -202,6 +212,7 @@ export function useNativeChatComposerAttachments({
       attachmentScopeKey,
       attachmentTargetBlocked,
       disabledRef,
+      imageReferences,
       nextAttachmentId,
       noteAttachmentTargetBlocked,
       scopeEditor,
@@ -299,9 +310,6 @@ export function useNativeChatComposerAttachments({
     imageAttachments,
     attachResolvedPaths,
     clearImageAttachments: () => {
-      for (const { id } of imageAttachments) {
-        removeImageReferences(attachmentScopeKey, scopeEditor(), id)
-      }
       releaseAllPreviews()
       clearNativeChatPendingAttachments(attachmentScopeKey)
       updateNativeChatComposerDraft(attachmentScopeKey, { images: [] }, 'immediate')

@@ -73,6 +73,7 @@ function ComposerBody({
   const attachments = useNativeChatComposerAttachments({
     attachmentScopeKey: draft,
     allowWithoutTarget: true,
+    imageReferences: true,
     caret: 0,
     disabled,
     isComposing: () => false,
