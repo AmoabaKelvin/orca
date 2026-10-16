@@ -321,8 +321,7 @@ describe('composer image chips', () => {
     const text = `${chip('a')} typed ${chip('b')}`
     const replayed = withNativeChatComposerDraftAddition(
       { text, document: promptTextContent(text), images: [] },
-      { text: `back ${chip('c')}` },
-      { once: true }
+      { text: `back ${chip('c')}` }
     )
     expect(imageIds(replayed.document)).toEqual(['a', 'b', 'c'])
   })
