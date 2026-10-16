@@ -51,8 +51,7 @@ export function useNativeChatRootInputRouting(
     const onDictationFocusInput = (): void => {
       const active = root.ownerDocument.activeElement
       if (root.contains(active) || ownsUnfocusedInput(active)) {
-        const input = composerRef.current ?? questionAnswerInputRef.current
-        input?.focus()
+        composerRef.current?.focus()
       }
     }
     revealedChatRoots.add(root)
