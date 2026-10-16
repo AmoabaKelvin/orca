@@ -193,10 +193,7 @@ const OPENCODE_2X_LINE = { major: 2, floor: '2.0.14' } as const
 // `opencode acp` on 1.x serves in-process; on 2.x it starts a private `opencode serve --stdio` child
 // with this environment and ends it with stdin, so both lines run the chat's own account.
 function openCodeLaunchSpec(
-  row: Pick<
-    AcpLaunchSpec,
-    'agent' | 'command' | 'supportsVersion' | 'modelDiscovery' | 'transcriptImport'
-  >
+  row: Pick<AcpLaunchSpec, 'agent' | 'command' | 'supportsVersion' | 'modelDiscovery'>
 ): AcpLaunchSpec {
   return {
     ...row,
@@ -214,6 +211,8 @@ function openCodeLaunchSpec(
     readStoredUserMessages: openCodeStoredUserMessagesReader(),
     visualsSkill: loadOpenCodeVisualsSkill,
     compaction: true,
+    // Finds a conversation of either line in the one database both lines write.
+    transcriptImport: OPENCODE_TRANSCRIPT_IMPORT,
     sessionHistory: OPENCODE_SESSION_HISTORY
   }
 }
@@ -221,7 +220,6 @@ function openCodeLaunchSpec(
 const OPENCODE_LAUNCH_SPEC = openCodeLaunchSpec({
   agent: 'opencode',
   command: 'opencode',
-  transcriptImport: OPENCODE_TRANSCRIPT_IMPORT,
   supportsVersion: (version) =>
     [OPENCODE_1X_LINE, OPENCODE_2X_LINE].some((line) => isStableCliVersionOnLine(version, line)),
   // Its `initialize` names no models; 1.x lists them with a command, 2.x in a session it deletes.
@@ -242,8 +240,6 @@ const OPENCODE_LAUNCH_SPEC = openCodeLaunchSpec({
 const OPENCODE2_LAUNCH_SPEC = openCodeLaunchSpec({
   agent: 'opencode2',
   command: 'opencode2',
-  // A terminal conversation of either line resumes in an OpenCode chat.
-  transcriptImport: null,
   supportsVersion: (version) => isStableCliVersionOnLine(version, OPENCODE_2X_LINE),
   modelDiscovery: { kind: 'session', listingNamesConfiguredModel: false }
 })

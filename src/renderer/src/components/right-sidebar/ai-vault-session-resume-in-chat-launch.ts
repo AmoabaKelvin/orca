@@ -12,8 +12,14 @@ import { prepareAiVaultSessionForResume } from '@/lib/ai-vault-session-resume-pr
 import { adoptAgentSessionLaunchVerdict } from '@/lib/agent-session-launch-plan'
 import type { AgentLaunchRequestId } from '@/lib/agent-launch-request-id'
 import { activateAndRevealWorkspace } from '@/lib/worktree-activation'
-import { beginStructuredAgentSessionProvisionalLaunch } from '@/lib/structured-agent-session-provisional-tab'
+import {
+  beginStructuredAgentSessionProvisionalLaunch,
+  structuredLaunchOwner
+} from '@/lib/structured-agent-session-provisional-tab'
+import { admitStructuredLaunchOnHost } from '@/lib/structured-agent-session-host-admission'
+import { toRuntimeWorktreeSelector } from '@/runtime/runtime-worktree-selector'
 import { structuredLaunchFailure } from '@/lib/structured-agent-session-launch-failure'
+import type { TuiAgent } from '../../../../shared/tui-agent'
 
 export function activateAiVaultResumeWorkspace(workspaceId: string): boolean {
   return activateAndRevealWorkspace(workspaceId) !== false
@@ -36,7 +42,7 @@ export async function resumeAiVaultSessionInNewChat(
     const plan = adoptAgentSessionLaunchVerdict({
       route: 'structured-native-chat',
       requestId,
-      agent: CLI_CONVERSATION_ADOPTING_AGENTS[rowAgent],
+      agent: await adoptingAgentOnHost(rowAgent, worktreeId),
       worktreeId,
       resumeFrom: { providerSessionId: preparedSession.sessionId }
     })
@@ -60,6 +66,31 @@ export async function resumeAiVaultSessionInNewChat(
   } catch (error) {
     notifyAiVaultSessionResumeInChatFailure(error, rowAgent)
   }
+}
+
+/** The first chat the worktree's host admits to take the row over, trying them in order; the last
+ *  is not asked here, so its own launch reports why it cannot. */
+async function adoptingAgentOnHost(
+  rowAgent: CliConversationRowAgent,
+  worktreeId: string
+): Promise<TuiAgent> {
+  const [preferred, ...fallbacks] = CLI_CONVERSATION_ADOPTING_AGENTS[rowAgent]
+  const owner = structuredLaunchOwner({ route: 'structured-native-chat' }, worktreeId)
+  let agent: TuiAgent = preferred
+  for (const fallback of fallbacks) {
+    const admission = owner
+      ? await admitStructuredLaunchOnHost(
+          owner.target,
+          toRuntimeWorktreeSelector(worktreeId),
+          agent
+        )
+      : null
+    if (admission?.kind === 'admitted') {
+      break
+    }
+    agent = fallback
+  }
+  return agent
 }
 
 /** The host refuses an adoption whose conversation another chat already holds, and refuses one it
