@@ -600,12 +600,17 @@ describe('useNativeChatComposerAttachments', () => {
       probe.latest().attachResolvedPaths(['/tmp/later.png'])
     })
 
-    // A composer that comes back must still wait for the pending one, which no draft saves.
+    // A composer that comes back must still wait for the pending one, which no draft saves; the
+    // later image is saved at once, and shows behind it.
     expect(nativeChatPendingAttachmentSnapshot('pty-1')).toMatchObject([
       { id: pendingId, path: '', pending: true },
       { path: '/tmp/later.png' }
     ])
-    expect(readNativeChatAttachmentCache('pty-1')).toEqual([])
+    expect(readNativeChatAttachmentCache('pty-1')).toMatchObject([{ path: '/tmp/later.png' }])
+    expect(probe.latest().imageAttachments).toMatchObject([
+      { id: pendingId, pending: true },
+      { path: '/tmp/later.png' }
+    ])
     expect(
       probe.latest().imageAttachments.find((attachment) => attachment.id === pendingId)?.previewUrl
     ).toBe('blob:preview-1')
@@ -616,6 +621,24 @@ describe('useNativeChatComposerAttachments', () => {
       { path: '/tmp/first.png' },
       { path: '/tmp/later.png' }
     ])
+    act(() => probe.root.unmount())
+  })
+
+  it('removes a finished image from the saved draft while one attached before it is still on its way', async () => {
+    const probe = await renderProbe('pty-1')
+    let firstId: string | null = null
+    let secondId: string | null = null
+    act(() => {
+      firstId = probe.latest().beginPendingImageAttachment()
+      secondId = probe.latest().beginPendingImageAttachment()
+    })
+    act(() => probe.latest().resolvePendingImageAttachment(secondId ?? '', '/tmp/second.png'))
+    act(() => probe.latest().removeImageAttachment(secondId ?? ''))
+
+    expect(readNativeChatAttachmentCache('pty-1')).toEqual([])
+    act(() => probe.latest().resolvePendingImageAttachment(firstId ?? '', '/tmp/first.png'))
+    expect(readNativeChatAttachmentCache('pty-1')).toMatchObject([{ path: '/tmp/first.png' }])
+    expect(probe.latest().imageAttachments).toMatchObject([{ path: '/tmp/first.png' }])
     act(() => probe.root.unmount())
   })
 

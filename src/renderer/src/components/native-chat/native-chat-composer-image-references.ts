@@ -7,7 +7,10 @@ import {
   updateNativeChatComposerDraft
 } from './native-chat-composer-draft-store'
 import { appendNativeChatDraftCache } from './native-chat-draft-cache'
-import { nativeChatPendingAttachmentSnapshot } from './native-chat-pending-attachment-cache'
+import {
+  nativeChatImageRow,
+  nativeChatPendingAttachmentSnapshot
+} from './native-chat-pending-attachment-cache'
 import { imageReferenceToken } from '../../../../shared/native-chat-image-reference'
 import { withoutImageReferenceNodes } from './native-chat-prompt-document-text'
 
@@ -56,12 +59,12 @@ export function removeImageReferences(
   updateNativeChatComposerDraft(scopeKey, change, 'immediate')
 }
 
-/** The thumbnail row's ids: settled images, then those still on their way. */
+/** The thumbnail row's ids. */
 export function nativeChatImageRowIds(scopeKey: string): string[] {
-  return [
-    ...readNativeChatComposerDraft(scopeKey).images,
-    ...nativeChatPendingAttachmentSnapshot(scopeKey)
-  ].map(({ id }) => id)
+  return nativeChatImageRow(
+    readNativeChatComposerDraft(scopeKey).images,
+    nativeChatPendingAttachmentSnapshot(scopeKey)
+  ).map(({ id }) => id)
 }
 
 /** Runs a change to the scope's pending images. One that leaves the queue without joining the row

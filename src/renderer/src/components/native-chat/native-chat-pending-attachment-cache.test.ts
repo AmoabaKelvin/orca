@@ -4,6 +4,7 @@ import {
   clearNativeChatPendingAttachmentsForTests,
   dropNativeChatPendingAttachmentsForTab,
   dropNativeChatPendingAttachmentsOwnedBy,
+  nativeChatImageRow,
   nativeChatPendingAttachmentSnapshot,
   settleNativeChatPendingAttachment,
   settleNativeChatPendingAttachmentReferences,
@@ -78,12 +79,16 @@ describe('the pane pending attachment cache', () => {
     addPending('tab-1:leaf', 'third')
 
     settleNativeChatPendingAttachment('tab-1:leaf', 'second', '/store/b.png')
-    expect(readNativeChatComposerDraft('tab-1:leaf').images).toEqual([])
-    // A finished chip waiting its turn shows as finished.
-    expect(nativeChatPendingAttachmentSnapshot('tab-1:leaf')[1]).toEqual({
-      id: 'second',
-      path: '/store/b.png'
-    })
+    // Saved at once, so a reload keeps it; the row still shows it behind the one before it.
+    expect(readNativeChatComposerDraft('tab-1:leaf').images).toEqual([
+      { id: 'second', path: '/store/b.png' }
+    ])
+    expect(
+      nativeChatImageRow(
+        readNativeChatComposerDraft('tab-1:leaf').images,
+        nativeChatPendingAttachmentSnapshot('tab-1:leaf')
+      ).map(({ id }) => id)
+    ).toEqual(['first', 'second', 'third'])
     settleNativeChatPendingAttachment('tab-1:leaf', 'first', '/store/a.png')
     takeNativeChatPendingAttachment('tab-1:leaf', 'third')
 

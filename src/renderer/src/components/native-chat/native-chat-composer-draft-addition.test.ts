@@ -86,6 +86,38 @@ describe('native-chat composer draft addition', () => {
     expect(next.drafts.readNativeChatDraftCache(SCOPE)).toBe('please go\n\ngo')
   })
 
+  it('keeps an image that finished while one attached before it was still on its way', async () => {
+    const drafts = (await reload()).drafts
+    const pending = await import('./native-chat-pending-attachment-cache')
+    pending.addNativeChatPendingAttachment(SCOPE, { id: 'first', path: '', pending: true })
+    pending.addNativeChatPendingAttachment(SCOPE, { id: 'second', path: '', pending: true })
+    pending.settleNativeChatPendingAttachment(SCOPE, 'second', '/repo/b.png')
+    expect(drafts.readNativeChatAttachmentCache(SCOPE)).toHaveLength(1)
+
+    const next = await reload()
+    expect(next.drafts.readNativeChatAttachmentCache(SCOPE)).toEqual([
+      { id: 'second', path: '/repo/b.png' }
+    ])
+  })
+
+  it('keeps an image in front of one attached after it when a crash replays it', async () => {
+    storage.drafts.set(SCOPE, { text: '', images: [{ id: 'b', path: '/repo/b.png' }], savedAt: 1 })
+    const crashing = { ...storage, write: () => new Promise<void>(() => {}) }
+    const crashed = await reload({ using: crashing })
+    crashed.store.appendToNativeChatComposerDraft(SCOPE, {
+      images: [{ id: 'a', path: '/repo/a.png' }],
+      fromUser: true,
+      before: 'b'
+    })
+    crashed.store.clearNativeChatComposerDraftsForTests()
+
+    const next = await reload()
+    expect(next.store.readNativeChatComposerDraft(SCOPE).images.map(({ id }) => id)).toEqual([
+      'a',
+      'b'
+    ])
+  })
+
   it('keeps a hand-back the draft already ends with when that draft was never saved', async () => {
     const crashing = { ...storage, write: () => new Promise<void>(() => {}) }
     const crashed = await reload({ using: crashing })

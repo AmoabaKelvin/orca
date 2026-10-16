@@ -68,7 +68,8 @@ function parseEntry(entry: unknown): JournalEntry[] {
           addition: {
             text: parsed.text,
             images: parsed.images,
-            ...(addition.fromUser === true ? { fromUser: true } : {})
+            ...(addition.fromUser === true ? { fromUser: true } : {}),
+            ...(typeof addition.before === 'string' ? { before: addition.before } : {})
           }
         }
       ]

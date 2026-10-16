@@ -15,6 +15,8 @@ export type NativeChatComposerDraftAddition = {
   readonly images?: readonly NativeChatComposerDraftImage[]
   /** Only an image the user attaches takes the place of a placeholder with its file name. */
   readonly fromUser?: boolean
+  /** The held image the new ones go in front of, so they keep the order they were attached in. */
+  readonly before?: string
 }
 
 /**
@@ -34,6 +36,7 @@ export function withNativeChatComposerDraftAddition(
   }
   const text = appendReturnedDraftText(draft.text, addition.text ?? '')
   const images = [...draft.images]
+  let at = addition.before ? images.findIndex((held) => held.id === addition.before) : -1
   for (const { id, path, connectionId } of addition.images ?? []) {
     // One that took a placeholder's place holds that id, so a replay knows it by its file.
     if (options.once && addition.fromUser && images.some((held) => held.path === path)) {
@@ -47,8 +50,10 @@ export function withNativeChatComposerDraftAddition(
     if (replaced) {
       // Its chips name the placeholder's id, so the image takes that id.
       images[placeholder] = { ...image, id: replaced.id }
-    } else {
+    } else if (at === -1) {
       images.push(image)
+    } else {
+      images.splice(at++, 0, image)
     }
   }
   return { text, images, document: appendPromptDocumentText(draft.document, draft.text, text) }
