@@ -61,7 +61,7 @@ export function createAcpModelCatalogProbe(
     if (discovery.kind === 'unavailable') {
       throw new Error(discovery.reason)
     }
-    // A listing reads no workspace: the catalog is the account's, whichever chat asks.
+    // Spawned from home; a listing reads a project's config only in the chat folder it is asked for.
     const cwd = deps.homePath ?? homedir()
     const { command, env, envToDelete } = await resolveAcpLaunchInvocation(spec, accountHome, {
       ...deps,
@@ -92,7 +92,7 @@ export function createAcpModelCatalogProbe(
     let models: AgentSessionModelOption[]
     if (listing.kind === 'command') {
       const stdout = await (deps.runListing ?? runAgentModelCatalogListing)(
-        { command, args: [...listing.args], cwd, env, envToDelete },
+        { command, args: [...listing.args], cwd: options?.workspacePath ?? cwd, env, envToDelete },
         { site: `${spec.agent}-model-catalog-probe`, signal: options?.signal }
       )
       models = listing.parse(stdout)

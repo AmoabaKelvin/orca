@@ -231,12 +231,17 @@ describe('ACP model catalog probes', () => {
       runListing,
       connect
     })
-    const success = await probe({ kind: 'opencode', locator: { kind: 'unmanaged' } })
+    const success = await probe(
+      { kind: 'opencode', locator: { kind: 'unmanaged' } },
+      { workspacePath: '/work/project' }
+    )
     expect(connect).not.toHaveBeenCalled()
     expect(runListing).toHaveBeenCalledWith(
       expect.objectContaining({
         command: '/opt/opencode/bin/opencode',
         args: ['models', '--verbose'],
+        // Where the project's opencode.json is read, so it lists what a chat there offers.
+        cwd: '/work/project',
         env: expect.objectContaining({ OPENCODE_CLIENT: 'acp' })
       }),
       expect.objectContaining({ site: 'opencode-model-catalog-probe' })

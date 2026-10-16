@@ -4,27 +4,31 @@ import type {
   AgentSessionRecord
 } from '../../../shared/agent-session-record'
 import { isLegacyAgentSessionAccountHome } from '../../../shared/agent-session-account-home'
-import { isNativeLocalLocation } from '../../../shared/execution-host'
 import {
   agentModelCatalogFingerprint,
-  agentModelCatalogFingerprintForRecord
+  agentModelCatalogFingerprintForRecord,
+  agentModelCatalogIdentityForRecord
 } from './agent-model-catalog-fingerprint'
 import {
   agentModelCatalogResultFromEntry,
-  retainedAgentModelCatalogModels,
-  type AgentModelCatalogConfiguredChoice
+  retainedAgentModelCatalogModels
 } from './agent-model-catalog-entry'
 import type {
   AgentModelCatalogEntry,
   AgentModelCatalogLiveListing,
   AgentModelCatalogProbe,
-  AgentModelCatalogStore,
   AgentModelCatalogSuccess
 } from './agent-model-catalog-store'
 import { AgentModelCatalogListingStoppedError } from './agent-model-catalog-failures'
+import {
+  catalogFolder,
+  recordConfiguredDefault,
+  sessionWorkspacePath,
+  workspaceKeepsListedDefault,
+  type AgentModelCatalogWorkspaceDeps
+} from './agent-model-catalog-workspace'
 
-export type AgentModelCatalogServiceDeps = {
-  store: AgentModelCatalogStore
+export type AgentModelCatalogServiceDeps = AgentModelCatalogWorkspaceDeps & {
   getRecord: (sessionId: string) => AgentSessionRecord | undefined
   /** Whether this build can start the record's agent as the record pins it; a record it cannot
    *  names no account a probe may start that agent's CLI under. */
@@ -37,19 +41,8 @@ export type AgentModelCatalogServiceDeps = {
   probes?: Readonly<Partial<Record<string, AgentModelCatalogProbe>>>
   /** Agents whose listing marks the model the account is configured to run as its default. */
   listingNamesConfiguredModel?: ReadonlySet<string>
-  /** Agents whose listing runs in the asking chat's folder; a prewarm skips them. */
-  listsInChatFolder?: ReadonlySet<string>
-  /** Where a session's provider runs, for deciding whether its own config scope is the account's. */
-  recordWorkspacePath?: (record: AgentSessionRecord) => Promise<string | null>
   /** False for an agent whose model no project config can pick; its default holds everywhere. */
   agentReadsProjectModelConfig?: (agent: string) => boolean
-  /** Whether the workspace's own config could pick a model other than the listed default;
-   *  `accountHomePath` is the agent's own home folder, which is account config, not a layer. */
-  workspaceMayOverrideDefaultModel?: (input: {
-    agent: string
-    workspacePath: string
-    accountHomePath: string | null
-  }) => Promise<boolean>
   /** Whether this host keeps any chat of the agent; with a saved catalog, what marks it in use. */
   hasChatRecords?: (agent: string) => boolean
 }
@@ -87,30 +80,11 @@ export type AgentModelCatalogService = {
 // At most this many agents list at once: each listing spawns that agent's CLI.
 const PREWARM_CONCURRENCY = 2
 
-/** A named workspace keeps the listed default only when none of its own config can replace it. */
-async function workspaceKeepsListedDefault(
-  deps: AgentModelCatalogServiceDeps,
-  agent: string,
-  workspacePath: string | null | undefined,
-  accountHomePath: string | null
-): Promise<boolean> {
-  if (workspacePath === undefined) {
-    return true
-  }
-  if (workspacePath === null || !deps.workspaceMayOverrideDefaultModel) {
-    return false
-  }
-  try {
-    return !(await deps.workspaceMayOverrideDefaultModel({ agent, workspacePath, accountHomePath }))
-  } catch {
-    return false
-  }
-}
-
 /** The catalog a new chat of `agent` would read: the account a launch would pin right now. */
 async function newChatCatalogKey(
   deps: AgentModelCatalogServiceDeps,
-  agent: string
+  agent: string,
+  folder?: string
 ): Promise<{ fingerprint: string; accountHome: AgentSessionAccountHome } | null> {
   let accountHome: AgentSessionAccountHome
   try {
@@ -119,48 +93,9 @@ async function newChatCatalogKey(
     return null
   }
   return {
-    fingerprint: agentModelCatalogFingerprint({ agent, accountHome, wslDistro: null }),
+    fingerprint: agentModelCatalogFingerprint({ agent, accountHome, wslDistro: null, folder }),
     accountHome
   }
-}
-
-/** The local folder a session's agent runs in; null where this host cannot look into it, as a new
- *  chat's own read answers. */
-async function sessionWorkspacePath(
-  deps: AgentModelCatalogServiceDeps,
-  record: AgentSessionRecord
-): Promise<string | null> {
-  if (!isNativeLocalLocation(record.location) || !deps.recordWorkspacePath) {
-    return null
-  }
-  return deps.recordWorkspacePath(record).catch(() => null)
-}
-
-/** A session launched with no model pick resolved its config scope's default model and effort;
- *  when that scope is the account's (a native workspace with no config of its own), they are the
- *  account's default, and a resolution naming no listed model retires the saved one. */
-async function recordConfiguredDefault(
-  deps: AgentModelCatalogServiceDeps,
-  record: AgentSessionRecord,
-  fingerprint: string,
-  choice: AgentModelCatalogConfiguredChoice | null
-): Promise<void> {
-  const accountHome = record.accountHome
-  if (!deps.workspaceMayOverrideDefaultModel) {
-    return
-  }
-  const workspacePath = await sessionWorkspacePath(deps, record)
-  if (
-    !workspacePath ||
-    (await deps.workspaceMayOverrideDefaultModel({
-      agent: record.provider,
-      workspacePath,
-      accountHomePath: isLegacyAgentSessionAccountHome(accountHome) ? accountHome.path : null
-    }))
-  ) {
-    return
-  }
-  deps.store.recordConfiguredDefault(fingerprint, choice)
 }
 
 async function runBounded<T>(
@@ -206,6 +141,36 @@ export function createAgentModelCatalogService(
           ? new AgentModelCatalogListingStoppedError(String(error))
           : error
       })
+  const saveLiveListing = (
+    record: AgentSessionRecord,
+    listing: AgentModelCatalogLiveListing,
+    folder?: string
+  ): void => {
+    // The record's pinned account and host: the account this child listed under.
+    const fingerprint = agentModelCatalogFingerprint({
+      ...agentModelCatalogIdentityForRecord(record),
+      folder
+    })
+    const { configuredDefault, ...listed } = listing
+    const saved = deps.store.recordSuccess(
+      fingerprint,
+      record.provider,
+      { ...listed, origin: 'live-session' },
+      'live'
+    )
+    if (saved && configuredDefault !== undefined) {
+      // In report order, so the latest chat's resolution is the one kept.
+      const recording = (recordingDefaults.get(fingerprint) ?? Promise.resolve())
+        .then(() => recordConfiguredDefault(deps, record, fingerprint, configuredDefault))
+        .catch(() => {})
+        .then(() => {
+          if (recordingDefaults.get(fingerprint) === recording) {
+            recordingDefaults.delete(fingerprint)
+          }
+        })
+      recordingDefaults.set(fingerprint, recording)
+    }
+  }
   return {
     providerStarted(record) {
       deps.store.expireFailure(agentModelCatalogFingerprintForRecord(record))
@@ -214,15 +179,24 @@ export function createAgentModelCatalogService(
       const record = params.sessionId ? deps.getRecord(params.sessionId) : undefined
       const scoped =
         record && record.provider === params.agent && deps.drivesRecord(record) ? record : undefined
+      const workspacePath = params.inSessionWorkspace
+        ? record
+          ? await sessionWorkspacePath(deps, record)
+          : null
+        : params.workspacePath
+      const folder = await catalogFolder(deps, params.agent, workspacePath, scoped)
       let fingerprint: string
       // The account a probe lists under; null where this host cannot spawn one natively.
       let probeHome: AgentSessionAccountHome | null
       if (scoped) {
-        fingerprint = agentModelCatalogFingerprintForRecord(scoped)
+        fingerprint = agentModelCatalogFingerprint({
+          ...agentModelCatalogIdentityForRecord(scoped),
+          folder
+        })
         // Probes spawn natively; a WSL-pinned record has no host-side lister.
         probeHome = scoped.location.wslDistro === null ? scoped.accountHome : null
       } else {
-        const key = await newChatCatalogKey(deps, params.agent)
+        const key = await newChatCatalogKey(deps, params.agent, folder)
         if (!key) {
           return { origin: 'unknown' }
         }
@@ -231,14 +205,8 @@ export function createAgentModelCatalogService(
       }
       const accountHomePath =
         probeHome && isLegacyAgentSessionAccountHome(probeHome) ? probeHome.path : null
-      const workspacePath = params.inSessionWorkspace
-        ? record
-          ? await sessionWorkspacePath(deps, record)
-          : null
-        : params.workspacePath
-      // A listing that opens a session opens it in this chat's folder.
       const list = (probe: AgentModelCatalogProbe, home: AgentSessionAccountHome) =>
-        listWith(probe, home, workspacePath ?? undefined)
+        listWith(probe, home, folder)
       await recordingDefaults.get(fingerprint)
       let entry = deps.store.get(fingerprint)
       const probe = deps.probes?.[params.agent]
@@ -262,6 +230,7 @@ export function createAgentModelCatalogService(
         return {
           ...(result ?? { origin: 'unknown' }),
           ...(holdsEverywhere ? { defaultHoldsInEveryWorkspace: true as const } : {}),
+          ...(result && folder !== undefined ? { modelsDifferByWorkspace: true as const } : {}),
           ...extra,
           ...(unavailable ? { unavailable } : {})
         }
@@ -319,27 +288,14 @@ export function createAgentModelCatalogService(
       if (!record || !deps.drivesRecord(record)) {
         return
       }
-      // The record's pinned account and host: the account this child listed under.
-      const fingerprint = agentModelCatalogFingerprintForRecord(record)
-      const { configuredDefault, ...listed } = listing
-      const saved = deps.store.recordSuccess(
-        fingerprint,
-        record.provider,
-        { ...listed, origin: 'live-session' },
-        'live'
-      )
-      if (saved && configuredDefault !== undefined) {
-        // In report order, so the latest chat's resolution is the one kept.
-        const recording = (recordingDefaults.get(fingerprint) ?? Promise.resolve())
-          .then(() => recordConfiguredDefault(deps, record, fingerprint, configuredDefault))
-          .catch(() => {})
-          .then(() => {
-            if (recordingDefaults.get(fingerprint) === recording) {
-              recordingDefaults.delete(fingerprint)
-            }
-          })
-        recordingDefaults.set(fingerprint, recording)
+      if (!deps.listsInChatFolder?.has(record.provider)) {
+        saveLiveListing(record, listing)
+        return
       }
+      // Its folder's catalog, which only chats in that folder read.
+      void sessionWorkspacePath(deps, record).then((folder) =>
+        saveLiveListing(record, listing, folder ?? undefined)
+      )
     },
     async prewarm() {
       if (lifetime.signal.aborted) {
