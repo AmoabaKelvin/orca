@@ -150,6 +150,39 @@ describe('ClaudeDiffPanelNoticeBanner', () => {
     }
   })
 
+  it('keeps the newest answer when an older request lands after it', async () => {
+    vi.useFakeTimers()
+    try {
+      let settleFirst: ((answer: boolean) => void) | undefined
+      mayAutoOpen.mockImplementationOnce(
+        () =>
+          new Promise<boolean>((resolve) => {
+            settleFirst = resolve
+          })
+      )
+      setState('claude')
+      await renderBanner()
+      expect(paneElement.textContent).toBe('')
+
+      // A resize asks again; that answer (true) arrives first, then the stale one (false).
+      resizePane()
+      resizePane()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000)
+      })
+      expect(mayAutoOpen).toHaveBeenCalledTimes(2)
+      expect(paneElement.textContent).toContain(TITLE)
+
+      await act(async () => {
+        settleFirst?.(false)
+        await Promise.resolve()
+      })
+      expect(paneElement.textContent).toContain(TITLE)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("stays hidden when Claude's saved config already keeps the panel closed", async () => {
     mayAutoOpen.mockResolvedValue(false)
     setState('claude')

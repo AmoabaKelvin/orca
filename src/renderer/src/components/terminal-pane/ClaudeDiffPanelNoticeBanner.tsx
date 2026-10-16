@@ -22,12 +22,15 @@ function useClaudeDiffPanelMayAutoOpen(
     }
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
+    let latestRequest = 0
     const ask = (): void => {
+      // Why the sequence: answers can land out of order, and only the newest describes the pane.
+      const request = (latestRequest += 1)
       void window.api.pty
         .claudeDiffPanelMayAutoOpen(ptyId, target)
         .catch(() => false)
         .then((answer) => {
-          if (!cancelled) {
+          if (!cancelled && request === latestRequest) {
             setMayAutoOpen(answer)
           }
         })
