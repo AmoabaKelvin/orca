@@ -39,12 +39,8 @@ export function useNativeChatComposerCatalog(
     if (reported === undefined) {
       return structuredSlashCommands(conversationCommands, agent)
     }
-    const commands = sessionSlashCommandSuggestions(agent, reported)
-    // The report cannot say which of its names are skills; a scanned one shows as the skill.
-    return keepsScannedSkills
-      ? commands.map((command) => ({ ...command, kindUnspecified: true as const }))
-      : commands
-  }, [agent, conversationCommands, keepsScannedSkills, reported, structured])
+    return sessionSlashCommandSuggestions(agent, reported)
+  }, [agent, conversationCommands, reported, structured])
   const sessionSkillNames = useMemo(
     () =>
       reported !== undefined && !keepsScannedSkills

@@ -40,6 +40,34 @@ export type NativeChatSkillDiscoverySnapshot = {
   errorKind?: 'unavailable' | 'timeout' | 'host' | 'unknown'
 }
 
+/**
+ * Which commands a scanned skill of the same name may stand in for, by marking them unclassified.
+ * Never one the chat's own send handles (`/compact`), which runs that whatever the row says. Where
+ * the agent's report lists skills among its commands (OpenCode 1.x), only a name reported under
+ * that skill's own description; any other is the agent's command, which OpenCode runs first.
+ */
+export function classifyPickerCommands(
+  commands: readonly SlashCommandSuggestion[],
+  skills: readonly DiscoveredSkill[],
+  options: { reportListsSkills: boolean; isSendCommand: (name: string) => boolean }
+): SlashCommandSuggestion[] {
+  const skillDescriptions = new Set(
+    skills.map((skill) => `${skill.name}\0${normalizedDescription(skill.description)}`)
+  )
+  return commands.map(({ kindUnspecified, ...command }) => {
+    const reportedSkill =
+      options.reportListsSkills &&
+      skillDescriptions.has(`${command.name}\0${normalizedDescription(command.description)}`)
+    return (kindUnspecified || reportedSkill) && !options.isSendCommand(command.name)
+      ? { ...command, kindUnspecified: true }
+      : command
+  })
+}
+
+function normalizedDescription(description: string | null | undefined): string {
+  return description?.replace(/\s+/g, ' ').trim() ?? ''
+}
+
 const PICKER_RESULT_LIMIT = 50
 const SCOPE_PRIORITY: Record<SkillSourceKind, number> = {
   repo: 0,
