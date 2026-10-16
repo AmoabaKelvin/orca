@@ -94,6 +94,7 @@ function scriptedGrok(initializeMeta: Record<string, unknown>): {
 function scriptedOpenCode2(canDelete: boolean): {
   agent: AcpScriptedAgent
   launches: ProviderProcessLaunch[]
+  closed: () => number
   deps: AcpModelCatalogProbeDeps & {
     runListing: Mock<NonNullable<AcpModelCatalogProbeDeps['runListing']>>
   }
@@ -128,9 +129,11 @@ function scriptedOpenCode2(canDelete: boolean): {
   )
   agent.on('session/delete', (frame) => agent.reply(frame, {}))
   const launches: ProviderProcessLaunch[] = []
+  let closes = 0
   return {
     agent,
     launches,
+    closed: () => closes,
     deps: {
       resolveEnvironment: async () => ({ PATH: '/usr/bin', HOME: '/home/user' }),
       resolveCommand: () => '/opt/opencode/bin/opencode',
@@ -145,7 +148,10 @@ function scriptedOpenCode2(canDelete: boolean): {
           initialize: () => runtime.initialize(),
           start: (options) => runtime.start(options),
           deleteSession: (sessionId) => runtime.deleteSession(sessionId),
-          close: async () => runtime.close()
+          close: async () => {
+            closes += 1
+            runtime.close()
+          }
         }
       }
     }
@@ -284,6 +290,40 @@ describe('ACP model catalog probes', () => {
     ).rejects.toBeInstanceOf(AgentModelCatalogListingDeferredError)
     expect(launches).toEqual([])
     expect(agent.frames).toEqual([])
+  })
+
+  it('keeps the models, and says so, when OpenCode 2.x refuses to delete the listing session', async () => {
+    const { agent, deps } = scriptedOpenCode2(true)
+    agent.on('session/delete', (frame) => agent.fail(frame, -32603, 'locked'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const success = await createAcpModelCatalogProbe(OPENCODE, deps)(
+      { kind: 'opencode', locator: { kind: 'unmanaged' } },
+      { workspacePath: '/work/project' }
+    )
+    expect(success.models).toHaveLength(2)
+    expect(warn).toHaveBeenCalledWith(
+      '[acp-model-catalog] opencode kept its listing session:',
+      expect.anything()
+    )
+    warn.mockRestore()
+  })
+
+  // OpenCode may already have saved the session it never named; nothing is left to delete it by.
+  it('stops a listing cut off while OpenCode 2.x creates its session, without deleting', async () => {
+    const { agent, deps, closed } = scriptedOpenCode2(true)
+    agent.on('session/new', () => {})
+    const stop = new AbortController()
+    const listing = createAcpModelCatalogProbe(OPENCODE, deps)(
+      { kind: 'opencode', locator: { kind: 'unmanaged' } },
+      { workspacePath: '/work/project', signal: stop.signal }
+    )
+    await vi.waitFor(() =>
+      expect(agent.frames.map((frame) => frame.method)).toContain('session/new')
+    )
+    stop.abort()
+    await expect(listing).rejects.toThrow(/listing stopped/)
+    expect(closed()).toBe(1)
+    expect(agent.frames.map((frame) => frame.method)).not.toContain('session/delete')
   })
 
   it('lists nothing for a release that runs no structured chat', async () => {

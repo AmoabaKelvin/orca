@@ -144,8 +144,10 @@ async function readSessionModels(
     throw new Error(`${spec.agent} cannot delete a session, so it lists its models only in chats`)
   }
   const started = await connection.start({ cwd: workspace, mcpServers: [] })
-  // A failed delete leaves one empty conversation behind; the models it listed are still right.
-  await connection.deleteSession(started.sessionId).catch(() => undefined)
+  // Best effort: a failed delete, or a listing stopped mid-create, leaves one empty conversation.
+  await connection.deleteSession(started.sessionId).catch((error: unknown) => {
+    console.warn(`[acp-model-catalog] ${spec.agent} kept its listing session:`, error)
+  })
   const options = new AcpStructuredOptions(spec.dialect)
   options.adoptSession(started.response, 'new')
   return options.read().models
