@@ -12,7 +12,11 @@ import { AgentModelCatalogListingStoppedError } from '../native-chat/agent-model
 import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
 import type { AgentSessionModelOption } from '../../shared/agent-session-wire'
 import { createAcpAgentConnection } from './acp-agent-connection'
-import type { AcpLaunchSpec, AcpModelDiscovery } from './acp-launch-specs'
+import {
+  acpListingNeedsChatFolder,
+  type AcpLaunchSpec,
+  type AcpModelDiscovery
+} from './acp-launch-specs'
 import type { AcpSessionStarted, AcpSessionStartOptions } from './acp-session-setup'
 import {
   probeAcpLaunchVersion,
@@ -62,8 +66,8 @@ export function createAcpModelCatalogProbe(
       throw new Error(discovery.reason)
     }
     const workspace = options?.workspacePath
-    // Known without spawning anything: a session listing needs a chat's folder.
-    if (discovery.kind === 'session' && !workspace) {
+    // Known without spawning anything: a listing that may open a session needs a chat's folder.
+    if (!workspace && acpListingNeedsChatFolder(discovery)) {
       throw folderlessListing(spec)
     }
     // Spawned from home; a listing reads a project's config only in the chat folder it is asked for.

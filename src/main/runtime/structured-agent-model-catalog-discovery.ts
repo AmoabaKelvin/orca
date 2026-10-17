@@ -3,7 +3,7 @@
 // or env could list models the user's sessions cannot see.
 
 import { createAcpModelCatalogProbe } from '../acp/acp-model-catalog-probe'
-import type { AcpLaunchSpec } from '../acp/acp-launch-specs'
+import { acpListingNeedsChatFolder, type AcpLaunchSpec } from '../acp/acp-launch-specs'
 import {
   createClaudeModelCatalogProbe,
   type ClaudeModelCatalogProbeDeps
@@ -74,13 +74,10 @@ export function acpModelCatalogDiscovery(
   if (discovery.kind === 'unavailable') {
     return { kind: 'unavailable', reason: discovery.reason }
   }
-  const listsInSession =
-    discovery.kind === 'session' ||
-    (discovery.kind === 'command' && discovery.otherReleasesListInSession === true)
   return {
     kind: 'probe',
     listingNamesConfiguredModel: discovery.listingNamesConfiguredModel,
-    ...(listsInSession ? { listsInChatFolder: true as const } : {}),
+    ...(acpListingNeedsChatFolder(discovery) ? { listsInChatFolder: true as const } : {}),
     probe: createAcpModelCatalogProbe(spec, {
       resolveEnvironment: environment.resolveBaseEnvironment,
       refreshEnvironmentAfterMiss: environment.refreshAfterMissingProgram,

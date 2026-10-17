@@ -61,7 +61,10 @@ export type AgentModelCatalogService = {
     savedOnly?: boolean
   }) => Promise<AgentSessionModelCatalogResult>
   /** Incoming listing ids, checking only a launch-added row against the pinned account. */
-  retainedLiveModelIds: (sessionId: string, listing: AgentModelCatalogLiveListing) => string[]
+  retainedLiveModelIds: (
+    sessionId: string,
+    listing: AgentModelCatalogLiveListing
+  ) => Promise<string[]>
   /** Saves a session's listing and newly learned menus so the next chat starts warm. */
   recordLiveListing: (sessionId: string, listing: AgentModelCatalogLiveListing) => void
   /** Lists, in the background, every agent the user has used here (a saved catalog or a chat)
@@ -71,9 +74,7 @@ export type AgentModelCatalogService = {
   /** The host is going away: start no listing, and stop the ones running. */
   stop: () => void
   /** A chat under this record's account proved its start: a held reason is re-checked sooner. */
-  providerStarted: (
-    record: Pick<AgentSessionRecord, 'provider' | 'accountHome' | 'location'>
-  ) => void
+  providerStarted: (record: AgentSessionRecord) => void
 }
 
 // At most this many agents list at once: each listing spawns that agent's CLI.
@@ -140,13 +141,20 @@ export function createAgentModelCatalogService(
           ? new AgentModelCatalogListingStoppedError(String(error))
           : error
       })
+  // A running chat's saves for agents kept per folder, which wait on a folder lookup.
+  const liveWrites = new Map<string, Promise<void>>()
+  /** The catalog a session's own listings belong to: its pinned account and host, and its folder
+   *  for an agent kept per folder. */
+  const sessionCatalogKey = async (record: AgentSessionRecord): Promise<string> =>
+    agentModelCatalogFingerprintForRecord(
+      record,
+      await catalogFolder(deps, record.provider, undefined, record)
+    )
   const saveLiveListing = (
     record: AgentSessionRecord,
     listing: AgentModelCatalogLiveListing,
-    folder?: string
+    fingerprint: string
   ): void => {
-    // The record's pinned account and host: the account this child listed under.
-    const fingerprint = agentModelCatalogFingerprintForRecord(record, folder)
     const { configuredDefault, ...listed } = listing
     const saved = deps.store.recordSuccess(
       fingerprint,
@@ -169,7 +177,13 @@ export function createAgentModelCatalogService(
   }
   return {
     providerStarted(record) {
-      deps.store.expireFailure(agentModelCatalogFingerprintForRecord(record))
+      if (!deps.listsInChatFolder?.has(record.provider)) {
+        deps.store.expireFailure(agentModelCatalogFingerprintForRecord(record))
+        return
+      }
+      void sessionCatalogKey(record)
+        .then((fingerprint) => deps.store.expireFailure(fingerprint))
+        .catch(() => {})
     },
     async read(params) {
       const record = params.sessionId ? deps.getRecord(params.sessionId) : undefined
@@ -198,6 +212,8 @@ export function createAgentModelCatalogService(
       }
       const accountHomePath =
         probeHome && isLegacyAgentSessionAccountHome(probeHome) ? probeHome.path : null
+      // A chat's report still finding its folder lands first, as it would have before the read.
+      await Promise.all(liveWrites.values())
       await recordingDefaults.get(fingerprint)
       let entry = deps.store.get(fingerprint)
       const probe = deps.probes?.[params.agent]
@@ -271,11 +287,11 @@ export function createAgentModelCatalogService(
       }
       return answer(entry)
     },
-    retainedLiveModelIds(sessionId, listing) {
+    async retainedLiveModelIds(sessionId, listing) {
       const record = deps.getRecord(sessionId)
       const entry =
         record && deps.drivesRecord(record)
-          ? deps.store.get(agentModelCatalogFingerprintForRecord(record))
+          ? deps.store.get(await sessionCatalogKey(record))
           : undefined
       return retainedAgentModelCatalogModels(entry, listing).map((model) => model.id)
     },
@@ -285,13 +301,21 @@ export function createAgentModelCatalogService(
         return
       }
       if (!deps.listsInChatFolder?.has(record.provider)) {
-        saveLiveListing(record, listing)
+        saveLiveListing(record, listing, agentModelCatalogFingerprintForRecord(record))
         return
       }
-      // Its folder's catalog, which only chats in that folder read.
-      void catalogFolder(deps, record.provider, undefined, record).then((folder) =>
-        saveLiveListing(record, listing, folder)
-      )
+      // In report order: a folder lookup that resolves late must not let an older listing land last.
+      const writing = (liveWrites.get(sessionId) ?? Promise.resolve())
+        .then(async () => saveLiveListing(record, listing, await sessionCatalogKey(record)))
+        .catch((error: unknown) => {
+          console.warn('[agent-model-catalog] could not save a chat model list:', error)
+        })
+        .finally(() => {
+          if (liveWrites.get(sessionId) === writing) {
+            liveWrites.delete(sessionId)
+          }
+        })
+      liveWrites.set(sessionId, writing)
     },
     async prewarm() {
       if (lifetime.signal.aborted) {

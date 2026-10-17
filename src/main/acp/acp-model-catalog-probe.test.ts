@@ -354,9 +354,27 @@ describe('ACP model catalog probes', () => {
       probeVersion: async () => false,
       runListing
     })
-    await expect(probe({ kind: 'opencode', locator: { kind: 'unmanaged' } })).rejects.toThrow(
-      /does not run structured chats/
-    )
+    await expect(
+      probe(
+        { kind: 'opencode', locator: { kind: 'unmanaged' } },
+        { workspacePath: '/work/project' }
+      )
+    ).rejects.toThrow(/does not run structured chats/)
     expect(runListing).not.toHaveBeenCalled()
+  })
+
+  // The binary may be 2.x, which lists only in a chat's folder; nothing is spawned to find out.
+  it('asks `opencode` nothing, not even its version, without a chat folder', async () => {
+    const probeVersion = vi.fn(async () => true)
+    const probe = createAcpModelCatalogProbe(OPENCODE, {
+      resolveEnvironment: async () => ({ PATH: '/usr/bin' }),
+      dataDirectory: '/orca-data',
+      resolveCommand: () => '/opt/opencode/bin/opencode',
+      probeVersion
+    })
+    await expect(
+      probe({ kind: 'opencode', locator: { kind: 'unmanaged' } })
+    ).rejects.toBeInstanceOf(AgentModelCatalogListingStoppedError)
+    expect(probeVersion).not.toHaveBeenCalled()
   })
 })

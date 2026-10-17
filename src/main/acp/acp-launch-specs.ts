@@ -89,6 +89,15 @@ export type AcpModelDiscovery =
  *  prewarm) none is opened, so no conversation or new project is left in its history. */
 export type AcpSessionModelDiscovery = { kind: 'session'; listingNamesConfiguredModel: boolean }
 
+/** Whether some release lists in a session in the asking chat's folder, so the listing needs one
+ *  and reads that folder's project config. */
+export function acpListingNeedsChatFolder(discovery: AcpModelDiscovery): boolean {
+  return (
+    discovery.kind === 'session' ||
+    (discovery.kind === 'command' && discovery.otherReleasesListInSession === true)
+  )
+}
+
 export type AcpLaunchSpec = {
   /** The Orca agent id, which names the agent's records, its catalog label and its settings. */
   agent: TuiAgent

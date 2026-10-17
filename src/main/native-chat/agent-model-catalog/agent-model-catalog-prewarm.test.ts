@@ -98,6 +98,39 @@ describe('model catalog prewarm', () => {
   })
 
   // A project's opencode.json can add or remove models, so its folder keeps its own list.
+  // The folder lookup can answer the earlier report last; the later report must still win.
+  it("saves a running chat's reports in the order it sent them, per folder", async () => {
+    const store = new AgentModelCatalogStore()
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the service reads only provider, accountHome, location and launchDirectory.
+    const chat = {
+      sessionId: 'chat-b',
+      provider: 'opencode2',
+      accountHome: HOME('OPENCODE_HOME', '/homes/a'),
+      location: {
+        executionHostId: 'local',
+        wslDistro: null,
+        workspaceId: 'ws-b',
+        workspaceKind: 'folder'
+      }
+    } as AgentSessionRecord
+    const lookups = [deferred<string | null>(), deferred<string | null>()]
+    let lookup = 0
+    const service = createAgentModelCatalogService({
+      store,
+      getRecord: () => chat,
+      drivesRecord: () => true,
+      resolveAccountHome: async () => HOME('OPENCODE_HOME', '/homes/a'),
+      listsInChatFolder: new Set(['opencode2']),
+      recordWorkspacePath: () => lookups[lookup++]?.promise ?? Promise.resolve('/work/b')
+    })
+    service.recordLiveListing('chat-b', { models: listing('older').models })
+    service.recordLiveListing('chat-b', { models: listing('newer').models })
+    lookups[1]!.resolve('/work/b')
+    lookups[0]!.resolve('/work/b')
+    const read = await service.read({ agent: 'opencode2', sessionId: 'chat-b' })
+    expect(read.origin !== 'unknown' && read.models.map((model) => model.id)).toEqual(['newer'])
+  })
+
   it('keeps one catalog per folder for an agent whose project config changes its models', async () => {
     const store = new AgentModelCatalogStore()
     const probe = vi.fn(
@@ -385,8 +418,8 @@ describe('one account, one catalog key', () => {
     const incoming = { models: [...listing('gpt-live').models, ...listing('gpt-new').models] }
     const retained = (launchOnlyModelId: string) =>
       service.retainedLiveModelIds('session-1', { ...incoming, launchOnlyModelId })
-    expect(retained('gpt-live')).toEqual(['gpt-live', 'gpt-new'])
-    expect(retained('gpt-new')).toEqual(['gpt-live'])
+    expect(await retained('gpt-live')).toEqual(['gpt-live', 'gpt-new'])
+    expect(await retained('gpt-new')).toEqual(['gpt-live'])
     const adapterAccess = agentModelCatalogSessionAccess(
       store,
       { agent: 'codex', accountHomeVariable: 'CODEX_HOME' },
