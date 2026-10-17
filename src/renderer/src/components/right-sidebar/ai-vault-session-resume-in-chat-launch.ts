@@ -68,8 +68,8 @@ export async function resumeAiVaultSessionInNewChat(
   }
 }
 
-/** The first chat the worktree's host admits to take the row over, trying them in order; the last
- *  is not asked here, so its own launch reports why it cannot. */
+/** The first chat the worktree's host does not refuse to take the row over, trying them in order.
+ *  A host that cannot answer yet keeps the chat it was asked about, whose own launch reports it. */
 async function adoptingAgentOnHost(
   rowAgent: CliConversationRowAgent,
   worktreeId: string
@@ -85,7 +85,7 @@ async function adoptingAgentOnHost(
           agent
         )
       : null
-    if (admission?.kind === 'admitted') {
+    if (admission?.kind !== 'declined') {
       break
     }
     agent = fallback

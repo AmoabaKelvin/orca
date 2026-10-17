@@ -103,7 +103,10 @@ describe('resumeAiVaultSessionInNewChat', () => {
   // Where `opencode` is 1.x, only the OpenCode 2 chat can load a 2.x conversation.
   it.each([
     ['admitted', 'opencode2'],
-    ['declined', 'opencode']
+    ['declined', 'opencode'],
+    // Not a refusal: switching would start `opencode`, which may be 1.x.
+    ['unreachable', 'opencode2'],
+    ['workspace-unresolved', 'opencode2']
   ])(
     'opens an OpenCode 2 row in the OpenCode 2 chat, else an OpenCode chat (%s)',
     async (kind, agent) => {
