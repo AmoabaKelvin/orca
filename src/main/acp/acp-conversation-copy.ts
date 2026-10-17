@@ -48,7 +48,8 @@ export async function copyAcpConversation(
   let connection: AcpStructuredConnection | null = null
   try {
     signal.throwIfAborted()
-    if (deps.spec.agent === 'opencode') {
+    // Either OpenCode chat copies into the local store, so its CLI must not point at a server.
+    if (deps.spec.agent === 'opencode' || deps.spec.agent === 'opencode2') {
       const args = await waitForPromiseWithSignal(
         Promise.resolve(deps.resolveLaunchArgs?.() ?? []),
         signal
