@@ -57,11 +57,10 @@ export function readHostModelCatalogSnapshot(
     return exact
   }
   const listed = entry.account ?? entry.byWorktree.values().next().value
-  if (listed?.modelsDifferByWorkspace) {
+  if (!listed || listed.modelsDifferByWorkspace) {
     return undefined
   }
   if (
-    !listed ||
     !launch.newLaunch ||
     listed.listingNamesConfiguredModel === false ||
     listed.defaultHoldsInEveryWorkspace === true

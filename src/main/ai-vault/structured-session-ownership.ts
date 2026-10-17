@@ -140,11 +140,19 @@ function ownershipLookup():
   }
 }
 
-/** The agents whose chats own history rows listed under `rowAgent`: one CLI can run as several. */
-function historyRowOwners(rowAgent: string): StructuredAgentId[] {
-  return STRUCTURED_AGENT_RUNTIME_METADATA.filter(({ sessionHistory }) =>
-    sessionHistory.rowAgents.some((agent) => agent === rowAgent)
-  ).map(({ definition }) => definition.agent)
+/** The agents whose chats own history rows listed under each row agent: one CLI can run as several. */
+const HISTORY_ROW_OWNERS = new Map<string, StructuredAgentId[]>()
+for (const { definition, sessionHistory } of STRUCTURED_AGENT_RUNTIME_METADATA) {
+  for (const rowAgent of sessionHistory.rowAgents) {
+    HISTORY_ROW_OWNERS.set(rowAgent, [
+      ...(HISTORY_ROW_OWNERS.get(rowAgent) ?? []),
+      definition.agent
+    ])
+  }
+}
+
+function historyRowOwners(rowAgent: string): readonly StructuredAgentId[] {
+  return HISTORY_ROW_OWNERS.get(rowAgent) ?? []
 }
 
 export function assertLegacyAiVaultResumeAllowed(args: AiVaultPrepareSessionResumeArgs): void {
@@ -181,6 +189,9 @@ export function findResumeOwnership(
   args: Pick<AiVaultPrepareSessionResumeArgs, 'agent' | 'sessionId' | 'filePath'>
 ): StructuredProviderSessionOwnership | null {
   const owners = new Set(historyRowOwners(args.agent))
+  if (owners.size === 0) {
+    return null
+  }
   const owned = listOwnership().filter((ownership) => owners.has(ownership.provider))
   const fileName = args.filePath.split(/[\\/]/).at(-1) ?? ''
   return (

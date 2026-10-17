@@ -75,7 +75,8 @@ export function acpModelCatalogDiscovery(
     return { kind: 'unavailable', reason: discovery.reason }
   }
   const listsInSession =
-    discovery.kind === 'session' || (discovery.kind === 'command' && discovery.otherReleases)
+    discovery.kind === 'session' ||
+    (discovery.kind === 'command' && discovery.otherReleasesListInSession === true)
   return {
     kind: 'probe',
     listingNamesConfiguredModel: discovery.listingNamesConfiguredModel,

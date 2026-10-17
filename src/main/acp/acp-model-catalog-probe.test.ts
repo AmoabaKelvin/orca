@@ -6,7 +6,7 @@ import {
 } from './acp-model-catalog-probe'
 import { AcpSessionRuntime } from './acp-session-runtime'
 import { AcpScriptedAgent } from './acp-scripted-agent.test-support'
-import { AgentModelCatalogListingDeferredError } from '../native-chat/agent-model-catalog/agent-model-catalog-failures'
+import { AgentModelCatalogListingStoppedError } from '../native-chat/agent-model-catalog/agent-model-catalog-failures'
 import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
 import { openCodeAcpAccountBinding } from '../opencode/opencode-structured-account-home'
 
@@ -292,7 +292,7 @@ describe('ACP model catalog probes', () => {
         OPENCODE,
         deps
       )({ kind: 'opencode', locator: { kind: 'unmanaged' } })
-    ).rejects.toBeInstanceOf(AgentModelCatalogListingDeferredError)
+    ).rejects.toBeInstanceOf(AgentModelCatalogListingStoppedError)
     expect(launches).toEqual([])
     expect(agent.frames).toEqual([])
   })
@@ -329,6 +329,20 @@ describe('ACP model catalog probes', () => {
     await expect(listing).rejects.toThrow(/listing stopped/)
     expect(closed()).toBe(1)
     expect(agent.frames.map((frame) => frame.method)).not.toContain('session/delete')
+  })
+
+  it('asks an OpenCode 2 chat nothing, not even its version, without a chat folder', async () => {
+    const { deps, launches } = scriptedOpenCode2(true)
+    const probeVersion = vi.fn(deps.probeVersion)
+    const spec = { ...acpLaunchSpecFor('opencode2')!, account: OPENCODE.account }
+    await expect(
+      createAcpModelCatalogProbe(spec, { ...deps, probeVersion })({
+        kind: 'opencode',
+        locator: { kind: 'unmanaged' }
+      })
+    ).rejects.toBeInstanceOf(AgentModelCatalogListingStoppedError)
+    expect(probeVersion).not.toHaveBeenCalled()
+    expect(launches).toEqual([])
   })
 
   it('lists nothing for a release that runs no structured chat', async () => {

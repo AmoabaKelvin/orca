@@ -82,7 +82,7 @@ export function useNativeChatPickerState(args: {
     () =>
       classifyPickerCommands(agentCommands, discovery.skills, {
         // A chat that keeps scanned skills (OpenCode) may report each as a command too.
-        reportListsSkills: profile?.keepsScannedSkills === true,
+        reportMayListSkills: profile?.keepsScannedSkills === true,
         isSendCommand: (name) => isStructuredAgentSessionComposerCommand(`/${name}`, agent)
       }),
     [agent, agentCommands, discovery.skills, profile]

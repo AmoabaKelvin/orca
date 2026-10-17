@@ -6,8 +6,7 @@ import type {
 import { isLegacyAgentSessionAccountHome } from '../../../shared/agent-session-account-home'
 import {
   agentModelCatalogFingerprint,
-  agentModelCatalogFingerprintForRecord,
-  agentModelCatalogIdentityForRecord
+  agentModelCatalogFingerprintForRecord
 } from './agent-model-catalog-fingerprint'
 import {
   agentModelCatalogResultFromEntry,
@@ -147,10 +146,7 @@ export function createAgentModelCatalogService(
     folder?: string
   ): void => {
     // The record's pinned account and host: the account this child listed under.
-    const fingerprint = agentModelCatalogFingerprint({
-      ...agentModelCatalogIdentityForRecord(record),
-      folder
-    })
+    const fingerprint = agentModelCatalogFingerprintForRecord(record, folder)
     const { configuredDefault, ...listed } = listing
     const saved = deps.store.recordSuccess(
       fingerprint,
@@ -189,10 +185,7 @@ export function createAgentModelCatalogService(
       // The account a probe lists under; null where this host cannot spawn one natively.
       let probeHome: AgentSessionAccountHome | null
       if (scoped) {
-        fingerprint = agentModelCatalogFingerprint({
-          ...agentModelCatalogIdentityForRecord(scoped),
-          folder
-        })
+        fingerprint = agentModelCatalogFingerprintForRecord(scoped, folder)
         // Probes spawn natively; a WSL-pinned record has no host-side lister.
         probeHome = scoped.location.wslDistro === null ? scoped.accountHome : null
       } else {
@@ -205,8 +198,6 @@ export function createAgentModelCatalogService(
       }
       const accountHomePath =
         probeHome && isLegacyAgentSessionAccountHome(probeHome) ? probeHome.path : null
-      const list = (probe: AgentModelCatalogProbe, home: AgentSessionAccountHome) =>
-        listWith(probe, home, folder)
       await recordingDefaults.get(fingerprint)
       let entry = deps.store.get(fingerprint)
       const probe = deps.probes?.[params.agent]
@@ -246,7 +237,12 @@ export function createAgentModelCatalogService(
       // Past its TTL, only the probe re-derives a held reason. The reason is served meanwhile;
       // only a read that asks waits for the probe's answer.
       if (probe && home && !lifetime.signal.aborted && deps.store.heldReasonDue(fingerprint)) {
-        const probing = deps.store.refresh(fingerprint, params.agent, probe, list(probe, home))
+        const probing = deps.store.refresh(
+          fingerprint,
+          params.agent,
+          probe,
+          listWith(probe, home, folder)
+        )
         if (!params.waitForListing) {
           return answer(entry, { listingInProgress: true })
         }
@@ -257,9 +253,9 @@ export function createAgentModelCatalogService(
       let listing = !entry && home ? deps.store.pendingListing(fingerprint) : null
       if (probe && home && !lifetime.signal.aborted) {
         if (entry && deps.store.shouldRefresh(fingerprint)) {
-          void deps.store.refresh(fingerprint, params.agent, probe, list(probe, home))
+          void deps.store.refresh(fingerprint, params.agent, probe, listWith(probe, home, folder))
         } else if (!entry && !listing && !deps.store.hasActiveFailure(fingerprint)) {
-          void deps.store.refresh(fingerprint, params.agent, probe, list(probe, home))
+          void deps.store.refresh(fingerprint, params.agent, probe, listWith(probe, home, folder))
           listing = deps.store.pendingListing(fingerprint)
         }
       }
@@ -293,8 +289,8 @@ export function createAgentModelCatalogService(
         return
       }
       // Its folder's catalog, which only chats in that folder read.
-      void sessionWorkspacePath(deps, record).then((folder) =>
-        saveLiveListing(record, listing, folder ?? undefined)
+      void catalogFolder(deps, record.provider, undefined, record).then((folder) =>
+        saveLiveListing(record, listing, folder)
       )
     },
     async prewarm() {

@@ -49,18 +49,22 @@ export type NativeChatSkillDiscoverySnapshot = {
 export function classifyPickerCommands(
   commands: readonly SlashCommandSuggestion[],
   skills: readonly DiscoveredSkill[],
-  options: { reportListsSkills: boolean; isSendCommand: (name: string) => boolean }
-): SlashCommandSuggestion[] {
-  const skillDescriptions = new Set(
-    skills.map((skill) => `${skill.name}\0${normalizedDescription(skill.description)}`)
-  )
-  return commands.map(({ kindUnspecified, ...command }) => {
-    const reportedSkill =
-      options.reportListsSkills &&
-      skillDescriptions.has(`${command.name}\0${normalizedDescription(command.description)}`)
-    return (kindUnspecified || reportedSkill) && !options.isSendCommand(command.name)
-      ? { ...command, kindUnspecified: true }
-      : command
+  options: { reportMayListSkills: boolean; isSendCommand: (name: string) => boolean }
+): readonly SlashCommandSuggestion[] {
+  const skillDescriptions = options.reportMayListSkills
+    ? new Set(skills.map((skill) => `${skill.name}\0${normalizedDescription(skill.description)}`))
+    : null
+  return commands.map((command) => {
+    const unclassified =
+      (command.kindUnspecified === true ||
+        skillDescriptions?.has(`${command.name}\0${normalizedDescription(command.description)}`) ===
+          true) &&
+      !options.isSendCommand(command.name)
+    if (unclassified === (command.kindUnspecified === true)) {
+      return command
+    }
+    const { kindUnspecified: _dropped, ...classified } = command
+    return unclassified ? { ...command, kindUnspecified: true } : classified
   })
 }
 

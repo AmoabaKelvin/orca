@@ -6,7 +6,7 @@ import {
   agentModelCatalogFingerprintForRecord,
   agentModelCatalogSessionAccess
 } from './agent-model-catalog-fingerprint'
-import { AgentModelCatalogListingDeferredError } from './agent-model-catalog-failures'
+import { AgentModelCatalogListingStoppedError } from './agent-model-catalog-failures'
 import { createAgentModelCatalogService } from './agent-model-catalog-service'
 import {
   AGENT_MODEL_CATALOG_FRESH_MS,
@@ -157,7 +157,7 @@ describe('model catalog prewarm', () => {
       async (_home: AgentSessionAccountHome, options?: { workspacePath?: string }) => {
         await versionChecked.promise
         if (!options?.workspacePath) {
-          throw new AgentModelCatalogListingDeferredError('lists in a chat folder')
+          throw new AgentModelCatalogListingStoppedError('lists in a chat folder')
         }
         return listing('big-pickle')
       }

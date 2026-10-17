@@ -188,7 +188,7 @@ describe('OpenCode chat skills', () => {
     const report = reported.map((command) => ({ ...command, kind: 'command' as const }))
     const { result } = renderHook(() => useNativeChatComposerCatalog(agent, transport(report)))
     const commands = classifyPickerCommands(result.current.agentCommands, skills, {
-      reportListsSkills: agent !== 'claude',
+      reportMayListSkills: agent !== 'claude',
       isSendCommand: (name) => isStructuredAgentSessionComposerCommand(`/${name}`, agent)
     })
     return buildNativeChatPickerItems(commands, skills, '', '/', result.current.sessionSkillNames)

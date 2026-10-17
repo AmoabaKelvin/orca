@@ -12,8 +12,8 @@ export type NativeChatAgentProfile = {
   skillSourceOwner: AgentType
   /** Another agent whose own skill folders, though not its plugins, this agent also reads. */
   readsSkillFoldersOf?: AgentType
-  /** The agent's command report names no skills, so a running chat keeps the skill folders' list;
-   *  a reported command that is one of those skills shows once, as the skill. */
+  /** The agent's command report may list some skills among its commands (OpenCode 1.x) or none
+   *  (2.x), so a running chat keeps the skill folders' list. */
   keepsScannedSkills?: true
   /** The agent's own harness expands a slash command out of the message text, so
    *  the chat host claims only the commands it implements itself. */

@@ -42,6 +42,7 @@ import { GROK_SESSION_HISTORY } from '../grok/grok-session-history'
 import { GROK_TRANSCRIPT_IMPORT } from '../grok/grok-transcript-import'
 import { OPENCODE_SESSION_HISTORY } from '../opencode/opencode-session-history'
 import { OPENCODE_TRANSCRIPT_IMPORT } from '../opencode/opencode-transcript-import'
+import { assertOpenCodeCopyUsesLocalStore } from '../../shared/opencode-launch-command'
 import { OMP_SESSION_HISTORY } from '../omp/omp-session-history'
 import { OMP_TRANSCRIPT_IMPORT } from '../omp/omp-transcript-import'
 import {
@@ -74,17 +75,17 @@ export type AcpModelDiscovery =
       args: readonly string[]
       parse(stdout: string): AgentSessionModelOption[]
       listingNamesConfiguredModel: boolean
-      /** The releases whose listing matches what their chats offer; any other lists through
-       *  `otherReleases`, else not at all and its chats' own lists fill the catalog. Absent lists
-       *  on every release. */
+      /** The releases whose listing matches what their chats offer; any other lists in a session
+       *  when `otherReleasesListInSession`, else not at all and its chats' own lists fill the
+       *  catalog. Absent lists on every release. */
       supportsVersion?(version: string): boolean
-      otherReleases?: AcpSessionModelDiscovery
+      otherReleasesListInSession?: true
     }
   | AcpSessionModelDiscovery
   | { kind: 'unavailable'; reason: string }
 
 /** What a new chat offers, read from a session opened in the asking chat's folder and then
- *  deleted, as bb does. An agent that cannot delete one is not asked, and with no chat folder (a
+ *  deleted. An agent that cannot delete one is not asked, and with no chat folder (a
  *  prewarm) none is opened, so no conversation or new project is left in its history. */
 export type AcpSessionModelDiscovery = { kind: 'session'; listingNamesConfiguredModel: boolean }
 
@@ -133,6 +134,9 @@ export type AcpLaunchSpec = {
   imagePrompts?: true
   /** The agent compacts its conversation when sent `/compact` as a prompt; off hides `/compact`. */
   compaction?: true
+  /** Throws when the chat's own arguments would send a copied conversation's CLI elsewhere than
+   *  the store the copy is written to. */
+  assertCopyLaunchArgs?: (args: readonly string[]) => void
   /** The agent's own store of a session's user messages, read for restart recovery only. */
   readStoredUserMessages?: AcpStoredUserMessagesReader
   modelDiscovery: AcpModelDiscovery
@@ -211,6 +215,7 @@ function openCodeLaunchSpec(
     readStoredUserMessages: openCodeStoredUserMessagesReader(),
     visualsSkill: loadOpenCodeVisualsSkill,
     compaction: true,
+    assertCopyLaunchArgs: assertOpenCodeCopyUsesLocalStore,
     // Finds a conversation of either line in the one database both lines write.
     transcriptImport: OPENCODE_TRANSCRIPT_IMPORT,
     sessionHistory: OPENCODE_SESSION_HISTORY
@@ -231,7 +236,7 @@ const OPENCODE_LAUNCH_SPEC = openCodeLaunchSpec({
     listingNamesConfiguredModel: false,
     // 2.x rejects `--verbose`, and its own listings omit providers that report after startup.
     supportsVersion: (version) => isStableCliVersionOnLine(version, OPENCODE_1X_LINE),
-    otherReleases: { kind: 'session', listingNamesConfiguredModel: false }
+    otherReleasesListInSession: true
   }
 })
 

@@ -38,11 +38,14 @@ export async function resumeAiVaultSessionInNewChat(
   try {
     // Codex rows can live under a shared legacy home; the same preparation the terminal resume
     // runs re-pins them, and its result is what names the conversation the host will look for.
-    const preparedSession = await prepareAiVaultSessionForResume(session)
+    const [preparedSession, agent] = await Promise.all([
+      prepareAiVaultSessionForResume(session),
+      adoptingAgentOnHost(rowAgent, worktreeId)
+    ])
     const plan = adoptAgentSessionLaunchVerdict({
       route: 'structured-native-chat',
       requestId,
-      agent: await adoptingAgentOnHost(rowAgent, worktreeId),
+      agent,
       worktreeId,
       resumeFrom: { providerSessionId: preparedSession.sessionId }
     })
@@ -74,21 +77,18 @@ async function adoptingAgentOnHost(
   rowAgent: CliConversationRowAgent,
   worktreeId: string
 ): Promise<TuiAgent> {
-  const [preferred, ...fallbacks] = CLI_CONVERSATION_ADOPTING_AGENTS[rowAgent]
+  const [first, ...rest] = CLI_CONVERSATION_ADOPTING_AGENTS[rowAgent]
   const owner = structuredLaunchOwner({ route: 'structured-native-chat' }, worktreeId)
-  let agent: TuiAgent = preferred
-  for (const fallback of fallbacks) {
-    const admission = owner
-      ? await admitStructuredLaunchOnHost(
-          owner.target,
-          toRuntimeWorktreeSelector(worktreeId),
-          agent
-        )
-      : null
-    if (admission?.kind !== 'declined') {
-      break
+  const selector = toRuntimeWorktreeSelector(worktreeId)
+  let agent: TuiAgent = first
+  for (const next of rest) {
+    if (
+      !owner ||
+      (await admitStructuredLaunchOnHost(owner.target, selector, agent)).kind !== 'declined'
+    ) {
+      return agent
     }
-    agent = fallback
+    agent = next
   }
   return agent
 }

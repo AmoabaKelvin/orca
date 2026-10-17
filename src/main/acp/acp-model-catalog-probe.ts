@@ -8,7 +8,7 @@ import {
   runAgentModelCatalogListing,
   runAgentModelCatalogSession
 } from '../native-chat/agent-model-catalog/agent-model-catalog-probe-runner'
-import { AgentModelCatalogListingDeferredError } from '../native-chat/agent-model-catalog/agent-model-catalog-failures'
+import { AgentModelCatalogListingStoppedError } from '../native-chat/agent-model-catalog/agent-model-catalog-failures'
 import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
 import type { AgentSessionModelOption } from '../../shared/agent-session-wire'
 import { createAcpAgentConnection } from './acp-agent-connection'
@@ -61,17 +61,21 @@ export function createAcpModelCatalogProbe(
     if (discovery.kind === 'unavailable') {
       throw new Error(discovery.reason)
     }
+    const workspace = options?.workspacePath
+    // Known without spawning anything: a session listing needs a chat's folder.
+    if (discovery.kind === 'session' && !workspace) {
+      throw folderlessListing(spec)
+    }
     // Spawned from home; a listing reads a project's config only in the chat folder it is asked for.
     const cwd = deps.homePath ?? homedir()
     const { command, env, envToDelete } = await resolveAcpLaunchInvocation(spec, accountHome, {
       ...deps,
       resolveWorkingDirectory: () => cwd
     })
-    const listsVersion = discovery.kind === 'command' ? discovery.supportsVersion : undefined
     const release = await probeAcpLaunchVersion(
       spec,
       { command, cwd, env },
-      listsVersion !== undefined,
+      discovery.kind === 'command' && discovery.supportsVersion !== undefined,
       deps.probeVersion ?? probeAgentCliVersion
     )
     if (!release.supported) {
@@ -92,14 +96,13 @@ export function createAcpModelCatalogProbe(
     let models: AgentSessionModelOption[]
     if (listing.kind === 'command') {
       const stdout = await (deps.runListing ?? runAgentModelCatalogListing)(
-        { command, args: [...listing.args], cwd: options?.workspacePath ?? cwd, env, envToDelete },
+        { command, args: [...listing.args], cwd: workspace ?? cwd, env, envToDelete },
         { site: `${spec.agent}-model-catalog-probe`, signal: options?.signal }
       )
       models = listing.parse(stdout)
     } else if (listing.kind === 'session') {
-      const workspace = options?.workspacePath
       if (!workspace) {
-        throw new AgentModelCatalogListingDeferredError(`${spec.agent} lists in a chat's folder`)
+        throw folderlessListing(spec)
       }
       models = await runAgentModelCatalogSession(
         () => (deps.connectSession ?? createAcpAgentConnection)(launch),
@@ -120,6 +123,9 @@ export function createAcpModelCatalogProbe(
   }
 }
 
+const folderlessListing = (spec: AcpLaunchSpec) =>
+  new AgentModelCatalogListingStoppedError(`${spec.agent} lists in a chat's folder`)
+
 type AcpModelListing = Exclude<AcpModelDiscovery, { kind: 'unavailable' }>
 
 /** How `version` lists: its discovery, unless that is a command this release has no listing for. */
@@ -130,7 +136,9 @@ function listingFor(discovery: AcpModelListing, version: string | null): AcpMode
   if (version !== null && discovery.supportsVersion(version)) {
     return discovery
   }
-  return discovery.otherReleases ?? null
+  return discovery.otherReleasesListInSession
+    ? { kind: 'session', listingNamesConfiguredModel: discovery.listingNamesConfiguredModel }
+    : null
 }
 
 /** What a new chat in `workspace` offers, read from a session opened only to be deleted. */

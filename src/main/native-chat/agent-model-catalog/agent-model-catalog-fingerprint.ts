@@ -58,10 +58,12 @@ export function agentModelCatalogIdentityForRecord(
   }
 }
 
+/** `folder` only for an agent whose catalog is kept per folder. */
 export function agentModelCatalogFingerprintForRecord(
-  record: Pick<AgentSessionRecord, 'provider' | 'accountHome' | 'location'>
+  record: Pick<AgentSessionRecord, 'provider' | 'accountHome' | 'location'>,
+  folder?: string
 ): string {
-  return agentModelCatalogFingerprint(agentModelCatalogIdentityForRecord(record))
+  return agentModelCatalogFingerprint({ ...agentModelCatalogIdentityForRecord(record), folder })
 }
 
 /** A live session's store handle, pinned to the account home it spawned under.
