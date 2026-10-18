@@ -192,6 +192,19 @@ describe('useNativeChatComposerAttachments', () => {
     }
   )
 
+  it('takes the chip of an image still on its way out of the prompt when the composer is disabled', async () => {
+    const probe = await renderProbe('structured-1', true)
+    act(() => {
+      probe.latest().beginPendingImageAttachment()
+    })
+    expect(readNativeChatDraftCache('structured-1')).not.toBe('')
+
+    await probe.rerender('structured-1', true)
+    expect(probe.latest().imageAttachments).toEqual([])
+    expect(readNativeChatDraftCache('structured-1')).toBe('')
+    act(() => probe.root.unmount())
+  })
+
   it('accepts host-readable image paths without a PTY for structured transport', async () => {
     const probe = await renderProbe('structured-session-1', true)
 
