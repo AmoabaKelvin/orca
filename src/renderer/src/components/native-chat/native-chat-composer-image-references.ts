@@ -9,7 +9,8 @@ import {
 import { appendNativeChatDraftCache } from './native-chat-draft-cache'
 import {
   nativeChatImageRow,
-  nativeChatPendingAttachmentSnapshot
+  nativeChatPendingAttachmentSnapshot,
+  takeNativeChatPendingAttachment
 } from './native-chat-pending-attachment-cache'
 import { imageReferenceToken } from '../../../../shared/native-chat-image-reference'
 import { withoutImageReferenceNodes } from './native-chat-prompt-document-text'
@@ -82,4 +83,34 @@ export function settlePendingImageReferences<T>(
     removeImageReferences(scopeKey, input, id)
   }
   return result
+}
+
+/** Takes an image still on its way, and its chips with it; undefined when it already went. */
+export function takePendingImageWithReferences(
+  scopeKey: string,
+  input: NativeChatComposerInput | null,
+  id: string
+): ReturnType<typeof takeNativeChatPendingAttachment> {
+  return settlePendingImageReferences(scopeKey, input, () =>
+    takeNativeChatPendingAttachment(scopeKey, id)
+  )
+}
+
+/** Removes an image and every chip of it, whether it is on its way or in the draft. */
+export function removeImageWithReferences(
+  scopeKey: string,
+  input: NativeChatComposerInput | null,
+  id: string
+): void {
+  // A chip still on its way is removed before it settles, so its file never joins the message.
+  if (takePendingImageWithReferences(scopeKey, input, id)) {
+    return
+  }
+  removeImageReferences(scopeKey, input, id)
+  const images = readNativeChatComposerDraft(scopeKey).images
+  updateNativeChatComposerDraft(
+    scopeKey,
+    { images: images.filter((image) => image.id !== id) },
+    'immediate'
+  )
 }

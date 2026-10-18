@@ -6,10 +6,7 @@ import {
   type NativeChatResolvedTarget
 } from './native-chat-composer-target'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
-import {
-  readNativeChatComposerDraft,
-  updateNativeChatComposerDraft
-} from './native-chat-composer-draft-store'
+import { updateNativeChatComposerDraft } from './native-chat-composer-draft-store'
 import type { NativeChatResolvedPathOptions } from './native-chat-resolved-path-ownership'
 import { useNativeChatResolvedPathAttachments } from './use-native-chat-resolved-path-attachments'
 import type {
@@ -22,16 +19,16 @@ import {
   clearNativeChatPendingAttachments,
   settleNativeChatPendingAttachment,
   settleNativeChatPendingAttachmentReferences,
-  nativeChatPendingAttachmentSnapshot,
-  takeNativeChatPendingAttachment
+  nativeChatPendingAttachmentSnapshot
 } from './native-chat-pending-attachment-cache'
 import { useNativeChatComposerImageChips } from './use-native-chat-composer-image-chips'
 import { createUuidV4 } from '../../../../shared/uuid-v4'
 import {
   insertImageReferences,
   nativeChatImageRowIds,
-  removeImageReferences,
-  settlePendingImageReferences
+  removeImageWithReferences,
+  settlePendingImageReferences,
+  takePendingImageWithReferences
 } from './native-chat-composer-image-references'
 import { isNativeChatImageAttachmentPath } from './native-chat-image-paste'
 
@@ -279,11 +276,7 @@ export function useNativeChatComposerAttachments({
     (id: string): boolean => {
       releasePreview(id)
       serverOwnedPendingIds.delete(id)
-      return (
-        settlePendingImageReferences(attachmentScopeKey, scopeEditor(), () =>
-          takeNativeChatPendingAttachment(attachmentScopeKey, id)
-        ) !== undefined
-      )
+      return takePendingImageWithReferences(attachmentScopeKey, scopeEditor(), id) !== undefined
     },
     [attachmentScopeKey, releasePreview, scopeEditor, serverOwnedPendingIds]
   )
@@ -317,21 +310,7 @@ export function useNativeChatComposerAttachments({
     flushPendingAttachments,
     removeImageAttachment: (id) => {
       releasePreview(id)
-      // A chip still on its way is removed before it settles, so its file never joins the message.
-      if (
-        settlePendingImageReferences(attachmentScopeKey, scopeEditor(), () =>
-          takeNativeChatPendingAttachment(attachmentScopeKey, id)
-        )
-      ) {
-        return
-      }
-      removeImageReferences(attachmentScopeKey, scopeEditor(), id)
-      const images = readNativeChatComposerDraft(attachmentScopeKey).images
-      updateNativeChatComposerDraft(
-        attachmentScopeKey,
-        { images: images.filter((image) => image.id !== id) },
-        'immediate'
-      )
+      removeImageWithReferences(attachmentScopeKey, scopeEditor(), id)
     },
     beginPendingImageAttachment,
     resolvePendingImageAttachment,
